@@ -78,7 +78,7 @@ binary compatibility 문제를 피하기 위해 `sensor_msgs/Image` buffer를
 직접 읽어 overlay를 publish합니다. 입력 topic은 launch argument로
 변경할 수 있습니다.
 
-실제 robot jog 중에는 ROS image relay/viewer 지연을 피하기 위해
+실제 DART 수동 정렬 중에는 ROS image relay/viewer 지연을 피하기 위해
 `realsense_alignment_viewer`를 우선 사용합니다. ROS overlay node는
 topic interface와 graph/evidence 확인에 사용합니다.
 

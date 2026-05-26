@@ -1,9 +1,9 @@
-# RUN-20260526-002: 4분할 Workspace와 Overview Camera Pose 정렬 계획
+# RUN-20260526-002: 4분할 Workspace와 Overview Camera Pose 정렬
 
 ## 상태
 
 ```text
-IN_PROGRESS
+OVERVIEW_POSE_CAPTURED_PENDING_RVIZ_ALIGNMENT
 ```
 
 ## 목적
@@ -111,6 +111,49 @@ outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
 - 외곽/중앙 테이프와 네 cell label이 보이는 physical workspace 사진을
   확보하고, 공개 사본은 EXIF metadata를 제거해 저장했습니다.
 
+### 2.2 Overview Pose 실측 결과
+
+2026-05-26, Ubuntu 노트북에서는 `realsense_alignment_viewer`를 camera
+표시 전용으로 실행하고, 별도 Windows 노트북의 Doosan DART로 joint를
+수동 조작하여 중앙 십자선을 종이판의 중앙 테이프 교차점에 맞췄습니다.
+
+기록한 joint position:
+
+```yaml
+j1: 102.79
+j2: -109.75
+j3: 120.08
+j4: -18.36
+j5: 54.45
+j6: -85.46
+```
+
+같은 순간의 DART TCP pose, base 기준 `mm/deg`:
+
+```yaml
+x: 73.02
+y: -122.02
+z: 520.19
+rx: 86.27
+ry: 64.30
+rz: -89.05
+```
+
+관측 결과:
+
+- 네 cell 전체와 중앙 테이프 경계가 영상 안에서 식별됩니다.
+- 십자선 교차점이 중앙 테이프 교차점과 정렬되었습니다.
+- direct viewer 화면에서 `LIVE 30.0 FPS`가 표시되었습니다.
+- 이 값은 overview camera posture 재현용 기록이며, 그 자체로
+  `cultivation_panel -> base` transform 또는 자동 motion 허가를
+  의미하지 않습니다.
+- 구조 사진 원본 `/home/user/Downloads/IMG_7161.jpeg`에는 배경 인물과
+  GPS EXIF가 포함되어 있어 공개 asset으로 commit하지 않습니다.
+
+재현 pose config:
+
+- `config/recorded_poses.yaml`
+
 ### 3. Overview Camera Pose 만들기
 
 조건:
@@ -167,30 +210,25 @@ pick pose: 실제 grasp 실행
 | 자료 | 필요 장면 | 상태 | 원본 위치 | 공개 위치/사용처 |
 | --- | --- | --- | --- | --- |
 | Physical workspace 사진 | 종이 4개, 테이프 중앙선, NW/NE/SW/SE label | `CAPTURED` | 사용자 촬영 원본, Git 비공개 | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg`, testbed 설명 |
-| Overview camera 화면 | 네 cell 전체가 카메라 화면에 보이는 장면 | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/overview_camera.png` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png`, 포트폴리오 |
+| Overview camera 화면 | 네 cell 전체와 십자선 중앙 정렬 화면 | `PUBLIC` | 사용자 제공 screenshot | `docs/assets/exploration/RUN-20260526-002_overview_camera.png`, 포트폴리오 |
+| Robot/board 구조 사진 | eye-in-hand camera와 보드의 물리 배치 | `LOCAL_ONLY` | `/home/user/Downloads/IMG_7161.jpeg` | 인물/GPS EXIF 제거 후 공개 여부 재검토 |
 | RViz/physical 대응 비교 | RViz quadtree와 실제 4분할 영역을 나란히 설명할 자료 | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png` | `docs/assets/exploration/RUN-20260526-002_rviz_physical_alignment.png`, GitHub/Notion |
 
 ![종이 4분할 workspace와 테이프 경계](../assets/exploration/RUN-20260526-002_workspace_board.jpg)
 
-<!-- VISUAL TODO
-asset_id: RUN-20260526-002_overview_camera
-capture: eye-in-hand camera에서 네 종이 cell이 여백을 두고 모두 보이는 RGB 화면
-source_path: artifacts/RUN-20260526-002/raw/overview_camera.png
-public_path: docs/assets/exploration/RUN-20260526-002_overview_camera.png
-use_in: quadtree exploration 설명, 포트폴리오, Notion Experiment Run
-status: NOT_CAPTURED
--->
+![십자선과 중앙 테이프 교차점이 정렬된 overview camera 화면](../assets/exploration/RUN-20260526-002_overview_camera.png)
 
 ## 완료 기준
 
 - [x] 종이 outer bounds와 테이프 교차점 root split을 config에 반영합니다.
 - [x] 테이프 폭의 근사 측정값과 physical workspace 사진을 기록합니다.
-- [ ] 종이 4분할 영역을 camera view에서 코드의 four child cell과 대응시킵니다.
-- [ ] 전체 영역이 보이는 overview camera pose를 한 개 확보합니다.
+- [x] 종이 4분할 영역을 camera view에서 코드의 four child cell과 대응시킵니다.
+- [x] 전체 영역이 보이는 overview camera pose를 한 개 확보합니다.
 - [x] 실제 workspace 가로/세로 및 whiteboard 치수를 기록합니다.
-- [ ] overview pose의 RGB 화면을 확보합니다.
-- [ ] `scan_pose_generator`에서 사용할 frame/orientation/stand-off를 정하기
-  위한 입력 자료를 확보합니다.
+- [x] overview pose의 RGB 화면을 확보합니다.
+- [x] `scan_pose_generator`에서 사용할 posture 후보 입력 자료를 확보합니다.
+- [ ] RViz/TF 검증을 통해 `cultivation_panel`과 robot base 사이의
+  frame 관계를 확정합니다.
 
 ## 완료 후 다음 작업
 

@@ -133,14 +133,23 @@ root만 명시적인 `(0, 0)` split을 사용합니다.
 - 공개 파일은 원본 사진의 EXIF metadata를 제거하고 문서용으로
   축소한 사본입니다.
 
-## 6. 다음 측정 및 시각자료
+## 6. Overview 정렬 자료 및 다음 측정
+
+2026-05-26, display-only viewer와 Doosan DART 수동 조작으로 전체 종이가
+보이는 overview camera pose를 확보했습니다.
+
+![십자선과 중앙 테이프 교차점이 정렬된 overview camera 화면](assets/exploration/RUN-20260526-002_overview_camera.png)
+
+```yaml
+joint_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]
+tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
+```
 
 다음 run에서 확인할 항목:
 
 1. motion safety margin에 사용할 필요가 생기면 경계별 tape overlap 정밀 측정
-2. 전체 종이가 보이는 eye-in-hand overview RGB 화면
-3. overview camera pose의 robot joint 또는 TCP pose 기록
-4. RViz marker와 물리 cell 대응 화면
+2. RViz marker와 물리 cell 대응 화면
+3. `cultivation_panel`과 `base_link` 사이 frame 관계
 
 시각자료 경로는 `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
 를 따릅니다.

@@ -1,0 +1,29 @@
+# Physically observed reference poses. These are records, not autonomous motion commands.
+overview_alignment:
+  recorded_date: "2026-05-26"
+  purpose: align_camera_center_crosshair_to_cultivation_panel_tape_intersection
+  acquisition:
+    robot_control: doosan_dart_manual_joint_control
+    image_viewer: realsense_alignment_viewer_display_only
+    evidence_image: docs/assets/exploration/RUN-20260526-002_overview_camera.png
+  joint_position_deg:
+    j1: 102.79
+    j2: -109.75
+    j3: 120.08
+    j4: -18.36
+    j5: 54.45
+    j6: -85.46
+  tcp_pose_base_mm_deg:
+    x: 73.02
+    y: -122.02
+    z: 520.19
+    rx: 86.27
+    ry: 64.30
+    rz: -89.05
+  result: aligned
+  observed_display_fps: 30.0
+  use_for_automated_motion: false
+  note: >-
+    This DART-recorded TCP pose reproduces the overview camera alignment
+    posture. It does not by itself define the cultivation_panel-to-base
+    transform or authorize automated robot motion.

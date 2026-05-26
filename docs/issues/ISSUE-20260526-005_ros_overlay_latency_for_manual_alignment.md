@@ -49,7 +49,7 @@ RealSense color stream
 
 | 도구 | 사용 목적 |
 | --- | --- |
-| `realsense_alignment_viewer` | 실제 robot jog 중 저지연 정렬 |
+| `realsense_alignment_viewer` | DART 수동 조작 중 저지연 camera 표시 |
 | `camera_alignment_node` | ROS topic 연결, 향후 기록/통합 검증 |
 
 두 경로 모두 RealSense camera를 사용하는 다른 process와 동시에 실행하지
@@ -61,12 +61,12 @@ RealSense color stream
 - viewer argument/default unit test 추가
 - 전체 unit test `14개` 통과
 - 문법 검사 통과
-- 실제 camera에서 체감 지연 및 FPS 확인은 다음 physical alignment에서 수행
+- 실제 camera overview 정렬 화면에서 `LIVE 30.0 FPS` 표시를 확인
+- DART 수동 조작 중 십자선과 중앙 tape crossing 정렬을 완료하고
+  `RUN-20260526-002`에 화면/joint/TCP pose를 기록
 
-## 다음 확인
+## 남은 확인
 
-1. `ros2 run strawberry_motion realsense_alignment_viewer`를 실행합니다.
-2. robot jog 중 화면 지연이 alignment 작업에 충분히 낮은지 확인합니다.
-3. 정렬 완료 화면과 joint/TCP pose를 저장합니다.
-4. 여전히 지연이 크면 `848x480@60` 지원 여부 또는 USB/RealSense
-   stream 상태를 추가 확인합니다.
+1. RViz marker와 실제 camera view의 cell 대응을 확인합니다.
+2. 후속 단계에서 더 빠른 영상이 필요해지면 `848x480@60` 지원 여부
+   또는 USB/RealSense stream 상태를 추가 확인합니다.

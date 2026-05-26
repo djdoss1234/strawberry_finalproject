@@ -109,9 +109,9 @@ motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
 ![종이 4분할 physical workspace](docs/assets/exploration/RUN-20260526-002_workspace_board.jpg)
 
 종이 네 장과 약 `20 mm` 절연테이프 경계를 이용해 1차 cell
-`NW/NE/SW/SE`를 구성했습니다. 다음 검증은 eye-in-hand camera에서
-이 전체 영역이 보이는 overview pose를 확보하고 RViz marker와 대응시키는
-단계입니다.
+`NW/NE/SW/SE`를 구성했습니다. eye-in-hand camera에서 전체 영역이
+보이는 overview pose를 확보했으며, 다음 검증은 이를 RViz marker와
+대응시키는 단계입니다.
 
 ### Camera 중앙 십자선 정렬
 
@@ -121,10 +121,16 @@ overview pose를 현장에서 맞출 때는 저지연 `realsense_alignment_viewe
 
 ![Camera crosshair overlay preview](docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
 
-위 이미지는 renderer 설명용 preview이며, 실제 eye-in-hand 정렬 결과는
-overview pose 확보 후 별도 run 증거로 저장합니다.
+위 이미지는 renderer 설명용 preview입니다. 실제 종이판을 camera 중앙에
+맞춘 overview reference pose도 확보했습니다.
 
-실시간 jog 정렬용 실행:
+![실제 overview camera 정렬 결과](docs/assets/exploration/RUN-20260526-002_overview_camera.png)
+
+정렬 순간의 joint/TCP pose는 `config/recorded_poses.yaml`에 저장되어
+있으며, 이 값은 자동 motion command가 아니라 RViz/TF 검증을 위한
+reference입니다.
+
+실시간 camera 표시용 실행:
 
 ```bash
 cd ~/doosan_ws

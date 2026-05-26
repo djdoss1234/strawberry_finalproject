@@ -59,7 +59,8 @@ driver와 동시에 실행하지 않습니다.
 
 ## 실행 방법
 
-실제 robot jog와 overview pose 정렬에는 저지연 direct viewer를 사용합니다.
+실제 DART 수동 조작 중 overview pose 정렬 화면에는 저지연 direct viewer를
+사용합니다.
 
 ```bash
 cd ~/doosan_ws
@@ -118,23 +119,21 @@ ros2 launch strawberry_motion camera_alignment.launch.py \
 - direct viewer CLI/default unit test 추가 후 전체 unit test `14개` 통과
 - 기존 public workspace 사진에 renderer를 적용해 표시 결과 preview 생성
 
-preview는 기능 설명용이며 실제 eye-in-hand 정렬 검증은 아닙니다.
+preview는 기능 설명용입니다. 실제 eye-in-hand 정렬 결과는
+`RUN-20260526-002`에 기록했습니다.
 
 ![십자선 overlay renderer preview](../assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
 
+## 실기 확인 결과
+
+- `realsense_alignment_viewer` direct stream으로 실제 eye-in-hand 영상을
+  표시했습니다.
+- Doosan DART 수동 조작으로 십자선과 종이 중앙 tape crossing을
+  정렬했고 `RUN-20260526-002`에 결과 화면과 joint/TCP pose를 저장했습니다.
+- 결과 화면에서 `LIVE 30.0 FPS`가 표시되어, 정렬 작업용 display
+  응답성은 확보했습니다.
+
 ## 아직 확인하지 않은 것
 
-- 실제 RealSense stream에서 overlay image publish 및 표시
-- 저지연 direct viewer의 실제 camera FPS와 jog 중 체감 latency
-- 십자선과 종이 중앙 tape crossing 정렬 결과 화면
-- 정렬 완료 pose의 robot joint/TCP 값
 - RViz quadtree marker와 camera view 대응
-
-## 다음 현장 절차
-
-1. 기존 camera 사용 process가 실행 중이면 종료합니다.
-2. `realsense_alignment_viewer`를 실행합니다.
-3. direct 화면에서 종이 네 cell 외곽이 여백 안에 들어오게 합니다.
-4. 노란 십자선을 중앙 테이프 교차점에 맞춥니다.
-5. 정렬 화면과 현재 joint/TCP pose를 저장합니다.
-6. 결과를 `RUN-20260526-002` overview 정렬 기록과 연결합니다.
+- ROS overlay topic을 실제 RealSense ROS stream과 연결한 evidence 화면

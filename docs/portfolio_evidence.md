@@ -140,8 +140,21 @@ status: NOT_CAPTURED
 
 ![Camera crosshair overlay preview](assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
 
-위 이미지는 renderer 설명용 preview이며 실제 robot camera 정렬 결과는
-아직 확보하지 않았습니다.
+위 이미지는 renderer 설명용 preview이며, 실제 robot camera 정렬 결과는
+아래 physical overview 정렬에서 별도로 확보했습니다.
+
+### 6.1 실제 Overview Camera Pose 정렬
+
+- camera viewer는 화면 표시만 담당하고, Doosan DART 수동 joint 조작으로
+  실제 종이판 중앙 테이프 교차점을 십자선 중심에 맞췄습니다.
+- 화면에서 네 cell 전체와 중앙 경계가 식별되고, direct viewer
+  `LIVE 30.0 FPS` 표시를 확인했습니다.
+- 정렬 순간의 joint position과 TCP pose를 `config/recorded_poses.yaml`에
+  저장해 다음 RViz/scan pose 단계의 재현 기준으로 사용합니다.
+- TCP pose는 기준 자세 기록이며, workspace-to-base transform은 후속
+  frame 검증에서 별도로 결정합니다.
+
+![실제 overview camera 중앙 정렬 결과](assets/exploration/RUN-20260526-002_overview_camera.png)
 
 ### 7. 실기 Safety Incident와 Motion Validation 경계 재정의
 
@@ -179,8 +192,8 @@ status: NOT_CAPTURED
 | --- | --- | --- | --- |
 | Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
-| Physical workspace 정렬 | 종이 4분할 사진 확보, overview camera 화면 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg` |
-| Camera 중심 정렬 보조 | direct viewer 구현 및 preview, 실제 stream 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg` |
+| Physical workspace 정렬 | 종이 4분할과 overview camera 정렬 화면 확보 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
+| Camera 중심 정렬 보조 | direct viewer 표시 및 `30.0 FPS` 실기 확인 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
 | Cartesian step alignment | joint-limit 사고 후 철회, safety guard 재설계 필요 | `WITHDRAWN` | `docs/issues/ISSUE-20260526-006_cartesian_step_without_joint_limit_guard.md` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |

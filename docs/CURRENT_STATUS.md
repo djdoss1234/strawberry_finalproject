@@ -47,7 +47,7 @@
   - 출력: `/strawberry/alignment/overlay_image`
   - 중앙 십자선, 전체 axis, 여백 guide 표시
   - `cv_bridge` 없이 image buffer 직접 처리
-- 실시간 jog 정렬용 `realsense_alignment_viewer` 구현
+- 실시간 수동 정렬 표시용 `realsense_alignment_viewer` 구현
   - `pyrealsense2`로 color stream 직접 display
   - ROS image relay와 `rqt_image_view` 경로를 우회
   - 화면에 `LIVE FPS` 표시
@@ -64,6 +64,8 @@
 - unsafe robot-control option 거부 테스트를 포함해 unit test `15개` 통과
 - `realsense2_camera`, `rqt_image_view` package 설치 확인
 - `camera_alignment_node` ROS interface와 synthetic image overlay publish 확인
+- DART 수동 joint 조작과 display-only viewer로 overview pose 정렬 완료
+- overview 정렬 screenshot에서 네 cell, 중앙 교차점, `LIVE 30.0 FPS` 확인
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -119,48 +121,51 @@ root split = (0.0, 0.0)
 ## 5. 아직 확정하지 않은 것
 
 - motion safety margin용 경계별 tape overlap 정밀 치수
-- 전체가 보이는 eye-in-hand overview camera pose
 - `cultivation_panel`과 실제 robot `base_link` 사이 transform
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
 - 실제 `scan_pose_generator`와 robot scan motion
-- 실제 eye-in-hand stream에서 십자선과 테이프 교차점 정렬 캡처
-- direct viewer에서 실제 조그 정렬 시 체감 latency/FPS 확인
-- joint-limit 사고 후 로봇 상태 확인 및 안전한 복구
+- joint-limit 사고 당시 alarm/recovery 상세 log는 미기록이며, 이후
+  DART 수동 조작으로 overview 정렬이 가능한 상태는 확인
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. robot control이 활성화된 기존 viewer process를 종료
-2. joint-limit 사고 상태를 현장 안전 절차로 확인/복구
-3. direct viewer는 motion 옵션 없이 camera 표시 전용으로 실행
-4. 별도 Windows 노트북의 Doosan DART로 수동 joint 조작하며 overview pose 정렬
-5. 정렬 화면 캡처 및 TCP pose 저장
-6. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
-7. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
+1. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
+2. `cultivation_panel`과 `base_link` 사이 frame 관계를 정의/검증
+3. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
 
 ```text
 docs/assets/exploration/RUN-20260526-002_workspace_board.jpg  # 확보 완료
+docs/assets/exploration/RUN-20260526-002_overview_camera.png  # 정렬 완료 화면
 docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg  # 기능 preview
-artifacts/RUN-20260526-002/raw/overview_camera.png
 artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 ```
+
+확보한 overview reference pose:
+
+```yaml
+joint_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]
+tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
+```
+
+상세 저장 위치: `config/recorded_poses.yaml`
 
 ## 7. 다음 구현
 
 현장 입력을 받은 뒤:
 
 1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
-2. 저지연 십자선 viewer + DART 수동 조작으로 overview pose 기록
+2. RViz에서 실측 cell alignment 확인 및 frame 관계 정의
 3. tape dead-zone/margin 설정 추가 여부 결정
-4. RViz에서 실측 cell alignment 확인
-5. safety-checked `scan_pose_generator.py` 구현
-6. cell center observation pose를 RViz에서 먼저 검증
+4. safety-checked `scan_pose_generator.py` 구현
+5. cell center observation pose를 RViz에서 먼저 검증
 
 ## 8. 핵심 문서와 Git
 
 - geometry/config: `config/workspace.yaml`
+- reference poses: `config/recorded_poses.yaml`
 - testbed: `docs/testbed_setup.md`
 - 현재 run: `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
 - 측정 issue: `docs/issues/ISSUE-20260526-003_workspace_measurement_boundary_mismatch.md`
