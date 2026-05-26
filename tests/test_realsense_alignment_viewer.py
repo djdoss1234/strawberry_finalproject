@@ -1,6 +1,9 @@
 import unittest
 
-from strawberry_motion.visualization.realsense_alignment_viewer import delta_for_key, parse_args
+from strawberry_motion.visualization.realsense_alignment_viewer import (
+    parse_args,
+    reject_unsafe_motion_option,
+)
 
 
 class RealsenseAlignmentViewerTest(unittest.TestCase):
@@ -20,11 +23,11 @@ class RealsenseAlignmentViewerTest(unittest.TestCase):
         self.assertEqual(options.height, 480)
         self.assertEqual(options.fps, 60)
 
-    def test_maps_camera_alignment_keys_to_small_base_frame_steps(self):
-        self.assertEqual(delta_for_key(ord("a"), 2.0), ("LEFT  -X", [-2.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
-        self.assertEqual(delta_for_key(ord("w"), 2.0), ("UP    +Z", [0.0, 0.0, 2.0, 0.0, 0.0, 0.0]))
-        self.assertEqual(delta_for_key(ord("f"), 2.0), ("DEPTH -Y", [0.0, -2.0, 0.0, 0.0, 0.0, 0.0]))
-        self.assertIsNone(delta_for_key(ord("q"), 2.0))
+    def test_rejects_withdrawn_robot_control_option(self):
+        options = parse_args(["--enable-robot-control"])
+
+        with self.assertRaises(RuntimeError):
+            reject_unsafe_motion_option(options)
 
 
 if __name__ == "__main__":

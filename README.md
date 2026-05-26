@@ -137,28 +137,10 @@ ros2 run strawberry_motion realsense_alignment_viewer
 manual alignment에 적합합니다. 화면 하단의 `LIVE FPS`로 체감 상태를
 함께 확인합니다. 종료는 `q` 또는 `ESC`입니다.
 
-십자선 화면에서 로봇 TCP를 함께 미세 조정할 때는 step control을
-명시적으로 활성화합니다. 처음에는 반드시 `2 mm`로 방향부터 확인합니다.
-
-```bash
-ros2 run strawberry_motion realsense_alignment_viewer -- \
-  --enable-robot-control \
-  --step-mm 2 \
-  --linear-velocity-mm-s 10 \
-  --linear-acceleration-mm-s2 20
-```
-
-| key | TCP 상대 이동 |
-| --- | --- |
-| `A` / `D` | base `X -/+`, 좌우 정렬 후보 |
-| `W` / `S` | base `Z +/-`, 상하 정렬 후보 |
-| `R` / `F` | base `Y +/-`, 보드 거리 조정 후보 |
-| `P` | 현재 TCP pose 출력 |
-
-이 조작은 orientation을 바꾸지 않고 `MoveLine` relative translation을
-한 입력당 지정한 거리만 수행합니다. camera 장착 방향에 따라 화면상
-부호가 반대로 보일 수 있으므로, 보드에서 떨어진 상태에서 첫 키 방향을
-확인한 뒤 접근합니다.
+중요: viewer의 robot Cartesian step control은 실제 로봇에서 joint
+limit 사고가 발생해 철회했습니다. `--enable-robot-control` 옵션은
+이제 안전 검증이 구현될 때까지 실행을 거부합니다. viewer는 camera
+십자선 표시 전용으로만 사용합니다.
 
 ROS topic 연결과 `rqt_graph` 검증이 필요할 때만 아래 경로를 사용합니다.
 
