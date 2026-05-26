@@ -1,0 +1,34 @@
+# ROS / colcon outputs
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Local configuration and secret material
+.env
+*.key
+*.pem
+
+# Robot/camera setup and large learned assets
+config/**/*.npz
+calibration/
+models/
+weights/
+*.pt
+*.pth
+
+# Raw experimental artifacts
+logs/
+data/raw/
+videos/
+*.bag
+*.db3
