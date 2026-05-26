@@ -87,6 +87,8 @@ AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고, 자�
 [docs/development_workflow.md](docs/development_workflow.md)에 기록합니다.
 실행 단계별 결과, 문제 해결, 포트폴리오/자기소개서 근거 축적 방식은
 [docs/project_recording_system.md](docs/project_recording_system.md)에 기록합니다.
+사진, 영상, `rqt_graph`, RViz 캡처를 어느 단계에 어떤 이름으로 남길지는
+[docs/visual_asset_guide.md](docs/visual_asset_guide.md)에 기록합니다.
 현재까지 검증된 대외 설명 재료는
 [docs/portfolio_evidence.md](docs/portfolio_evidence.md)에 누적합니다.
 

@@ -37,6 +37,21 @@
 - `rqt_graph`/TF/RViz 확인:
 - artifact 참조:
 
+## 시각자료 계획 및 확보 상태
+
+| 자료 | 필요 장면 | 상태 | 원본 위치 | 공개 위치/사용처 |
+| --- | --- | --- | --- | --- |
+|  |  | `NOT_CAPTURED` | `artifacts/RUN-.../raw/...` | `docs/assets/...` 또는 `N/A` |
+
+<!-- VISUAL TODO
+asset_id: RUN-YYYYMMDD-NNN_short_name
+capture: 이 run을 설명하는 데 필요한 대표 캡처/영상
+source_path: artifacts/RUN-YYYYMMDD-NNN/raw/
+public_path: docs/assets/<category>/
+use_in: GitHub README, 포트폴리오, Notion Run page
+status: NOT_CAPTURED
+-->
+
 ## 판정
 
 ```text

@@ -98,6 +98,15 @@ docs/portfolio_evidence.md
 
 계획만 있는 기능은 `향후 계획`으로 명확하게 구분합니다.
 
+### Visual Asset: 사진, 영상, Graph, RViz 캡처
+
+시각자료 위치와 문서 배치 기준은 `docs/visual_asset_guide.md`를 따릅니다.
+
+- 원본 artifact: `artifacts/RUN-*/raw/`에 보관하고 Git에는 올리지 않습니다.
+- 공개 대표 자료: `docs/assets/<category>/`에 필요한 자료만 추가합니다.
+- 아직 촬영하지 않은 자료: run/issue/evidence 문서의 `VISUAL TODO`
+  placeholder로 반드시 남깁니다.
+
 ## 3. ID와 연결 규칙
 
 식별자:
@@ -113,6 +122,8 @@ ISSUE-YYYYMMDD-NNN
 - Run record에는 관련 commit과 발견한 issue를 연결합니다.
 - Issue record에는 문제를 발견한 run과 해결을 검증한 run을 연결합니다.
 - Portfolio evidence에는 증거가 되는 run, issue, commit만 인용합니다.
+- 시각자료는 반드시 관련 run 또는 issue와 연결하고, 공개 자료의 파일명에
+  가능하면 `RUN ID`를 포함합니다.
 
 예시:
 
@@ -167,6 +178,9 @@ GitHub에 올리지 않는 것:
 ```text
 evidence_asset: local-only / RUN-20260526-001 / rqt_graph_capture
 ```
+
+자료의 촬영 시점, 공개용 경로, Markdown placeholder 형식은
+`docs/visual_asset_guide.md`에 정의합니다.
 
 ## 6. Notion 정리 방식
 

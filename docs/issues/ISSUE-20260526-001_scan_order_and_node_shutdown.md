@@ -39,6 +39,22 @@ RESOLVED
 - 관련 commit: `a95ca8e`
 - 검증 결과: 초기 `root/nw`, 상태 갱신 후 `root/ne`, 종료 traceback 미발생
 
+## 수정 전후 시각자료
+
+| 구분 | 필요 장면 | 상태 | 경로/사용처 |
+| --- | --- | --- | --- |
+| 수정 전 | node 종료 traceback terminal capture | `NOT_CAPTURED` | 당시 미보관, 문서의 현상/원인 설명으로 대체 |
+| 수정 후 | 상태 갱신 후 `root/ne` 출력 terminal 또는 RViz 캡처 | `NOT_CAPTURED` | `artifacts/RUN-20260526-001/raw/state_transition.png` / 포트폴리오 문제 해결 카드 |
+
+<!-- VISUAL TODO
+asset_id: ISSUE-20260526-001_after_state_transition
+capture: 수정 후 root/nw 완료 입력과 root/ne 출력이 함께 확인되는 화면
+source_path: artifacts/RUN-20260526-001/raw/state_transition.png
+public_path: docs/assets/exploration/RUN-20260526-001_next_cell_transition.png
+use_in: 포트폴리오 문제 해결 카드, Notion Issue page
+status: NOT_CAPTURED
+-->
+
 ## 포트폴리오/면접에서 설명할 포인트
 
 - 실제 motion에 연결하기 전에 scan scheduling의 결정성과 node lifecycle을

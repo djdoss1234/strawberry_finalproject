@@ -32,3 +32,18 @@ OPEN
 
 - motion baseline을 최종 저장소에 연결하기 전에 기존 launch와
   `ros2 service list/info`를 확인합니다.
+
+## 시각자료 계획
+
+| 자료 | 필요 장면 | 상태 | 원본 위치 | 사용처 |
+| --- | --- | --- | --- | --- |
+| 중복 node 증거 | `rqt_graph` 또는 node list에서 duplicate 경고/연결 확인 | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/duplicate_gripper_node.png` | Issue 분석, Notion |
+
+<!-- VISUAL TODO
+asset_id: ISSUE-20260526-002_duplicate_gripper_node
+capture: 기존 bringup 상태에서 gripper_service_node 중복을 확인할 수 있는 graph 또는 terminal 화면
+source_path: artifacts/RUN-20260526-002/raw/duplicate_gripper_node.png
+public_path: docs/assets/motion/ISSUE-20260526-002_duplicate_gripper_node.png
+use_in: 문제 해결 문서, 공개 필요성 판단 후 포트폴리오
+status: NOT_CAPTURED
+-->

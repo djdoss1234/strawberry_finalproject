@@ -40,6 +40,22 @@ OPEN / INVESTIGATING / RESOLVED / DEFERRED
 - 해결 검증 run:
 - 관련 commit:
 
+## 수정 전후 시각자료
+
+| 구분 | 필요 장면 | 상태 | 경로/사용처 |
+| --- | --- | --- | --- |
+| 수정 전 |  | `NOT_CAPTURED` |  |
+| 수정 후 |  | `NOT_CAPTURED` |  |
+
+<!-- VISUAL TODO
+asset_id: ISSUE-YYYYMMDD-NNN_before_after
+capture: 같은 조건에서 문제 현상과 해결 후 결과를 비교할 화면/영상
+source_path: artifacts/RUN-.../raw/
+public_path: docs/assets/<category>/
+use_in: 포트폴리오 문제 해결 카드, Notion Issue page
+status: NOT_CAPTURED
+-->
+
 ## 포트폴리오/면접에서 설명할 포인트
 
 - 문제를 어떻게 분리했는가:

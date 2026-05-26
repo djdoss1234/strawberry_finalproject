@@ -60,6 +60,17 @@ proposal은 모션 시스템의 geometry/collision 검증을 통과한 뒤 실�
   - `/strawberry/exploration/set_cell_state`
 - unit tests: 7개 통과
 
+대표 시각자료 배치 예정 위치:
+
+<!-- VISUAL TODO
+asset_id: RUN-20260526-001_rviz_quadtree_cells
+capture: quadtree cell 상태와 다음 관찰 cell이 표시된 RViz 화면
+source_path: artifacts/RUN-20260526-001/raw/rviz_full.png
+public_path: docs/assets/exploration/RUN-20260526-001_rviz_quadtree_cells.png
+use_in: 포트폴리오 탐색 모듈 섹션, GitHub README, Notion Evidence Bank
+status: NOT_CAPTURED
+-->
+
 ### 4. 구현 중 발견한 문제를 실기 연결 전에 해결
 
 - scan 순서가 문자열 정렬에 흔들릴 가능성과 ROS node 종료 traceback을
@@ -72,6 +83,17 @@ proposal은 모션 시스템의 geometry/collision 검증을 통과한 뒤 실�
 - issue: `ISSUE-20260526-001`
 - related commit: `a95ca8e`
 
+수정 결과를 보여줄 자료 배치 예정 위치:
+
+<!-- VISUAL TODO
+asset_id: RUN-20260526-001_next_cell_transition
+capture: root/nw 상태 갱신 전후 next cell 전환이 확인되는 화면
+source_path: artifacts/RUN-20260526-001/raw/state_transition.png
+public_path: docs/assets/exploration/RUN-20260526-001_next_cell_transition.png
+use_in: 포트폴리오 문제 해결 카드, 자기소개서 첨부 자료, Notion Issue page
+status: NOT_CAPTURED
+-->
+
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처
@@ -81,6 +103,19 @@ proposal은 모션 시스템의 geometry/collision 검증을 통과한 뒤 실�
 - tray marker localization 및 자동 place
 - planner 비교와 collision/retry 고도화
 - 팀원의 VLA module 연동
+
+## 단계별로 확보할 대표 시각자료
+
+| 단계 | 자료 | 상태 | 배치 위치 |
+| --- | --- | --- | --- |
+| Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
+| Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
+| Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
+| Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
+| Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |
+| Planner/collision 개선 | 수정 전후 비교 그림/영상 | `NOT_STARTED` | `docs/assets/motion/` |
+| VLA 통합 | proposal-to-result graph/demo | `NOT_STARTED` | `docs/assets/integration/` |
+| 최종 결과 | 전체 demo 영상과 지표표 | `NOT_STARTED` | `docs/assets/results/` 및 README |
 
 ## 자소서/면접 문장 초안
 

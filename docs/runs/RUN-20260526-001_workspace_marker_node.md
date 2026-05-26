@@ -67,6 +67,32 @@ ros2 topic echo --once /strawberry/exploration/next_cell std_msgs/msg/String
 - 기존 로봇 graph에서 `/dsr01/gripper_service_node` 중복 이름 경고를 발견함
 - RViz 실제 화면 표시와 캡처는 아직 수행하지 않음
 
+## 시각자료 계획 및 확보 상태
+
+| 자료 | 필요 장면 | 상태 | 원본 위치 | 공개 위치/사용처 |
+| --- | --- | --- | --- | --- |
+| ROS graph 캡처 | `/workspace_marker_node`와 exploration topic 연결이 보이는 화면 | `NOT_CAPTURED` | `artifacts/RUN-20260526-001/raw/rqt_graph_full.png` | `docs/assets/exploration/RUN-20260526-001_rqt_graph_workspace_node.png`, GitHub/포트폴리오 |
+| RViz 캡처 | 네 개 cell과 next cell marker가 보이는 화면 | `NOT_CAPTURED` | `artifacts/RUN-20260526-001/raw/rviz_full.png` | `docs/assets/exploration/RUN-20260526-001_rviz_quadtree_cells.png`, GitHub/Notion |
+| 상태 전환 캡처 | `root/nw` 완료 전후 next cell이 바뀐 표시 | `NOT_CAPTURED` | `artifacts/RUN-20260526-001/raw/state_transition.png` | `docs/assets/exploration/RUN-20260526-001_next_cell_transition.png`, 포트폴리오 |
+
+<!-- VISUAL TODO
+asset_id: RUN-20260526-001_rqt_graph_workspace_node
+capture: rqt_graph에서 workspace_marker_node와 exploration topic 연결이 드러나는 화면
+source_path: artifacts/RUN-20260526-001/raw/rqt_graph_full.png
+public_path: docs/assets/exploration/RUN-20260526-001_rqt_graph_workspace_node.png
+use_in: GitHub README 진행상태, 포트폴리오 architecture, Notion Experiment Run
+status: NOT_CAPTURED
+-->
+
+<!-- VISUAL TODO
+asset_id: RUN-20260526-001_rviz_quadtree_cells
+capture: RViz fixed frame cultivation_panel에서 cell 4개와 next cell marker가 표시된 화면
+source_path: artifacts/RUN-20260526-001/raw/rviz_full.png
+public_path: docs/assets/exploration/RUN-20260526-001_rviz_quadtree_cells.png
+use_in: GitHub README, 포트폴리오 탐색 모듈 설명, Notion Experiment Run
+status: NOT_CAPTURED
+-->
+
 ## 판정
 
 ```text
@@ -81,9 +107,10 @@ PARTIAL
 ## 다음 행동
 
 1. RViz에서 `/strawberry/exploration/workspace_cells` MarkerArray 표시 확인
-2. 대표 RViz/graph 캡처 보관
-3. `scan_pose_generator` 구현
-4. 실제 frame/stand-off distance는 테스트베드 실측 후 확정
+2. 위 표의 대표 RViz/graph 캡처를 `artifacts/RUN-20260526-001/raw/`에 보관
+3. 공개 가능한 두 장을 `docs/assets/exploration/`에 추가
+4. `scan_pose_generator` 구현
+5. 실제 frame/stand-off distance는 테스트베드 실측 후 확정
 
 ## 포트폴리오/자소서 후보 문장
 

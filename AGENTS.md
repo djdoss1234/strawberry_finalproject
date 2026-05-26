@@ -123,6 +123,9 @@ message type, topic/action name은 양쪽 runtime 요구사항을 검토하기 �
 - 포트폴리오나 자기소개서에 쓸 claim은 `docs/portfolio_evidence.md`에
   run/issue/commit 근거가 있는 경우만 추가합니다.
 - 기록 체계의 상세 기준은 `docs/project_recording_system.md`를 따릅니다.
+- 사진, 영상, `rqt_graph`, RViz 캡처를 요구하는 단계에서는
+  `docs/visual_asset_guide.md`에 정의한 경로와 `VISUAL TODO` placeholder를
+  사용하고, 확보 상태를 run/issue 문서에서 갱신합니다.
 
 ## 세션이 끊긴 뒤 이어서 작업하는 규칙
 
@@ -134,11 +137,12 @@ message type, topic/action name은 양쪽 runtime 요구사항을 검토하기 �
 3. `docs/project_scope.md`에서 interface 및 평가 항목을 확인합니다.
 4. `docs/development_roadmap.md`에서 전체 단계와 당장 진행할 작업을 확인합니다.
 5. `docs/project_recording_system.md`와 `docs/development_workflow.md`를 확인합니다.
-6. 최근 `docs/worklogs/`, `docs/runs/`, `docs/issues/`와
+6. `docs/visual_asset_guide.md`에서 아직 확보하지 않은 시각자료를 확인합니다.
+7. 최근 `docs/worklogs/`, `docs/runs/`, `docs/issues/`와
    `docs/portfolio_evidence.md`를 확인합니다.
-7. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
-8. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
-9. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
+8. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
+9. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
+10. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
 
 진행 중 중요한 결정은 다음 세션에서 추측하지 않도록 이 파일 또는
 `docs/` 문서와 commit message에 반드시 남깁니다. 예를 들면:
