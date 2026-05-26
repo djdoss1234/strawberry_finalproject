@@ -21,6 +21,8 @@ camera pose를 반복 가능하게 확보하기 위한 보조 기능입니다.
   crosshair, view margin guide, 중심 pixel 안내 문구를 그리는 순수 renderer
 - `visualization/camera_alignment_node.py`: ROS image input을 받고
   overlay image를 publish하는 node
+- `visualization/realsense_alignment_viewer.py`: manual alignment 중
+  latency를 낮추기 위해 RealSense color stream을 직접 표시하는 viewer
 - `launch/camera_alignment.launch.py`: input/output topic을 변경할 수 있는
   실행 launch
 
@@ -57,18 +59,31 @@ driver와 동시에 실행하지 않습니다.
 
 ## 실행 방법
 
+실제 robot jog와 overview pose 정렬에는 저지연 direct viewer를 사용합니다.
+
 ```bash
 cd ~/doosan_ws
 colcon build --packages-select strawberry_motion --symlink-install
 source install/setup.bash
 
-# Terminal 1
+ros2 run strawberry_motion realsense_alignment_viewer
+```
+
+이 화면에서 노란 십자선을 종이 중앙 tape crossing에 맞추고 `q` 또는
+`ESC`로 종료합니다.
+
+아래 ROS image 경로는 topic/graph 통합 검증이나 overlay publish 증거가
+필요할 때 사용합니다. 현장에서 지속적으로 자세를 조절하는 화면으로는
+지연이 발생할 수 있습니다.
+
+```bash
+# Terminal 1: RGB topic publish
 ros2 launch realsense2_camera rs_launch.py rgb_camera.color_profile:=640x480x30
 
-# Terminal 2
+# Terminal 2: ROS overlay publish
 ros2 launch strawberry_motion camera_alignment.launch.py
 
-# Terminal 3
+# Terminal 3: ROS overlay view
 ros2 run rqt_image_view rqt_image_view /strawberry/alignment/overlay_image
 ```
 
@@ -98,6 +113,9 @@ ros2 launch strawberry_motion camera_alignment.launch.py \
 - synthetic `2x2 bgr8` image publish 후 overlay output이 `bgr8`,
   `height=2`, `width=2`, `step=6`으로 publish됨을 확인
 - output data에 노란 crosshair pixel `(B,G,R)=(0,255,255)`가 포함됨을 확인
+- ROS overlay 화면이 manual jog에서 끊긴다는 현장 feedback을 반영해
+  direct viewer를 추가하고 `ISSUE-20260526-005`에 기록
+- direct viewer CLI/default unit test 추가 후 전체 unit test `14개` 통과
 - 기존 public workspace 사진에 renderer를 적용해 표시 결과 preview 생성
 
 preview는 기능 설명용이며 실제 eye-in-hand 정렬 검증은 아닙니다.
@@ -107,15 +125,16 @@ preview는 기능 설명용이며 실제 eye-in-hand 정렬 검증은 아닙니�
 ## 아직 확인하지 않은 것
 
 - 실제 RealSense stream에서 overlay image publish 및 표시
+- 저지연 direct viewer의 실제 camera FPS와 jog 중 체감 latency
 - 십자선과 종이 중앙 tape crossing 정렬 결과 화면
 - 정렬 완료 pose의 robot joint/TCP 값
 - RViz quadtree marker와 camera view 대응
 
 ## 다음 현장 절차
 
-1. 기존 `pyrealsense2` 기반 perception node가 실행 중이면 종료합니다.
-2. RealSense ROS driver와 `camera_alignment_node`를 실행합니다.
-3. overlay 화면에서 종이 네 cell 외곽이 여백 안에 들어오게 합니다.
+1. 기존 camera 사용 process가 실행 중이면 종료합니다.
+2. `realsense_alignment_viewer`를 실행합니다.
+3. direct 화면에서 종이 네 cell 외곽이 여백 안에 들어오게 합니다.
 4. 노란 십자선을 중앙 테이프 교차점에 맞춥니다.
-5. overlay 화면과 현재 joint/TCP pose를 저장합니다.
+5. 정렬 화면과 현재 joint/TCP pose를 저장합니다.
 6. 결과를 `RUN-20260526-002` overview 정렬 기록과 연결합니다.

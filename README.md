@@ -115,37 +115,40 @@ motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
 
 ### Camera 중앙 십자선 정렬
 
-overview pose를 맞출 때는 RGB stream 위에 중앙 십자선을 표시하는
-`camera_alignment_node`를 사용합니다. 노란 십자선을 종이 중앙
-테이프 교차점에 맞추면 `cultivation_panel` 원점을 camera view 중심에
-일치시킬 수 있습니다.
+overview pose를 현장에서 맞출 때는 저지연 `realsense_alignment_viewer`를
+사용합니다. RGB stream 위의 노란 십자선을 종이 중앙 테이프 교차점에
+맞추면 `cultivation_panel` 원점을 camera view 중심에 일치시킬 수 있습니다.
 
 ![Camera crosshair overlay preview](docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
 
 위 이미지는 renderer 설명용 preview이며, 실제 eye-in-hand 정렬 결과는
 overview pose 확보 후 별도 run 증거로 저장합니다.
 
+실시간 jog 정렬용 실행:
+
 ```bash
-# Terminal 1: camera image publish
+cd ~/doosan_ws
+source install/setup.bash
+ros2 run strawberry_motion realsense_alignment_viewer
+```
+
+이 경로는 RealSense color stream을 직접 열어 OpenCV 화면에 십자선을
+표시하므로, ROS image relay와 `rqt_image_view`를 거치는 경로보다
+manual alignment에 적합합니다. 화면 하단의 `LIVE FPS`로 체감 상태를
+함께 확인합니다. 종료는 `q` 또는 `ESC`입니다.
+
+ROS topic 연결과 `rqt_graph` 검증이 필요할 때만 아래 경로를 사용합니다.
+
+```bash
 ros2 launch realsense2_camera rs_launch.py rgb_camera.color_profile:=640x480x30
-
-# Terminal 2: center crosshair overlay
 ros2 launch strawberry_motion camera_alignment.launch.py
-
-# Terminal 3: overlay 화면 확인
 ros2 run rqt_image_view rqt_image_view /strawberry/alignment/overlay_image
 ```
 
-실제 camera topic 이름이 다르면 다음처럼 입력 topic을 바꿉니다.
-
-```bash
-ros2 launch strawberry_motion camera_alignment.launch.py \
-  input_topic:=/your/color/image_raw
-```
-
 `pyrealsense2`로 카메라를 직접 여는 기존 perception node와
-`realsense2_camera`는 같은 시점에 실행하지 않습니다. alignment pose를
-먼저 확보하고 종료한 뒤 detection/pick 실험으로 전환합니다.
+`realsense_alignment_viewer` 또는 `realsense2_camera`는 같은 시점에
+실행하지 않습니다. alignment pose를 먼저 확보하고 종료한 뒤
+detection/pick 실험으로 전환합니다.
 
 현재 ROS exploration interface:
 

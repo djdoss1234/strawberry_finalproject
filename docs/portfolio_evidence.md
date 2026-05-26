@@ -127,12 +127,15 @@ status: NOT_CAPTURED
   문제를 피해, `sensor_msgs/Image` buffer를 직접 처리하도록 구현했습니다.
 - synthetic ROS image 입력으로 overlay output의 `bgr8` publish와
   중앙 crosshair pixel 생성을 검증했습니다.
+- 실제 조그 정렬에는 ROS image relay 경로가 끊긴다는 사용성 문제를
+  확인하여, `pyrealsense2` direct capture 기반 저지연 viewer로
+  현장 도구의 역할을 분리했습니다.
 
 근거:
 
 - run: `RUN-20260526-003`
-- issue: `ISSUE-20260526-004`
-- 전체 unit tests: `12개` 통과
+- issue: `ISSUE-20260526-004`, `ISSUE-20260526-005`
+- 전체 unit tests: `14개` 통과
 - ROS transport 검증: synthetic image input -> overlay image output 확인
 
 ![Camera crosshair overlay preview](assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
@@ -157,7 +160,7 @@ status: NOT_CAPTURED
 | Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Physical workspace 정렬 | 종이 4분할 사진 확보, overview camera 화면 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg` |
-| Camera 중심 정렬 보조 | overlay renderer preview, 실제 stream 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg` |
+| Camera 중심 정렬 보조 | direct viewer 구현 및 preview, 실제 stream 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |
