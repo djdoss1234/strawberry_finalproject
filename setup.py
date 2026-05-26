@@ -25,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "workspace_marker_node = strawberry_motion.visualization.workspace_marker_node:main",
+            "camera_alignment_node = strawberry_motion.visualization.camera_alignment_node:main",
         ],
     },
 )

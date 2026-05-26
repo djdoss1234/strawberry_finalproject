@@ -42,6 +42,11 @@
 
 - 초기 `root/nw`, 상태 update 후 `root/ne` 진행 검증
 - 실측 외곽 geometry와 테이프 교차점 기반 root split 지원
+- overview 정렬용 `camera_alignment_node` 구현
+  - 입력: `/camera/camera/color/image_raw`
+  - 출력: `/strawberry/alignment/overlay_image`
+  - 중앙 십자선, 전체 axis, 여백 guide 표시
+  - `cv_bridge` 없이 image buffer 직접 처리
 
 검증:
 
@@ -51,6 +56,9 @@
 - `~/doosan_ws/install/strawberry_motion/share/strawberry_motion/config/workspace.yaml`
   설치본에서 실측 bounds, `root_split_m`, tape 구조 metadata 반영 확인
 - build 중 로컬 `vcs_versioning` warning은 남지만 package build 실패는 아님
+- overlay renderer 단위 테스트를 포함해 unit test `12개` 통과
+- `realsense2_camera`, `rqt_image_view` package 설치 확인
+- `camera_alignment_node` ROS interface와 synthetic image overlay publish 확인
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -111,19 +119,22 @@ root split = (0.0, 0.0)
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
 - 실제 `scan_pose_generator`와 robot scan motion
+- 실제 eye-in-hand stream에서 십자선과 테이프 교차점 정렬 캡처
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
 1. 로봇 카메라를 전체 종이판이 보이는 overview pose로 이동
-2. overview RGB 화면 캡처
-3. 가능하면 해당 자세의 joint/TCP pose 저장
-4. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
-5. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
+2. `camera_alignment_node` overlay에서 노란 십자선을 중앙 tape crossing에 일치
+3. overlay RGB 화면 캡처
+4. 가능하면 해당 자세의 joint/TCP pose 저장
+5. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
+6. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
 
 ```text
 docs/assets/exploration/RUN-20260526-002_workspace_board.jpg  # 확보 완료
+docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg  # 기능 preview
 artifacts/RUN-20260526-002/raw/overview_camera.png
 artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 ```
@@ -132,11 +143,12 @@ artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 
 현장 입력을 받은 뒤:
 
-1. tape dead-zone/margin 설정 추가 여부 결정
-2. RViz에서 실측 cell alignment 확인
-3. `scan_pose_generator.py` 구현
-4. cell center에 대한 observation pose marker publish
-5. 저속 실제 scan motion 검증
+1. 십자선 정렬 overlay 실행/캡처 및 overview pose 저장
+2. tape dead-zone/margin 설정 추가 여부 결정
+3. RViz에서 실측 cell alignment 확인
+4. `scan_pose_generator.py` 구현
+5. cell center에 대한 observation pose marker publish
+6. 저속 실제 scan motion 검증
 
 ## 8. 핵심 문서와 Git
 

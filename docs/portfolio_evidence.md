@@ -117,6 +117,29 @@ use_in: 포트폴리오 문제 해결 카드, 자기소개서 첨부 자료, Not
 status: NOT_CAPTURED
 -->
 
+### 6. 물리 Workspace와 Camera 중심 정렬 보조 기능 구현
+
+- 종이 workspace 중앙 테이프 교차점을 camera 중심에 맞추기 위한
+  `camera_alignment_node`를 구현했습니다.
+- 화면 중앙 axes/crosshair와 여백 guide를 overlay image로 publish해,
+  overview pose 확보 과정을 육안으로 반복 가능하게 만들었습니다.
+- dependency 확인 중 발견한 `cv_bridge`와 `NumPy 2.x` compatibility
+  문제를 피해, `sensor_msgs/Image` buffer를 직접 처리하도록 구현했습니다.
+- synthetic ROS image 입력으로 overlay output의 `bgr8` publish와
+  중앙 crosshair pixel 생성을 검증했습니다.
+
+근거:
+
+- run: `RUN-20260526-003`
+- issue: `ISSUE-20260526-004`
+- 전체 unit tests: `12개` 통과
+- ROS transport 검증: synthetic image input -> overlay image output 확인
+
+![Camera crosshair overlay preview](assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
+
+위 이미지는 renderer 설명용 preview이며 실제 robot camera 정렬 결과는
+아직 확보하지 않았습니다.
+
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처
@@ -134,6 +157,7 @@ status: NOT_CAPTURED
 | Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Physical workspace 정렬 | 종이 4분할 사진 확보, overview camera 화면 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg` |
+| Camera 중심 정렬 보조 | overlay renderer preview, 실제 stream 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |

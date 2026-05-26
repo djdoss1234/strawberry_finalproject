@@ -129,6 +129,13 @@ PASS: 네 cell 전체와 중앙 교차점이 한 화면에서 명확히 식별�
 FAIL: 한 영역이 잘리거나, 심한 왜곡/반사/거리 문제로 구분이 어려움
 ```
 
+정렬 보조 도구:
+
+- `camera_alignment_node`가 RGB 화면 중앙에 십자선을 overlay합니다.
+- 노란 십자선을 실제 중앙 테이프 교차점에 맞춘 pose를 overview
+  기준 자세 후보로 저장합니다.
+- 구현/실행 방법: `RUN-20260526-003_camera_alignment_overlay.md`
+
 ### 4. Cell별 Scan Pose 필요성 판단
 
 overview pose에서 딸기 모형을 한 cell에 놓고 확인합니다.
@@ -150,8 +157,8 @@ pick pose: 실제 grasp 실행
 2. 전체 workspace 사진을 정면에서 촬영합니다.
 3. 전체 가로/세로 길이를 측정합니다.
 4. 로봇 camera를 전체 종이가 보이는 overview pose로 jog 이동합니다.
-5. camera RGB 화면에서 전체 경계와 중앙 교차점이 보이는지 확인합니다.
-6. 해당 화면을 캡처합니다.
+5. `camera_alignment_node` overlay에서 십자선을 중앙 교차점에 맞춥니다.
+6. overlay RGB 화면에서 전체 경계와 중앙 교차점이 보이는지 확인하고 캡처합니다.
 7. RViz marker와 물리 cell 의미가 일치하는지 비교합니다.
 8. 결과가 맞으면 다음 구현인 `scan_pose_generator`의 기준 pose로 사용합니다.
 

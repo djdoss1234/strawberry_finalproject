@@ -113,6 +113,40 @@ motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
 이 전체 영역이 보이는 overview pose를 확보하고 RViz marker와 대응시키는
 단계입니다.
 
+### Camera 중앙 십자선 정렬
+
+overview pose를 맞출 때는 RGB stream 위에 중앙 십자선을 표시하는
+`camera_alignment_node`를 사용합니다. 노란 십자선을 종이 중앙
+테이프 교차점에 맞추면 `cultivation_panel` 원점을 camera view 중심에
+일치시킬 수 있습니다.
+
+![Camera crosshair overlay preview](docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg)
+
+위 이미지는 renderer 설명용 preview이며, 실제 eye-in-hand 정렬 결과는
+overview pose 확보 후 별도 run 증거로 저장합니다.
+
+```bash
+# Terminal 1: camera image publish
+ros2 launch realsense2_camera rs_launch.py rgb_camera.color_profile:=640x480x30
+
+# Terminal 2: center crosshair overlay
+ros2 launch strawberry_motion camera_alignment.launch.py
+
+# Terminal 3: overlay 화면 확인
+ros2 run rqt_image_view rqt_image_view /strawberry/alignment/overlay_image
+```
+
+실제 camera topic 이름이 다르면 다음처럼 입력 topic을 바꿉니다.
+
+```bash
+ros2 launch strawberry_motion camera_alignment.launch.py \
+  input_topic:=/your/color/image_raw
+```
+
+`pyrealsense2`로 카메라를 직접 여는 기존 perception node와
+`realsense2_camera`는 같은 시점에 실행하지 않습니다. alignment pose를
+먼저 확보하고 종료한 뒤 detection/pick 실험으로 전환합니다.
+
 현재 ROS exploration interface:
 
 | Topic | Type | 역할 |
@@ -120,6 +154,7 @@ motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
 | `/strawberry/exploration/workspace_cells` | `visualization_msgs/msg/MarkerArray` | RViz용 workspace cell 및 상태 표시 |
 | `/strawberry/exploration/next_cell` | `std_msgs/msg/String` | 다음 관찰 대상 cell ID publish |
 | `/strawberry/exploration/set_cell_state` | `std_msgs/msg/String` | `cell_id=STATE` 형식의 상태 갱신 입력 |
+| `/strawberry/alignment/overlay_image` | `sensor_msgs/msg/Image` | overview pose 정렬용 중앙 십자선 RGB 화면 |
 
 초기 visualization node 실행:
 

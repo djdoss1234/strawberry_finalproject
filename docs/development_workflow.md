@@ -30,6 +30,8 @@ exploration/
 
 visualization/
   workspace_marker_node.py RViz에 workspace/cell/상태/scan pose 표시
+  alignment_overlay.py     camera 중앙 십자선 overlay 렌더링
+  camera_alignment_node.py RGB image를 받아 정렬용 overlay image publish
 
 config/
   workspace.yaml           작업영역 frame, 크기, 최대 분할 depth
@@ -52,6 +54,7 @@ config/
 | --- | --- | --- |
 | exploration node 최초 실행 | node가 올라오는지, 의도한 topic만 publish하는지 | graph 캡처 |
 | RViz marker 연결 후 | marker topic 연결과 중복 publisher 여부 | graph + RViz 캡처 |
+| camera overview 정렬 시 | camera 입력과 alignment overlay 출력 연결 | overlay 화면 + joint/TCP pose |
 | scan pose publish 후 | exploration에서 motion 입력까지 흐름 | graph + topic echo 요약 |
 | planner/executor 연결 후 | command/result feedback loop | graph + 실행 log |
 | perception/VLA 연결 후 | target proposal과 motion result 경계 | 최종 graph 캡처 |
@@ -63,7 +66,16 @@ config/
   -> /workspace_marker_node
   -> /strawberry/exploration/workspace_cells
   -> /strawberry/exploration/next_cell
+
+/camera/camera/color/image_raw
+  -> /camera_alignment_node
+  -> /strawberry/alignment/overlay_image
 ```
+
+`camera_alignment_node`는 현재 환경에서 확인된 `cv_bridge`와 `NumPy 2.x`
+binary compatibility 문제를 피하기 위해 `sensor_msgs/Image` buffer를
+직접 읽어 overlay를 publish합니다. 입력 topic은 launch argument로
+변경할 수 있습니다.
 
 함께 확인할 것:
 
