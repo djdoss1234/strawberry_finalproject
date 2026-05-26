@@ -85,8 +85,11 @@ outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
 
 - 개별 cell의 제공 치수(`515/520 mm`, 높이 `365 mm`) 합계가 outer
   dimension보다 가로 `65 mm`, 세로 `70 mm` 작습니다.
-- 테이프/겹침/여백을 제외한 값인지 확인하기 전에는 scan target 계산에
-  개별 cell 치수를 사용하지 않습니다.
+- 종이 네 장은 중앙 절연테이프로 이어졌고 큰 탐색판도 외곽 절연테이프로
+  화이트보드에 부착되어 있어, 이 차이는 테이프 band가 포함된 outer
+  dimension과 보이는 종이 usable area의 차이로 설명 가능합니다.
+- 단, 실제 tape band 폭은 아직 측정하지 않았으므로 개별 cell 치수를
+  정밀 scan/pick margin 계산에는 사용하지 않습니다.
 - 관련 issue: `ISSUE-20260526-003`
 
 ### 2.1 Config 및 Node 반영 확인
@@ -183,7 +186,7 @@ status: NOT_CAPTURED
 
 ## 완료 후 다음 작업
 
-1. 개별 cell 치수의 측정 경계를 재확인
+1. 중앙/외곽 절연테이프 band 폭 측정
 2. overview pose 또는 camera 기준 frame 정의
 3. RViz 물리 정렬 자료 기록
 4. `scan_pose_generator` 구현

@@ -91,6 +91,8 @@ AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고, 자�
 [docs/visual_asset_guide.md](docs/visual_asset_guide.md)에 기록합니다.
 현재 물리 테스트베드의 실측값과 frame 기준은
 [docs/testbed_setup.md](docs/testbed_setup.md)에 기록합니다.
+세션이 끊긴 뒤 빠르게 이어가기 위한 최신 상태 요약은
+[docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)에 유지합니다.
 현재까지 검증된 대외 설명 재료는
 [docs/portfolio_evidence.md](docs/portfolio_evidence.md)에 누적합니다.
 
@@ -151,13 +153,14 @@ ros2 topic echo --once /strawberry/exploration/next_cell
 이어갈 수 있습니다.
 
 1. 이 `README.md`에서 목표와 현재 상태를 확인합니다.
-2. `AGENTS.md`에서 담당 범위, 설계 원칙, 작업 순서를 확인합니다.
-3. `docs/project_scope.md`에서 milestone과 interface/평가 계획을 확인합니다.
-4. `docs/development_roadmap.md`에서 전체 순서와 현재 완료할 단계를 확인합니다.
-5. `docs/project_recording_system.md`, 최근 `worklogs/runs/issues`를 확인합니다.
-6. `docs/portfolio_evidence.md`에서 검증된 성과와 아직 계획인 기능을 구분합니다.
-7. `git log`와 issue/commit 기록으로 마지막 실제 변경 내용을 확인합니다.
-8. 구현을 옮길 때는 `strawberry_miniproject`를 baseline reference로 확인합니다.
+2. `docs/CURRENT_STATUS.md`에서 마지막 완료 상태와 현장 입력 대기 항목을 확인합니다.
+3. `AGENTS.md`에서 담당 범위, 설계 원칙, 작업 순서를 확인합니다.
+4. `docs/project_scope.md`에서 milestone과 interface/평가 계획을 확인합니다.
+5. `docs/development_roadmap.md`에서 전체 순서와 현재 완료할 단계를 확인합니다.
+6. `docs/project_recording_system.md`, 최근 `worklogs/runs/issues`를 확인합니다.
+7. `docs/portfolio_evidence.md`에서 검증된 성과와 아직 계획인 기능을 구분합니다.
+8. `git log`와 issue/commit 기록으로 마지막 실제 변경 내용을 확인합니다.
+9. 구현을 옮길 때는 `strawberry_miniproject`를 baseline reference로 확인합니다.
 
 즉, 중요한 결정과 진행 결과를 문서와 commit으로 계속 남기는 것이 이
 프로젝트의 기억 장치입니다.

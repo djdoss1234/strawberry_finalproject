@@ -77,8 +77,10 @@ status: NOT_CAPTURED
   위해 치수를 측정했습니다.
 - 테이프 교차점을 `cultivation_panel` 원점과 root split으로 정의하고,
   비대칭 outer bounds를 config에 반영했습니다.
-- 개별 cell 치수 합계가 outer dimension과 맞지 않는 점은 숨기지 않고
-  확인이 필요한 issue로 분리했습니다.
+- 종이 네 장을 절연테이프로 결합하고 외곽을 보드에 부착한 구조상,
+  outer bounds와 usable paper cell 치수 차이가 생길 수 있음을 확인했습니다.
+- tape band 폭은 아직 미측정이므로 이를 확정 safety margin으로 과장하지
+  않고 확인이 필요한 issue로 유지했습니다.
 
 근거:
 

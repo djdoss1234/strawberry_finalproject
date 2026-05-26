@@ -24,6 +24,7 @@ workspace:
 
 measurements:
   recorded_date: "2026-05-26"
+  construction: four_paper_cells_fixed_with_internal_and_outer_insulation_tape
   outer_workspace_m:
     width: 1.100
     height: 0.800
@@ -35,11 +36,15 @@ measurements:
     east_width: 0.520
     north_height: 0.365
     south_height: 0.365
-  cell_size_verification_required: true
+  cell_size_interpretation: paper_visible_or_usable_cell_area_excluding_tape_bands
+  tape_band_width_measurement_required: true
   note: >-
-    Individual cell size sums do not match the outer workspace dimensions.
-    Use measured outer bounds and tape-intersection split for the root map
-    until cell boundary measurement scope is confirmed.
+    The four paper cells are joined and attached to the whiteboard with
+    insulation tape. The mismatch between outer workspace size and visible
+    cell-size sums is therefore plausibly explained by internal/outer tape
+    bands, but tape widths are not measured yet. Use measured outer bounds and
+    the tape-intersection root split for the root map. Do not use paper-cell
+    usable-area values for motion margins until tape bands are measured.
 
 scan_policy:
   initial_subdivision_depth: 1
