@@ -105,28 +105,42 @@ root만 명시적인 `(0, 0)` split을 사용합니다.
 부착할 usable area이고, 전체 탐색영역에는 중앙/외곽 테이프 band가
 포함된 것으로 해석하는 것이 현재 가장 타당합니다.
 
-다만 차이 전체가 테이프 폭으로 정확히 설명된다고 확정하려면 중앙 세로
-테이프, 중앙 가로 테이프, 외곽 테이프가 차지하는 폭을 직접 재야 합니다.
-따라서 이것은 “설명 가능한 구조적 차이”로 기록하되, 아직 정밀 motion
-margin에 사용할 수 있는 확정 치수로 보지는 않습니다.
+2026-05-26 현장 확인으로 절연테이프 폭은 약 `20 mm`입니다. 가로와
+세로 모두 양쪽 외곽과 중앙의 tape band 3개가 종이 면을 가린다고 보면
+예상 점유폭은 약 `60 mm`입니다. 이는 가로 차이 `65 mm`와 `5 mm`,
+세로 차이 `70 mm`와 `10 mm` 차이이므로, 현재의 측정 오차와 부착
+상태를 고려하면 tape dead-zone 해석과 일관됩니다.
+
+다만 `20 mm`는 근사 측정값이므로 실제 grasp/scan safety margin에
+직접 사용하는 확정 치수는 아닙니다. motion margin을 활성화하기 전에는
+필요한 경계에서 테이프가 종이 면을 실제로 덮는 폭을 다시 측정합니다.
 
 현재 적용 원칙:
 
 - quadtree root bounds: 전체 외곽 `1100 x 800 mm`를 사용
 - root split: 실제 테이프 교차점 기준 `left=545 mm`, `top=395 mm`를 사용
 - 개별 cell `515/520/365 mm`: visible/usable paper area 기록값으로 보존
-- 중앙/외곽 테이프 band: obstacle라기보다는 target을 두지 않는 dead zone으로
-  취급하되, 폭을 측정하기 전에는 scan/pick safety margin 계산에 사용하지 않음
+- 중앙/외곽 테이프 band: 약 `20 mm`이며 target을 두지 않는 dead zone으로
+  해석하되, 정밀 재측정 전에는 scan/pick safety margin 계산에 사용하지 않음
 
-## 5. 다음 측정 및 시각자료
+## 5. 물리 Workspace 사진
+
+![종이 4분할 물리 workspace와 절연테이프 경계](assets/exploration/RUN-20260526-002_workspace_board.jpg)
+
+- 촬영일: `2026-05-26`
+- 확인 가능 내용: 외곽/중앙 절연테이프, `NW/NE/SW/SE` 표기,
+  화이트보드에 부착된 4분할 탐색판 구성
+- 공개 파일은 원본 사진의 EXIF metadata를 제거하고 문서용으로
+  축소한 사본입니다.
+
+## 6. 다음 측정 및 시각자료
 
 다음 run에서 확인할 항목:
 
-1. 전체 화이트보드와 종이 영역이 함께 보이는 정면 사진
-2. `NW/NE/SW/SE` label이 붙은 종이 4분할 사진
-3. 전체 종이가 보이는 eye-in-hand overview RGB 화면
-4. 중앙 세로/가로 및 외곽 절연테이프 band 폭 측정
-5. overview camera pose의 robot joint 또는 TCP pose 기록
+1. motion safety margin에 사용할 필요가 생기면 경계별 tape overlap 정밀 측정
+2. 전체 종이가 보이는 eye-in-hand overview RGB 화면
+3. overview camera pose의 robot joint 또는 TCP pose 기록
+4. RViz marker와 물리 cell 대응 화면
 
 시각자료 경로는 `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
 를 따릅니다.

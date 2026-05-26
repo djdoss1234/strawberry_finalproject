@@ -104,6 +104,15 @@ core와 첫 ROS 2 visualization node를 구현하여 cell 상태와 다음 관�
 대상을 topic/RViz marker로 내보내는 단계까지 진행했습니다. 실제 robot
 motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
 
+현재 quadtree 탐색에 사용할 물리 workspace:
+
+![종이 4분할 physical workspace](docs/assets/exploration/RUN-20260526-002_workspace_board.jpg)
+
+종이 네 장과 약 `20 mm` 절연테이프 경계를 이용해 1차 cell
+`NW/NE/SW/SE`를 구성했습니다. 다음 검증은 eye-in-hand camera에서
+이 전체 영역이 보이는 overview pose를 확보하고 RViz marker와 대응시키는
+단계입니다.
+
 현재 ROS exploration interface:
 
 | Topic | Type | 역할 |

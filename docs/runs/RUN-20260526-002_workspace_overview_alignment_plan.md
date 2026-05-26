@@ -88,8 +88,11 @@ outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
 - 종이 네 장은 중앙 절연테이프로 이어졌고 큰 탐색판도 외곽 절연테이프로
   화이트보드에 부착되어 있어, 이 차이는 테이프 band가 포함된 outer
   dimension과 보이는 종이 usable area의 차이로 설명 가능합니다.
-- 단, 실제 tape band 폭은 아직 측정하지 않았으므로 개별 cell 치수를
-  정밀 scan/pick margin 계산에는 사용하지 않습니다.
+- 절연테이프 폭은 현장에서 약 `20 mm`로 확인했습니다. 방향별 tape
+  band 3개를 고려한 약 `60 mm` 점유폭은 관측 차이 `65/70 mm`와
+  각각 `5/10 mm` 차이로, tape dead-zone 해석을 뒷받침합니다.
+- 단, 약 `20 mm`는 정밀 safety margin용 실측은 아니므로 개별 cell
+  치수를 정밀 scan/pick margin 계산에는 아직 사용하지 않습니다.
 - 관련 issue: `ISSUE-20260526-003`
 
 ### 2.1 Config 및 Node 반영 확인
@@ -105,6 +108,8 @@ outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
   `root/nw`임을 확인했습니다.
 - `~/doosan_ws` install overlay의 installed config에서도 실측 bounds,
   `root_split_m`, tape 구조 metadata가 반영된 것을 확인했습니다.
+- 외곽/중앙 테이프와 네 cell label이 보이는 physical workspace 사진을
+  확보하고, 공개 사본은 EXIF metadata를 제거해 저장했습니다.
 
 ### 3. Overview Camera Pose 만들기
 
@@ -154,18 +159,11 @@ pick pose: 실제 grasp 실행
 
 | 자료 | 필요 장면 | 상태 | 원본 위치 | 공개 위치/사용처 |
 | --- | --- | --- | --- | --- |
-| Physical workspace 사진 | 종이 4개, 테이프 중앙선, NW/NE/SW/SE label | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/workspace_board.jpg` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg`, testbed 설명 |
+| Physical workspace 사진 | 종이 4개, 테이프 중앙선, NW/NE/SW/SE label | `CAPTURED` | 사용자 촬영 원본, Git 비공개 | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg`, testbed 설명 |
 | Overview camera 화면 | 네 cell 전체가 카메라 화면에 보이는 장면 | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/overview_camera.png` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png`, 포트폴리오 |
 | RViz/physical 대응 비교 | RViz quadtree와 실제 4분할 영역을 나란히 설명할 자료 | `NOT_CAPTURED` | `artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png` | `docs/assets/exploration/RUN-20260526-002_rviz_physical_alignment.png`, GitHub/Notion |
 
-<!-- VISUAL TODO
-asset_id: RUN-20260526-002_workspace_board
-capture: 종이 4분할 workspace의 전체 모습과 NW/NE/SW/SE 임시 label
-source_path: artifacts/RUN-20260526-002/raw/workspace_board.jpg
-public_path: docs/assets/exploration/RUN-20260526-002_workspace_board.jpg
-use_in: testbed 설명, GitHub README, Notion Milestone
-status: NOT_CAPTURED
--->
+![종이 4분할 workspace와 테이프 경계](../assets/exploration/RUN-20260526-002_workspace_board.jpg)
 
 <!-- VISUAL TODO
 asset_id: RUN-20260526-002_overview_camera
@@ -179,17 +177,18 @@ status: NOT_CAPTURED
 ## 완료 기준
 
 - [x] 종이 outer bounds와 테이프 교차점 root split을 config에 반영합니다.
+- [x] 테이프 폭의 근사 측정값과 physical workspace 사진을 기록합니다.
 - [ ] 종이 4분할 영역을 camera view에서 코드의 four child cell과 대응시킵니다.
-- 전체 영역이 보이는 overview camera pose를 한 개 확보합니다.
+- [ ] 전체 영역이 보이는 overview camera pose를 한 개 확보합니다.
 - [x] 실제 workspace 가로/세로 및 whiteboard 치수를 기록합니다.
-- overview pose의 RGB 화면을 확보합니다.
-- `scan_pose_generator`에서 사용할 frame/orientation/stand-off를 정하기
+- [ ] overview pose의 RGB 화면을 확보합니다.
+- [ ] `scan_pose_generator`에서 사용할 frame/orientation/stand-off를 정하기
   위한 입력 자료를 확보합니다.
 
 ## 완료 후 다음 작업
 
-1. 중앙/외곽 절연테이프 band 폭 측정
-2. overview pose 또는 camera 기준 frame 정의
-3. RViz 물리 정렬 자료 기록
+1. overview pose 또는 camera 기준 frame 정의
+2. RViz 물리 정렬 자료 기록
+3. 정밀 motion margin이 필요할 경우 tape overlap 폭 재측정
 4. `scan_pose_generator` 구현
 5. cell별 close-up scan pose를 실제 로봇에서 순차 검증

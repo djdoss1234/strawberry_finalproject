@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-INVESTIGATING
+PARTIALLY_RESOLVED
 ```
 
 ## 문제 현상 및 물리 구조 설명
@@ -25,6 +25,13 @@ INVESTIGATING
 - 이 큰 탐색판을 다시 절연테이프로 화이트보드에 부착했습니다.
 - 따라서 outer dimension에는 중앙/외곽 테이프 영역이 포함되고, 개별
   종이 치수는 보이는 종이 면 또는 usable area일 가능성이 높습니다.
+- 첨부 사진에서 외곽/중앙 테이프와 네 cell 구성이 확인되며, 테이프
+  폭은 약 `20 mm`로 측정되었습니다.
+
+방향별로 외곽 두 band와 중앙 band가 종이 usable 영역에서 제외된다고
+보면 약 `20 x 3 = 60 mm`입니다. 측정된 차이인 가로 `65 mm`, 세로
+`70 mm`와의 잔차는 각각 `5 mm`, `10 mm`로, 현재 작업영역 모델에는
+충분히 일관된 수준입니다.
 
 ## 영향
 
@@ -38,15 +45,16 @@ INVESTIGATING
 - `config/workspace.yaml`에는 outer dimension과 테이프 교차점 기준 bounds를 반영합니다.
 - root 분할은 `(0, 0)` 테이프 교차점을 사용합니다.
 - 개별 cell 치수는 visible/usable paper area로 기록합니다.
-- 테이프 영역은 target을 두지 않는 경계/dead zone 후보로 취급합니다.
-- 테이프 band 폭이 실측되기 전에는 이를 safety margin 또는 정밀 scan
-  target 계산에 사용하지 않습니다.
+- 약 `20 mm`의 테이프 영역은 target을 두지 않는 경계/dead zone으로
+  취급합니다.
+- 해당 폭은 근사값이므로 safety margin 또는 정밀 scan target 계산에
+  자동 반영하지 않습니다.
 
 ## 확인할 내용
 
-1. 중앙 세로/가로 절연테이프가 덮는 폭을 측정합니다.
-2. 외곽 절연테이프가 종이와 화이트보드를 덮는 폭을 측정합니다.
-3. 정면 사진에 측정 기준선을 표시해 outer boundary와 cell boundary를 재확인합니다.
+1. 실제 motion 안전 margin을 도입하기 전, 필요한 경계별 tape overlap
+   폭을 정밀 측정합니다.
+2. overview camera와 RViz marker에서 outer/cell boundary 대응을 확인합니다.
 
 ## 검증 근거
 
@@ -54,17 +62,11 @@ INVESTIGATING
 - 관련 config: `config/workspace.yaml`
 - 부분 검증: outer bounds 및 tape split 반영 후 unit test 10개와
   `workspace_marker_node` 실행/초기 `root/nw` publish 확인
-- 현재 판단: 불일치는 테이프 부착 구조로 설명 가능하지만 tape band
-  치수는 미측정
-- 해결 검증 run: tape band 폭 측정 및 overview 화면 확인 후 갱신 예정
+- 추가 근거: 약 `20 mm` tape 폭과 physical workspace 사진 확보
+- 현재 판단: workspace geometry를 정의하기 위한 불일치는 설명되었고,
+  motion margin 반영 여부만 후속 검증 대상으로 남음
+- 해결 검증 run: overview/RViz 대응 및 실제 scan motion 전 갱신 예정
 
 ## 시각자료 계획
 
-<!-- VISUAL TODO
-asset_id: ISSUE-20260526-003_workspace_measurement_boundaries
-capture: 종이 4분할 외곽선, 중앙 테이프선, 개별 cell 측정 기준을 표시한 정면 사진
-source_path: artifacts/RUN-20260526-002/raw/workspace_measurement_annotated.jpg
-public_path: docs/assets/exploration/RUN-20260526-002_workspace_measurement_annotated.jpg
-use_in: testbed 설계 기록, 필요 시 문제 해결 설명
-status: NOT_CAPTURED
--->
+![외곽/중앙 tape band가 확인되는 물리 workspace](../assets/exploration/RUN-20260526-002_workspace_board.jpg)

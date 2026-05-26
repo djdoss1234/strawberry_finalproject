@@ -59,7 +59,9 @@
 - 종이 네 장을 절연테이프로 연결해 4분할 탐색판 제작
 - 큰 탐색판을 다시 절연테이프로 화이트보드에 부착
 - 종이 면: target을 배치할 usable 영역
-- 중앙/외곽 테이프: 경계/dead zone 후보
+- 중앙/외곽 테이프: 약 `20 mm`, 경계/dead zone으로 사용
+- 외곽/중앙 테이프 및 `NW/NE/SW/SE`가 보이는 physical workspace
+  사진 확보, 공개 사본 metadata 제거 완료
 
 측정값:
 
@@ -76,6 +78,7 @@
 | 서쪽 종이 usable 폭 | `515 mm` |
 | 동쪽 종이 usable 폭 | `520 mm` |
 | 종이 usable 높이 | `365 mm` |
+| 절연테이프 폭 | `약 20 mm` |
 
 적용한 frame:
 
@@ -92,34 +95,35 @@ y = -0.405 ~ +0.395 m
 root split = (0.0, 0.0)
 ```
 
+테이프 해석:
+
+- 방향별 tape band 3개의 예상 점유폭은 약 `60 mm`입니다.
+- usable cell 합계와 outer workspace의 차이는 가로 `65 mm`, 세로
+  `70 mm`로, 잔차 `5/10 mm` 수준에서 이 구조와 일관됩니다.
+- 근사 tape 폭은 dead-zone 판단에만 쓰며, 정밀 motion safety margin에
+  자동 적용하지 않습니다.
+
 ## 5. 아직 확정하지 않은 것
 
-- 중앙/외곽 절연테이프 band 폭
+- motion safety margin용 경계별 tape overlap 정밀 치수
 - 전체가 보이는 eye-in-hand overview camera pose
 - `cultivation_panel`과 실제 robot `base_link` 사이 transform
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
 - 실제 `scan_pose_generator`와 robot scan motion
 
-중요:
-
-- usable paper cell 치수와 outer dimension의 차이는 tape 구조로 설명
-  가능하지만, tape band 폭을 재기 전에는 정밀 motion margin으로 쓰지 않습니다.
-
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. 중앙 세로 절연테이프 폭 측정
-2. 중앙 가로 절연테이프 폭 측정
-3. 외곽 절연테이프가 차지하는 폭 측정
-4. 종이 영역에 `NW/NE/SW/SE` label을 붙인 정면 사진 촬영
-5. 로봇 카메라를 전체 종이판이 보이는 overview pose로 이동
-6. overview RGB 화면 캡처
-7. 가능하면 해당 자세의 joint/TCP pose 저장
+1. 로봇 카메라를 전체 종이판이 보이는 overview pose로 이동
+2. overview RGB 화면 캡처
+3. 가능하면 해당 자세의 joint/TCP pose 저장
+4. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
+5. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
 
 ```text
-artifacts/RUN-20260526-002/raw/workspace_board.jpg
+docs/assets/exploration/RUN-20260526-002_workspace_board.jpg  # 확보 완료
 artifacts/RUN-20260526-002/raw/overview_camera.png
 artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 ```
@@ -149,4 +153,5 @@ artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 ```text
 41fb854 feat: apply measured workspace geometry and root split
 7c5a87b docs: clarify tape-based workspace construction
+8dba0f2 docs: record installed workspace config verification
 ```

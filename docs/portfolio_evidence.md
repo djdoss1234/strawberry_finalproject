@@ -58,7 +58,7 @@ proposal은 모션 시스템의 geometry/collision 검증을 통과한 뒤 실�
   - `/strawberry/exploration/workspace_cells`
   - `/strawberry/exploration/next_cell`
   - `/strawberry/exploration/set_cell_state`
-- unit tests: 7개 통과
+- unit tests: 10개 통과
 
 대표 시각자료 배치 예정 위치:
 
@@ -79,8 +79,11 @@ status: NOT_CAPTURED
   비대칭 outer bounds를 config에 반영했습니다.
 - 종이 네 장을 절연테이프로 결합하고 외곽을 보드에 부착한 구조상,
   outer bounds와 usable paper cell 치수 차이가 생길 수 있음을 확인했습니다.
-- tape band 폭은 아직 미측정이므로 이를 확정 safety margin으로 과장하지
-  않고 확인이 필요한 issue로 유지했습니다.
+- 약 `20 mm` tape band와 물리 workspace 사진을 확보했습니다. 방향별
+  band 3개의 약 `60 mm` 점유폭은 cell/outer 치수 차이 `65/70 mm`를
+  설명하는 근거가 됩니다.
+- 이 값은 정밀 motion safety margin이 아닌 dead-zone 해석 근거로
+  제한해 기록했습니다.
 
 근거:
 
@@ -88,6 +91,8 @@ status: NOT_CAPTURED
 - run: `RUN-20260526-002`
 - issue: `ISSUE-20260526-003`
 - config: `config/workspace.yaml`
+
+![외곽/중앙 테이프로 구성한 quadtree 물리 workspace](assets/exploration/RUN-20260526-002_workspace_board.jpg)
 
 ### 5. 구현 중 발견한 문제를 실기 연결 전에 해결
 
@@ -128,7 +133,7 @@ status: NOT_CAPTURED
 | --- | --- | --- | --- |
 | Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
-| Physical workspace 정렬 | 종이 4분할과 overview camera 화면 | `NOT_CAPTURED` | `docs/assets/exploration/` |
+| Physical workspace 정렬 | 종이 4분할 사진 확보, overview camera 화면 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |

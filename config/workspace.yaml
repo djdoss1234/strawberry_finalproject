@@ -37,14 +37,18 @@ measurements:
     north_height: 0.365
     south_height: 0.365
   cell_size_interpretation: paper_visible_or_usable_cell_area_excluding_tape_bands
-  tape_band_width_measurement_required: true
+  tape_band_width_m:
+    approximate: 0.020
+    use_for_motion_safety_margin: false
+  precise_tape_margin_measurement_required: true
   note: >-
     The four paper cells are joined and attached to the whiteboard with
     insulation tape. The mismatch between outer workspace size and visible
-    cell-size sums is therefore plausibly explained by internal/outer tape
-    bands, but tape widths are not measured yet. Use measured outer bounds and
-    the tape-intersection root split for the root map. Do not use paper-cell
-    usable-area values for motion margins until tape bands are measured.
+    cell-size sums is consistent with the observed approximately 20 mm
+    internal/outer tape bands. Use measured outer bounds and the
+    tape-intersection root split for the root map. The approximate tape width
+    is evidence for the dead-zone interpretation, not a precise motion safety
+    margin.
 
 scan_policy:
   initial_subdivision_depth: 1
