@@ -1,0 +1,23 @@
+workspace:
+  frame_id: cultivation_panel
+  bounds_m:
+    min_x: -0.40
+    max_x: 0.40
+    min_y: -0.25
+    max_y: 0.25
+  max_depth: 3
+
+scan_policy:
+  initial_subdivision_depth: 1
+  revisit_states:
+    - OCCLUDED
+    - PLANNING_FAIL
+  terminal_states:
+    - SCANNED_EMPTY
+    - HARVESTED
+
+# The exact camera stand-off distance and orientation must be measured after
+# the realistic testbed and workspace frame are fixed.
+scan_pose:
+  standoff_m: null
+  orientation_xyzw: null
