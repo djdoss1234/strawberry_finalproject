@@ -71,7 +71,23 @@ use_in: 포트폴리오 탐색 모듈 섹션, GitHub README, Notion Evidence Ban
 status: NOT_CAPTURED
 -->
 
-### 4. 구현 중 발견한 문제를 실기 연결 전에 해결
+### 4. 물리 Workspace 실측과 Frame 기준 정의
+
+- 화이트보드 내부 종이 4분할 영역을 실제 quadtree workspace로 사용하기
+  위해 치수를 측정했습니다.
+- 테이프 교차점을 `cultivation_panel` 원점과 root split으로 정의하고,
+  비대칭 outer bounds를 config에 반영했습니다.
+- 개별 cell 치수 합계가 outer dimension과 맞지 않는 점은 숨기지 않고
+  확인이 필요한 issue로 분리했습니다.
+
+근거:
+
+- testbed record: `docs/testbed_setup.md`
+- run: `RUN-20260526-002`
+- issue: `ISSUE-20260526-003`
+- config: `config/workspace.yaml`
+
+### 5. 구현 중 발견한 문제를 실기 연결 전에 해결
 
 - scan 순서가 문자열 정렬에 흔들릴 가능성과 ROS node 종료 traceback을
   최초 topic 점검 단계에서 발견했습니다.

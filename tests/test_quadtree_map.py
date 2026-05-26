@@ -13,6 +13,15 @@ class WorkspaceBoundsTest(unittest.TestCase):
             [(-0.2, 0.1), (0.2, 0.1), (-0.2, -0.1), (0.2, -0.1)],
         )
 
+    def test_physical_split_can_differ_from_outer_bounds_center(self) -> None:
+        bounds = WorkspaceBounds(-0.545, 0.555, -0.405, 0.395)
+        centers = [quadrant.center for quadrant in bounds.quadrants((0.0, 0.0))]
+
+        self.assertEqual(
+            centers,
+            [(-0.2725, 0.1975), (0.2775, 0.1975), (-0.2725, -0.2025), (0.2775, -0.2025)],
+        )
+
 
 class QuadtreeMapTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -38,6 +47,19 @@ class QuadtreeMapTest(unittest.TestCase):
             self.tree.update_state(cell_id, RegionState.SCANNED_EMPTY)
 
         self.assertIsNone(self.tree.next_scan_cell())
+
+    def test_tree_uses_physical_root_split_for_first_cells(self) -> None:
+        tree = QuadtreeMap(
+            WorkspaceBounds(-0.545, 0.555, -0.405, 0.395),
+            max_depth=2,
+            root_split=(0.0, 0.0),
+        )
+        children = tree.subdivide("root")
+
+        self.assertEqual(children[0].bounds.max_x, 0.0)
+        self.assertEqual(children[0].bounds.min_y, 0.0)
+        self.assertEqual(children[3].bounds.min_x, 0.0)
+        self.assertEqual(children[3].bounds.max_y, 0.0)
 
     def test_cannot_update_non_leaf_cell(self) -> None:
         self.tree.subdivide("root")

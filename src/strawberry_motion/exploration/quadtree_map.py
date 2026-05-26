@@ -25,9 +25,13 @@ class WorkspaceBounds:
     def center(self) -> Tuple[float, float]:
         return ((self.min_x + self.max_x) / 2.0, (self.min_y + self.max_y) / 2.0)
 
-    def quadrants(self) -> Tuple["WorkspaceBounds", ...]:
+    def quadrants(
+        self, split_point: Optional[Tuple[float, float]] = None
+    ) -> Tuple["WorkspaceBounds", ...]:
         """Return NW, NE, SW, SE quadrants in deterministic scan order."""
-        center_x, center_y = self.center
+        center_x, center_y = split_point if split_point is not None else self.center
+        if not (self.min_x < center_x < self.max_x and self.min_y < center_y < self.max_y):
+            raise ValueError("Split point must lie strictly inside workspace bounds.")
         return (
             WorkspaceBounds(self.min_x, center_x, center_y, self.max_y),
             WorkspaceBounds(center_x, self.max_x, center_y, self.max_y),
@@ -62,10 +66,18 @@ class QuadtreeMap:
     and motion node can consume the same deterministic cell/state model.
     """
 
-    def __init__(self, bounds: WorkspaceBounds, max_depth: int = 3) -> None:
+    def __init__(
+        self,
+        bounds: WorkspaceBounds,
+        max_depth: int = 3,
+        root_split: Optional[Tuple[float, float]] = None,
+    ) -> None:
         if max_depth < 0:
             raise ValueError("max_depth must be non-negative.")
+        if root_split is not None:
+            bounds.quadrants(root_split)
         self.max_depth = max_depth
+        self.root_split = root_split
         self.cells: Dict[str, QuadtreeCell] = {
             "root": QuadtreeCell(cell_id="root", bounds=bounds, depth=0)
         }
@@ -89,9 +101,10 @@ class QuadtreeMap:
 
         suffixes = ("nw", "ne", "sw", "se")
         child_ids = tuple(f"{cell.cell_id}/{suffix}" for suffix in suffixes)
+        split_point = self.root_split if cell.cell_id == "root" else None
         children = tuple(
             QuadtreeCell(child_id, bounds, cell.depth + 1)
-            for child_id, bounds in zip(child_ids, cell.bounds.quadrants())
+            for child_id, bounds in zip(child_ids, cell.bounds.quadrants(split_point))
         )
         cell.children = child_ids
         self.cells.update({child.cell_id: child for child in children})

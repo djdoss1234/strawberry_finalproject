@@ -41,7 +41,9 @@ class WorkspaceMarkerNode(Node):
         )
         self.declare_parameter("config_file", str(default_config))
         self.config = load_workspace_config(Path(self.get_parameter("config_file").value))
-        self.tree = QuadtreeMap(self.config.bounds, self.config.max_depth)
+        self.tree = QuadtreeMap(
+            self.config.bounds, self.config.max_depth, root_split=self.config.root_split
+        )
         self._subdivide_to_depth("root", self.config.initial_subdivision_depth)
 
         latched_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)

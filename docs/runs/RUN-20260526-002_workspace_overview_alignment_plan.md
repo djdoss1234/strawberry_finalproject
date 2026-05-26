@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-PLANNED
+IN_PROGRESS
 ```
 
 ## 목적
@@ -64,18 +64,42 @@ label은 실제 final scene에 남길 필요는 없고, 좌표계 정렬 검증 
 
 ### 2. 실제 치수 측정
 
-다음 값을 mm 단위로 기록합니다.
+측정 완료된 값:
 
 | 항목 | 측정값 |
 | --- | --- |
-| 전체 workspace 가로 길이 | 미측정 |
-| 전체 workspace 세로 길이 | 미측정 |
-| 중앙 교차점 위치 | 미측정 |
+| 화이트보드 전체/두께 | `1500 x 900 x 20 mm` |
+| 전체 workspace 가로 길이 | `1100 mm` |
+| 전체 workspace 세로 길이 | `800 mm` |
+| 왼쪽 -> 세로 중앙선 | `545 mm` |
+| 위쪽 -> 가로 중앙선 | `395 mm` |
 | 로봇 base 기준 workspace 대략 위치 | 미측정 |
 | 종이 면과 camera 사이 거리 | 미측정 |
 
-실측 이후에만 `config/workspace.yaml`의 bounds 값을 갱신합니다. 현재
-`-0.40~0.40`, `-0.25~0.25`는 임시값입니다.
+`cultivation_panel` 원점은 테이프 교차점으로 유지합니다. 실측값에 따라
+outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
+`config/workspace.yaml`에 반영했습니다. outer bounds의 중심과 원점이
+각 축에서 `5 mm` 어긋나므로 root 분할은 명시적인 `(0, 0)`을 사용합니다.
+
+측정 확인 필요:
+
+- 개별 cell의 제공 치수(`515/520 mm`, 높이 `365 mm`) 합계가 outer
+  dimension보다 가로 `65 mm`, 세로 `70 mm` 작습니다.
+- 테이프/겹침/여백을 제외한 값인지 확인하기 전에는 scan target 계산에
+  개별 cell 치수를 사용하지 않습니다.
+- 관련 issue: `ISSUE-20260526-003`
+
+### 2.1 Config 및 Node 반영 확인
+
+- `config/workspace.yaml`에 whiteboard 크기, outer workspace bounds,
+  테이프 교차점 `root_split_m: (0, 0)`을 반영했습니다.
+- 기존 quadtree core는 outer bounds의 기하학적 중앙으로 분할했으나,
+  실측 비대칭을 반영하기 위해 root의 물리 split point를 별도로 받도록
+  수정했습니다.
+- 단위 테스트 10개 통과
+- `colcon build --packages-select strawberry_motion --symlink-install` 성공
+- ROS node 실행 후 초기 `/strawberry/exploration/next_cell`이
+  `root/nw`임을 확인했습니다.
 
 ### 3. Overview Camera Pose 만들기
 
@@ -149,16 +173,17 @@ status: NOT_CAPTURED
 
 ## 완료 기준
 
-- 종이 4분할 영역을 코드의 four child cell과 대응시킵니다.
+- [x] 종이 outer bounds와 테이프 교차점 root split을 config에 반영합니다.
+- [ ] 종이 4분할 영역을 camera view에서 코드의 four child cell과 대응시킵니다.
 - 전체 영역이 보이는 overview camera pose를 한 개 확보합니다.
-- 실제 workspace 가로/세로 치수를 기록합니다.
+- [x] 실제 workspace 가로/세로 및 whiteboard 치수를 기록합니다.
 - overview pose의 RGB 화면을 확보합니다.
 - `scan_pose_generator`에서 사용할 frame/orientation/stand-off를 정하기
   위한 입력 자료를 확보합니다.
 
 ## 완료 후 다음 작업
 
-1. 실측 치수로 `config/workspace.yaml` 갱신
+1. 개별 cell 치수의 측정 경계를 재확인
 2. overview pose 또는 camera 기준 frame 정의
 3. RViz 물리 정렬 자료 기록
 4. `scan_pose_generator` 구현

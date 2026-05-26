@@ -12,6 +12,7 @@ from .quadtree_map import WorkspaceBounds
 class WorkspaceConfig:
     frame_id: str
     bounds: WorkspaceBounds
+    root_split: tuple[float, float]
     max_depth: int
     initial_subdivision_depth: int
 
@@ -22,6 +23,7 @@ def load_workspace_config(path: Path) -> WorkspaceConfig:
 
     workspace = raw["workspace"]
     bounds = workspace["bounds_m"]
+    split = workspace["root_split_m"]
     config = WorkspaceConfig(
         frame_id=str(workspace["frame_id"]),
         bounds=WorkspaceBounds(
@@ -30,9 +32,11 @@ def load_workspace_config(path: Path) -> WorkspaceConfig:
             float(bounds["min_y"]),
             float(bounds["max_y"]),
         ),
+        root_split=(float(split["x"]), float(split["y"])),
         max_depth=int(workspace["max_depth"]),
         initial_subdivision_depth=int(raw["scan_policy"]["initial_subdivision_depth"]),
     )
     if config.initial_subdivision_depth > config.max_depth:
         raise ValueError("initial_subdivision_depth cannot exceed max_depth.")
+    config.bounds.quadrants(config.root_split)
     return config

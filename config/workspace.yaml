@@ -1,11 +1,45 @@
+whiteboard:
+  frame_id: whiteboard_frame
+  dimensions_m:
+    width: 1.500
+    height: 0.900
+    thickness: 0.020
+
 workspace:
   frame_id: cultivation_panel
+  parent_frame_id: whiteboard_frame
+  origin_definition: tape_intersection_on_paper_workspace
   bounds_m:
-    min_x: -0.40
-    max_x: 0.40
-    min_y: -0.25
-    max_y: 0.25
+    min_x: -0.545
+    max_x: 0.555
+    min_y: -0.405
+    max_y: 0.395
+  root_split_m:
+    x: 0.0
+    y: 0.0
+  offset_from_whiteboard_top_left_m:
+    x: 0.182
+    y: 0.080
   max_depth: 3
+
+measurements:
+  recorded_date: "2026-05-26"
+  outer_workspace_m:
+    width: 1.100
+    height: 0.800
+  board_margin_check_m:
+    horizontal_total: 1.510  # 0.182 + 1.100 + 0.228; 10 mm over board width.
+    vertical_total: 0.905    # 0.080 + 0.800 + 0.025; 5 mm over board height.
+  provided_cell_sizes_m:
+    west_width: 0.515
+    east_width: 0.520
+    north_height: 0.365
+    south_height: 0.365
+  cell_size_verification_required: true
+  note: >-
+    Individual cell size sums do not match the outer workspace dimensions.
+    Use measured outer bounds and tape-intersection split for the root map
+    until cell boundary measurement scope is confirmed.
 
 scan_policy:
   initial_subdivision_depth: 1
@@ -16,8 +50,8 @@ scan_policy:
     - SCANNED_EMPTY
     - HARVESTED
 
-# The exact camera stand-off distance and orientation must be measured after
-# the realistic testbed and workspace frame are fixed.
+# The exact camera stand-off distance and orientation will be measured after
+# the overview camera pose is fixed.
 scan_pose:
   standoff_m: null
   orientation_xyzw: null

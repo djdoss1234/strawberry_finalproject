@@ -89,6 +89,8 @@ AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고, 자�
 [docs/project_recording_system.md](docs/project_recording_system.md)에 기록합니다.
 사진, 영상, `rqt_graph`, RViz 캡처를 어느 단계에 어떤 이름으로 남길지는
 [docs/visual_asset_guide.md](docs/visual_asset_guide.md)에 기록합니다.
+현재 물리 테스트베드의 실측값과 frame 기준은
+[docs/testbed_setup.md](docs/testbed_setup.md)에 기록합니다.
 현재까지 검증된 대외 설명 재료는
 [docs/portfolio_evidence.md](docs/portfolio_evidence.md)에 누적합니다.
 
