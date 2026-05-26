@@ -103,6 +103,8 @@ outer bounds는 `x=-0.545~+0.555 m`, `y=-0.405~+0.395 m`로
 - `colcon build --packages-select strawberry_motion --symlink-install` 성공
 - ROS node 실행 후 초기 `/strawberry/exploration/next_cell`이
   `root/nw`임을 확인했습니다.
+- `~/doosan_ws` install overlay의 installed config에서도 실측 bounds,
+  `root_split_m`, tape 구조 metadata가 반영된 것을 확인했습니다.
 
 ### 3. Overview Camera Pose 만들기
 

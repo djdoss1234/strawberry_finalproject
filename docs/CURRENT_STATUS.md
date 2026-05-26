@@ -48,6 +48,9 @@
 - unit test 10개 통과
 - `colcon build --packages-select strawberry_motion --symlink-install` 통과
 - `workspace_marker_node` 실행 및 `root/nw` publish 확인
+- `~/doosan_ws/install/strawberry_motion/share/strawberry_motion/config/workspace.yaml`
+  설치본에서 실측 bounds, `root_split_m`, tape 구조 metadata 반영 확인
+- build 중 로컬 `vcs_versioning` warning은 남지만 package build 실패는 아님
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -145,4 +148,5 @@ artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 
 ```text
 41fb854 feat: apply measured workspace geometry and root split
+7c5a87b docs: clarify tape-based workspace construction
 ```
