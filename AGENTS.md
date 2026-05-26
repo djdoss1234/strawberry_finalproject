@@ -116,9 +116,10 @@ message type, topic/action name은 양쪽 runtime 요구사항을 검토하기 �
 1. `README.md`를 읽고 프로젝트 목적, 역할 분담, 현재 milestone을 확인합니다.
 2. 이 파일에서 설계 원칙과 작업 우선순위를 확인합니다.
 3. `docs/project_scope.md`에서 interface 및 평가 항목을 확인합니다.
-4. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
-5. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
-6. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
+4. `docs/development_roadmap.md`에서 전체 단계와 당장 진행할 작업을 확인합니다.
+5. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
+6. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
+7. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
 
 진행 중 중요한 결정은 다음 세션에서 추측하지 않도록 이 파일 또는
 `docs/` 문서와 commit message에 반드시 남깁니다. 예를 들면:

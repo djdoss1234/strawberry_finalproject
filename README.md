@@ -76,6 +76,8 @@ VLA는 수확할 대상이나 다음 행동을 제안할 수 있지만, 실제 �
 
 세부 역할, interface 방향, 평가 기준, 첫 sprint는
 [docs/project_scope.md](docs/project_scope.md)에 기록합니다.
+전체 개발 순서와 단계별 산출물/완료 기준은
+[docs/development_roadmap.md](docs/development_roadmap.md)에 기록합니다.
 
 ## 현재 상태
 
@@ -104,8 +106,9 @@ VLA는 수확할 대상이나 다음 행동을 제안할 수 있지만, 실제 �
 1. 이 `README.md`에서 목표와 현재 상태를 확인합니다.
 2. `AGENTS.md`에서 담당 범위, 설계 원칙, 작업 순서를 확인합니다.
 3. `docs/project_scope.md`에서 milestone과 interface/평가 계획을 확인합니다.
-4. `git log`와 issue/commit 기록으로 마지막 실제 변경 내용을 확인합니다.
-5. 구현을 옮길 때는 `strawberry_miniproject`를 baseline reference로 확인합니다.
+4. `docs/development_roadmap.md`에서 전체 순서와 현재 완료할 단계를 확인합니다.
+5. `git log`와 issue/commit 기록으로 마지막 실제 변경 내용을 확인합니다.
+6. 구현을 옮길 때는 `strawberry_miniproject`를 baseline reference로 확인합니다.
 
 즉, 중요한 결정과 진행 결과를 문서와 commit으로 계속 남기는 것이 이
 프로젝트의 기억 장치입니다.
