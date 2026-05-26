@@ -56,6 +56,15 @@ config/
 | planner/executor 연결 후 | command/result feedback loop | graph + 실행 log |
 | perception/VLA 연결 후 | target proposal과 motion result 경계 | 최종 graph 캡처 |
 
+현재 최초 exploration node interface:
+
+```text
+/strawberry/exploration/set_cell_state
+  -> /workspace_marker_node
+  -> /strawberry/exploration/workspace_cells
+  -> /strawberry/exploration/next_cell
+```
+
 함께 확인할 것:
 
 - `ros2 node list`

@@ -24,6 +24,7 @@ class QuadtreeMapTest(unittest.TestCase):
         self.assertEqual(len(children), 4)
         self.assertTrue(all(child.is_leaf for child in children))
         self.assertTrue(all(child.state is RegionState.UNSCANNED for child in children))
+        self.assertEqual(self.tree.next_scan_cell().cell_id, "root/nw")
 
     def test_next_scan_cell_prefers_unscanned_before_revisit(self) -> None:
         self.tree.subdivide("root")

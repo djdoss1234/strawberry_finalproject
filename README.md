@@ -89,8 +89,40 @@ AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고, 자�
 ## 현재 상태
 
 현재는 최종 프로젝트의 시작 단계로, 역할 분담과 motion 중심 개발 범위,
-첫 milestone, 공개 저장소 관리 기준을 정의한 상태입니다. 실제 runtime
-코드는 baseline 경계와 실험 환경이 확정된 뒤 선별적으로 추가합니다.
+첫 milestone, 공개 저장소 관리 기준을 정의했습니다. quadtree workspace
+core와 첫 ROS 2 visualization node를 구현하여 cell 상태와 다음 관찰
+대상을 topic/RViz marker로 내보내는 단계까지 진행했습니다. 실제 robot
+motion baseline은 scan pose 정의와 함께 선별적으로 추가합니다.
+
+현재 ROS exploration interface:
+
+| Topic | Type | 역할 |
+| --- | --- | --- |
+| `/strawberry/exploration/workspace_cells` | `visualization_msgs/msg/MarkerArray` | RViz용 workspace cell 및 상태 표시 |
+| `/strawberry/exploration/next_cell` | `std_msgs/msg/String` | 다음 관찰 대상 cell ID publish |
+| `/strawberry/exploration/set_cell_state` | `std_msgs/msg/String` | `cell_id=STATE` 형식의 상태 갱신 입력 |
+
+초기 visualization node 실행:
+
+```bash
+cd ~/doosan_ws
+colcon build --packages-select strawberry_motion --symlink-install
+source install/setup.bash
+ros2 launch strawberry_motion workspace_visualization.launch.py
+```
+
+RViz에서는 fixed frame을 현재 임시 기준 frame인 `cultivation_panel`로
+설정하고, `MarkerArray` display에
+`/strawberry/exploration/workspace_cells`를 선택합니다. 실물 테스트베드
+기준 frame이 확정되면 이 frame 이름과 좌표는 실측값으로 교체합니다.
+
+상태 갱신 확인 예시:
+
+```bash
+ros2 topic pub --once /strawberry/exploration/set_cell_state \
+  std_msgs/msg/String "{data: 'root/nw=SCANNED_EMPTY'}"
+ros2 topic echo --once /strawberry/exploration/next_cell
+```
 
 ## 데이터 및 안전 관리
 

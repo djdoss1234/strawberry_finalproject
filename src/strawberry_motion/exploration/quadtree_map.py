@@ -120,4 +120,4 @@ class QuadtreeMap:
         ]
         if not candidates:
             return None
-        return min(candidates, key=lambda cell: (priority[cell.state], cell.depth, cell.cell_id))
+        return min(candidates, key=lambda cell: (priority[cell.state], cell.depth))
