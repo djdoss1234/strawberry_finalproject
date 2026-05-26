@@ -32,7 +32,7 @@ visualization/
   workspace_marker_node.py RViz에 workspace/cell/상태/scan pose 표시
   alignment_overlay.py     camera 중앙 십자선 overlay 렌더링
   camera_alignment_node.py RGB image를 받아 정렬용 overlay image publish
-  realsense_alignment_viewer.py RealSense 직접 표시용 저지연 정렬 도구
+  realsense_alignment_viewer.py RealSense 직접 표시 + TCP step 정렬 도구
 
 config/
   workspace.yaml           작업영역 frame, 크기, 최대 분할 depth
@@ -81,6 +81,12 @@ binary compatibility 문제를 피하기 위해 `sensor_msgs/Image` buffer를
 실제 robot jog 중에는 ROS image relay/viewer 지연을 피하기 위해
 `realsense_alignment_viewer`를 우선 사용합니다. ROS overlay node는
 topic interface와 graph/evidence 확인에 사용합니다.
+
+`realsense_alignment_viewer --enable-robot-control`은
+`/dsr01/motion/move_line`에 base-frame relative translation을 소량씩
+전송합니다. continuous jog 또는 joint 조작보다 첫 alignment 검증에서
+움직임 한계를 명확히 할 수 있으므로, `2 mm` step으로 축 방향을 확인한
+뒤에만 정렬에 사용합니다.
 
 함께 확인할 것:
 

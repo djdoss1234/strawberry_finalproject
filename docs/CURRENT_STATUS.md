@@ -51,6 +51,8 @@
   - `pyrealsense2`로 color stream 직접 display
   - ROS image relay와 `rqt_image_view` 경로를 우회
   - 화면에 `LIVE FPS` 표시
+  - 선택적으로 `/dsr01/motion/move_line` 기반 Cartesian step control 활성화
+  - `A/D`: base X, `W/S`: base Z, `R/F`: base Y, `P`: TCP 출력
 
 검증:
 
@@ -60,7 +62,7 @@
 - `~/doosan_ws/install/strawberry_motion/share/strawberry_motion/config/workspace.yaml`
   설치본에서 실측 bounds, `root_split_m`, tape 구조 metadata 반영 확인
 - build 중 로컬 `vcs_versioning` warning은 남지만 package build 실패는 아님
-- overlay/direct viewer 단위 테스트를 포함해 unit test `14개` 통과
+- overlay/direct viewer/step mapping 단위 테스트를 포함해 unit test `15개` 통과
 - `realsense2_camera`, `rqt_image_view` package 설치 확인
 - `camera_alignment_node` ROS interface와 synthetic image overlay publish 확인
 
@@ -125,14 +127,15 @@ root split = (0.0, 0.0)
 - 실제 `scan_pose_generator`와 robot scan motion
 - 실제 eye-in-hand stream에서 십자선과 테이프 교차점 정렬 캡처
 - direct viewer에서 실제 조그 정렬 시 체감 latency/FPS 확인
+- `2 mm` Cartesian step의 실제 화면 방향과 안전 동작 확인
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. `ros2 run strawberry_motion realsense_alignment_viewer` 실행
-2. 로봇 카메라를 전체 종이판이 보이는 overview pose로 이동
-3. direct viewer에서 노란 십자선을 중앙 tape crossing에 일치
-4. 정렬 화면 캡처
-5. 가능하면 해당 자세의 joint/TCP pose 저장
+1. 기존 joint jog/camera 점유 process를 종료
+2. direct viewer를 `--enable-robot-control --step-mm 2`로 실행
+3. 보드와 거리가 있는 상태에서 각 키의 화면 방향을 확인
+4. Cartesian step으로 전체 종이판과 중앙 십자선을 정렬
+5. 정렬 화면 캡처 및 `P`로 TCP pose 저장
 6. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
 7. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
@@ -149,7 +152,7 @@ artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 
 현장 입력을 받은 뒤:
 
-1. 저지연 십자선 viewer 실행/캡처 및 overview pose 저장
+1. 저지연 십자선 + Cartesian step control로 overview pose 저장
 2. tape dead-zone/margin 설정 추가 여부 결정
 3. RViz에서 실측 cell alignment 확인
 4. `scan_pose_generator.py` 구현

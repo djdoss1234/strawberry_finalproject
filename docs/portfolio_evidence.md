@@ -143,6 +143,24 @@ status: NOT_CAPTURED
 위 이미지는 renderer 설명용 preview이며 실제 robot camera 정렬 결과는
 아직 확보하지 않았습니다.
 
+### 7. Joint 조작 대신 Cartesian Step Alignment 도구 설계
+
+- 카메라 십자선 정렬을 위해 joint를 개별 조작하는 방식은 화면상의
+  이동 방향이 직관적이지 않아 현장 사용성이 낮았습니다.
+- direct viewer 안에서 Doosan `MoveLine` relative translation을 소량씩
+  호출하는 Cartesian step control을 추가했습니다.
+- 연속 jog 대신 한 입력당 `2~5 mm`만 이동하고 orientation은 유지하도록
+  설계해, 실제 보드 앞 초기 정렬에서 움직임 범위를 제한했습니다.
+
+근거:
+
+- run: `RUN-20260526-004`
+- services: `/dsr01/motion/move_line`, `/dsr01/aux_control/get_current_posx`
+- 전체 unit tests: `15개` 통과
+
+현재는 구현 및 service/interface 확인 단계이며, 실제 pose 정렬 성공
+캡처와 TCP 기록을 확보한 뒤 검증 완료 claim으로 갱신합니다.
+
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처
@@ -161,6 +179,7 @@ status: NOT_CAPTURED
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Physical workspace 정렬 | 종이 4분할 사진 확보, overview camera 화면 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-002_workspace_board.jpg` |
 | Camera 중심 정렬 보조 | direct viewer 구현 및 preview, 실제 stream 대기 | `PARTIAL` | `docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg` |
+| Cartesian step alignment | step control 구현, 물리 이동 검증 대기 | `PARTIAL` | `docs/runs/RUN-20260526-004_cartesian_alignment_step_control.md` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |
