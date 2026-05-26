@@ -88,6 +88,12 @@ Cartesian step control은 joint-limit safety guard 없이 실제 motion을
 robot motion을 발생시키려면 planner/executor와 같은 safety validation
 경계를 반드시 통과해야 합니다.
 
+현재 overview 정렬 운영 방식은 역할을 물리적으로 분리합니다.
+
+- Ubuntu ROS 노트북: `realsense_alignment_viewer`로 십자선 영상만 표시
+- Windows 노트북 + Ethernet + Doosan DART: 현장 절차에 따른 수동 joint 조작
+- viewer 키보드 입력: robot motion 명령을 전송하지 않음
+
 함께 확인할 것:
 
 - `ros2 node list`

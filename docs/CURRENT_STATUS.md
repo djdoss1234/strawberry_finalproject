@@ -133,7 +133,7 @@ root split = (0.0, 0.0)
 1. robot control이 활성화된 기존 viewer process를 종료
 2. joint-limit 사고 상태를 현장 안전 절차로 확인/복구
 3. direct viewer는 motion 옵션 없이 camera 표시 전용으로 실행
-4. 안전 검증을 통과한 motion 방식이 마련된 뒤 overview pose 정렬 재개
+4. 별도 Windows 노트북의 Doosan DART로 수동 joint 조작하며 overview pose 정렬
 5. 정렬 화면 캡처 및 TCP pose 저장
 6. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
 7. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
@@ -151,8 +151,8 @@ artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 
 현장 입력을 받은 뒤:
 
-1. `ISSUE-20260526-006` safety incident 후속 및 safety validation 설계
-2. 저지연 십자선 viewer로 camera 확인
+1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
+2. 저지연 십자선 viewer + DART 수동 조작으로 overview pose 기록
 3. tape dead-zone/margin 설정 추가 여부 결정
 4. RViz에서 실측 cell alignment 확인
 5. safety-checked `scan_pose_generator.py` 구현
