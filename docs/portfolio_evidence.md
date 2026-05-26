@@ -110,6 +110,7 @@ status: NOT_CAPTURED
 | --- | --- | --- | --- |
 | Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
+| Physical workspace 정렬 | 종이 4분할과 overview camera 화면 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |
