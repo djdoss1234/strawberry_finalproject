@@ -123,3 +123,16 @@ Git에 넣지 않을 것:
 - 관련 commit hash
 
 이 기록과 Git commit이 다음 세션에서 프로젝트를 이어가는 기준이 됩니다.
+
+단계별 실행, 문제 해결, 포트폴리오 근거를 함께 관리하는 자세한 규칙은
+`docs/project_recording_system.md`를 따릅니다.
+
+기본 연결 구조:
+
+```text
+worklog
+  -> run record
+       -> issue record
+       -> commit / evidence asset
+  -> portfolio_evidence
+```
