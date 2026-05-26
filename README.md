@@ -52,32 +52,39 @@ VLA는 수확할 대상이나 다음 행동을 제안할 수 있지만, 실제 �
 
 ## 첫 기능 목표
 
-첫 번째 기능 milestone은 **움직인 계란판에 대한 자동 place**입니다.
+첫 번째 기능 milestone은 **quadtree 기반 작업영역 탐색과 scan motion
+생성**입니다.
 
-> 사람이 계란판 또는 수확 tray의 위치를 바꾼 뒤에도, 로봇이
-> AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고,
-> 자동 생성한 빈 slot에 딸기 모형을 배치한다.
+> 재배 작업영역을 `workspace_frame` 기준 quadtree cell로 관리하고,
+> 아직 관찰하지 않았거나 재관찰이 필요한 영역을 보기 위한 eye-in-hand
+> camera scan pose를 생성해 motion system과 연결한다.
 
 이 기능을 먼저 구현하는 이유:
 
-- 미니프로젝트의 고정 티칭 의존성을 제거할 수 있음
-- 환경 변화 대응 능력을 수치로 평가할 수 있음
-- VLA 구현 전에 모션 시스템 자체의 신뢰성을 검증할 수 있음
-- 포트폴리오에서 미니프로젝트 대비 발전점을 분명히 보여줄 수 있음
+- 카메라에 이미 보이는 딸기만 잡던 구조에서 작업영역을 탐색하는 구조로 확장할 수 있음
+- 본인의 motion 담당 범위인 scan pose 생성 및 이동 실행과 직접 연결됨
+- VLA와 역할이 겹치지 않게 `어디를 볼지`를 관리하는 계층을 만들 수 있음
+- 이후 target detection, tray place, VLA 결과를 동일 상태 map에 연결할 수 있음
+
+두 번째 기능 milestone은 **움직인 계란판에 대한 자동 place**입니다.
+AprilTag/ArUco 또는 RGB-D 기반으로 tray pose를 다시 인식하고, 자동
+생성한 빈 slot에 딸기 모형을 배치하여 수확 후반 motion까지 확장합니다.
 
 ## 초기 진행 순서
 
-1. 하드웨어 구성, 실제형 모형 환경, 작업 정의, 평가 지표를 확정합니다.
-2. 이동 가능한 tray와 marker 기반 localization 테스트베드를 만듭니다.
+1. `workspace_frame`, quadtree cell 상태, 탐색/재관찰 정책을 정의합니다.
+2. RViz visualization과 cell 중심 기반 scan pose 생성을 구현합니다.
 3. 미니프로젝트에서 안정적으로 동작한 motion 기능을 선별해 이식합니다.
-4. `tray_frame` 기준 slot 자동 생성과 place 평가 기능을 구현합니다.
-5. planner 비교와 실패 원인 기록 체계를 만듭니다.
-6. 검증된 interface를 통해 VLA의 high-level 제안을 연결합니다.
+4. quadtree scan motion과 target detection/result 상태 갱신을 연결합니다.
+5. `tray_frame` 기준 slot 자동 생성과 자동 place 기능을 구현합니다.
+6. planner/collision/retry 개선 후 VLA의 high-level 제안을 연결합니다.
 
 세부 역할, interface 방향, 평가 기준, 첫 sprint는
 [docs/project_scope.md](docs/project_scope.md)에 기록합니다.
 전체 개발 순서와 단계별 산출물/완료 기준은
 [docs/development_roadmap.md](docs/development_roadmap.md)에 기록합니다.
+모듈화, `rqt_graph`, Git 진행 기록 방식은
+[docs/development_workflow.md](docs/development_workflow.md)에 기록합니다.
 
 ## 현재 상태
 

@@ -101,12 +101,22 @@ message type, topic/action name은 양쪽 runtime 요구사항을 검토하기 �
 
 ## 첫 구현 순서
 
-1. 평가 지표, hardware scene, ROS interface, log schema를 정의합니다.
-2. marker 기반 tray localization과 slot 생성 기능을 구현합니다.
+1. `workspace_frame`, quadtree 상태, scan policy, ROS interface를 정의합니다.
+2. RViz에서 quadtree cell과 다음 scan pose를 확인할 visualization을 구현합니다.
 3. 미니프로젝트의 안정적인 pick & place motion component를 이식합니다.
-4. motion sequence를 state machine과 planner module로 분리합니다.
-5. 실제형 딸기 모형 환경에서 반복 실험을 수행합니다.
-6. VLA proposal/result integration boundary를 추가합니다.
+4. quadtree scan pose를 planner/executor와 연결합니다.
+5. tray localization, 자동 place, motion state machine을 구현합니다.
+6. collision/retry/planner 비교 후 VLA integration boundary를 추가합니다.
+
+## 개발 점검 및 기록
+
+- 모듈을 추가하거나 topic 연결을 바꿀 때마다 `rqt_graph`, TF, RViz로
+  연결 상태와 frame/pose 표현을 확인합니다.
+- 의미 있는 기능 단위가 완료되면 바로 commit/push합니다. 설계 결정,
+  node 연결 확인, visualization 검증, 실기 결과는 각각 복원 가능한
+  기록 단위입니다.
+- 일별 진행 내용은 `docs/worklogs/YYYY-MM-DD.md`에 남깁니다.
+- 상세 운영 규칙은 `docs/development_workflow.md`를 참고합니다.
 
 ## 세션이 끊긴 뒤 이어서 작업하는 규칙
 
@@ -117,9 +127,10 @@ message type, topic/action name은 양쪽 runtime 요구사항을 검토하기 �
 2. 이 파일에서 설계 원칙과 작업 우선순위를 확인합니다.
 3. `docs/project_scope.md`에서 interface 및 평가 항목을 확인합니다.
 4. `docs/development_roadmap.md`에서 전체 단계와 당장 진행할 작업을 확인합니다.
-5. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
-6. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
-7. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
+5. `docs/development_workflow.md`와 최근 `docs/worklogs/`를 확인합니다.
+6. `git status`, `git log --oneline --decorate -10`, 최근 commit diff를 확인합니다.
+7. 코드가 추가된 이후에는 관련 launch/config/module과 최근 실험 문서를 확인합니다.
+8. 이전 구현의 동작 방식이 필요할 때만 `strawberry_miniproject`를 참조합니다.
 
 진행 중 중요한 결정은 다음 세션에서 추측하지 않도록 이 파일 또는
 `docs/` 문서와 commit message에 반드시 남깁니다. 예를 들면:

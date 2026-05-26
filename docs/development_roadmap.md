@@ -8,6 +8,7 @@
 
 따라서 진행 순서는 다음 원칙을 따릅니다.
 
+- 첫 개발 기능은 quadtree 기반 작업영역 관리와 scan pose 생성입니다.
 - 먼저 반복 실행 가능한 motion baseline을 만듭니다.
 - 그 다음 환경 변화와 실패 상황에 대응하도록 고도화합니다.
 - VLA는 motion 실행 구조가 안정된 뒤 연결합니다.
@@ -117,6 +118,8 @@
 - 다음 책임을 가진 모듈 구조를 만듭니다.
 
 ```text
+exploration/    quadtree map, cell state, scan pose, visit policy
+visualization/  workspace/cell/scan pose RViz marker
 planning/       planner backend, collision world, trajectory 평가
 task/           pick/place state machine, retry policy
 tray/           tray pose, slot generation, occupancy
@@ -128,7 +131,7 @@ docs/           설계 결정, 실험 결과, 회고
 ```
 
 - 실행마다 남길 log schema를 만듭니다.
-  - `run_id`, scene, target, planner, tray pose source
+  - `run_id`, scene, cell_id, cell_state, target, planner, tray pose source
   - planning/execution 시간
   - 결과 code와 실패 원인
   - 관련 영상/이미지/rosbag 참조 경로
@@ -137,13 +140,17 @@ docs/           설계 결정, 실험 결과, 회고
 ### 산출물
 
 - 초기 package skeleton
+- `workspace.yaml`, quadtree state/policy 초안
+- RViz cell marker 및 next scan pose visualization
 - `docs/log_schema.md`
 - `config/` 및 `launch/` 기본 구조
 - `rqt_graph`, TF tree, RViz 확인 절차
 
 ### 완료 기준
 
-- 빈 pipeline 또는 mock target으로 노드 연결 구조를 확인할 수 있음
+- workspace cell과 상태를 RViz에서 확인할 수 있음
+- mock observation으로 subdivision 또는 상태 갱신을 확인할 수 있음
+- `rqt_graph`에서 exploration/visualization node와 topic 연결을 확인함
 - 실험 1회를 실행하면 동일 형식의 결과 log가 남음
 - 민감/대용량 artifact가 Git 추적 대상이 아님
 
@@ -453,8 +460,8 @@ IDLE
 | --- | --- | --- | --- |
 | 1 | 목표/역할/interface 확정 | scope, interface, failure code | 협의 시작 |
 | 2 | 실제형 테스트베드 구축 | scene, 치수, 안전 조건 | 불필요 |
-| 3 | 코드/로그 기반 구성 | package skeleton, log schema | interface 자리만 확보 |
-| 4 | Motion baseline 이식 | fixed scene pick & place | 불필요 |
+| 3 | Quadtree 탐색/코드 기반 구성 | cell map, RViz marker, scan pose, log schema | interface 자리만 확보 |
+| 4 | Motion baseline 및 scan motion 연결 | fixed pick & place, camera scan 실행 | 불필요 |
 | 5 | Tray 자동 place | tray localization, slot manager | 불필요 |
 | 6 | Motion 안정화 | state machine, retry policy | 불필요 |
 | 7 | Collision 환경 대응 | scene model, 장애물 실험 | 불필요 |
@@ -466,12 +473,14 @@ IDLE
 
 현재 기준으로 바로 수행할 일은 다음 순서입니다.
 
-1. 실제 딸기 모형과 이동형 tray의 형태, 크기, 배치를 정합니다.
-2. tray에 붙일 AprilTag/ArUco 방식과 `tray_frame` 기준을 정합니다.
-3. motion baseline을 최종 저장소에 어떻게 이식할지 package 구조를 확정합니다.
-4. `interfaces.md`와 `experiment_protocol.md`를 먼저 작성합니다.
-5. 그 다음 `tray localization -> slot 생성 -> place` 기능부터 구현합니다.
+1. `workspace_frame`, 작업영역 크기, 최대 분할 depth를 정의합니다.
+2. quadtree cell 상태와 subdivision/revisit 정책을 정의합니다.
+3. exploration/visualization/logging 중심 package 구조를 확정합니다.
+4. RViz cell marker와 next scan pose 표시부터 구현합니다.
+5. `rqt_graph`, TF, RViz를 확인하고 첫 기능 단위로 commit/push합니다.
+6. 이후 motion baseline을 이식하여 scan pose 실행으로 연결합니다.
 
 VLA 통합은 중요한 최종 방향이지만, 지금 당장 첫 코드 작업은 아닙니다.
-본인의 담당 범위에서 먼저 보여줘야 하는 결과는 **tray가 움직여도 안정적으로
-place할 수 있는 모션 시스템**입니다.
+본인의 담당 범위에서 먼저 보여줘야 하는 결과는 **작업영역 cell을 관리하고
+관찰할 scan motion target을 만드는 exploration 기반**입니다. 그 다음
+tray가 움직여도 안정적으로 place할 수 있는 모션 시스템까지 확장합니다.

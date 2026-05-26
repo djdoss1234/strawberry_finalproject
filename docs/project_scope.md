@@ -82,29 +82,33 @@ VLA / perception decision
 
 ## 5. 첫 기능 목표
 
-### 이동 가능한 Tray에 대한 자동 Place
+### 1차: Quadtree 기반 작업영역 탐색과 Scan Motion
 
 목표:
 
-> 수확 tray를 사람이 옮긴 뒤에도 로봇이 새로운 tray pose를 인식하고,
-> 생성된 빈 slot에 수확한 딸기 모형을 배치한다.
+> 재배 workspace를 quadtree cell로 관리하고, 미관찰 또는 재관찰 대상
+> cell을 보기 위한 eye-in-hand camera scan pose를 생성한다.
 
 구현 순서:
 
-1. 고정된 tray frame에 AprilTag 또는 ArUco marker를 부착합니다.
-2. RGB-D camera로 tray pose를 검출합니다.
-3. tray pose를 `base_link` 기준으로 변환합니다.
-4. tray geometry로부터 slot별 `above` 및 `release` pose를 생성합니다.
-5. RGB-D 관측으로 slot 점유 여부를 확인합니다.
-6. motion pipeline을 통해 place를 실행합니다.
-7. pose error, place 결과, 실패 원인을 기록합니다.
+1. `workspace_frame` 기준 작업영역 크기와 최대 depth를 정의합니다.
+2. cell 상태와 subdivision/revisit policy를 정의합니다.
+3. RViz marker로 workspace와 cell 상태를 시각화합니다.
+4. 관찰 대상 cell 중심을 기준으로 scan pose를 생성합니다.
+5. planner/executor 연결 전 TF, workspace boundary, ROS topic을 검증합니다.
+6. 이후 기존 detector와 motion baseline을 연결해 cell 상태를 갱신합니다.
 
-이 milestone을 먼저 선택하는 이유:
+이 기능을 먼저 선택하는 이유:
 
-- 현재 fixed teaching 의존성을 제거할 수 있음
-- 환경 변화에 대한 대응력을 계량화할 수 있음
-- VLA에 의존하지 않고 perception-to-motion 통합을 검증할 수 있음
-- 미니프로젝트와 최종 프로젝트의 차이를 명확히 보여줄 수 있음
+- eye-in-hand robot이 어디를 관찰할지 정하는 것이 모션 담당 범위와 직접 연결됨
+- VLA와 겹치지 않게 공간 탐색과 motion target 생성 계층을 구축할 수 있음
+- 이후 검출, 수확 결과, VLA 제안을 같은 workspace 상태에 반영할 수 있음
+
+### 2차: 이동 가능한 Tray에 대한 자동 Place
+
+수확 후 배치 단계에서는 AprilTag/ArUco 또는 RGB-D로 움직인 tray의 pose를
+추정하고, `tray_frame` 기준으로 slot별 `above`/`release` pose를 자동
+생성합니다. 이는 quadtree scan 및 기본 수확 motion이 연결된 뒤 진행합니다.
 
 ## 6. 평가 계획
 
@@ -137,13 +141,13 @@ SUCCESS
 
 ## 7. 초기 Sprint
 
-1. 실제형 모형 workspace와 이동 가능한 tray의 사진/치수를 기록합니다.
-2. marker 종류, `tray_frame`, slot pitch, slot 개수를 결정합니다.
+1. 실제형 모형 workspace의 기준 frame과 치수를 기록합니다.
+2. quadtree cell 상태, 최대 depth, scan/revisit policy를 결정합니다.
 3. ROS topic/action과 experiment log schema를 정의합니다.
-4. motion, tray, planning, diagnostics 기준의 package 구조를 잡습니다.
-5. tray marker detection과 slot pose 생성 기능을 구현합니다.
-6. tray를 측정된 세 위치로 옮기며 place 실험을 수행합니다.
-7. `rqt_graph`, TF tree, RViz scene, label이 포함된 trial 결과를 저장합니다.
+4. exploration, visualization, motion, planning, diagnostics 기준 package 구조를 잡습니다.
+5. workspace marker와 quadtree cell visualization을 구현합니다.
+6. cell 중심 기반 next scan pose 생성을 구현합니다.
+7. `rqt_graph`, TF tree, RViz scene, label이 포함된 진행 결과를 저장합니다.
 
 ## 8. 이후 통합
 
