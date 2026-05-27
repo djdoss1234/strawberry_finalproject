@@ -46,6 +46,9 @@ root/se = X 양수, Y 음수
 - Doosan motion service, DART jog, viewer robot control을 실행하지 않습니다.
 - `base_link -> cultivation_panel` transform은 아직 미정이므로,
   RViz는 독립된 workspace frame에서 geometry 의미만 확인합니다.
+- RViz의 `No tf data`를 피하기 위해
+  `workspace_visualization_world -> cultivation_panel` identity TF를
+  표시용으로만 publish합니다. 이것은 실측 robot/base transform이 아닙니다.
 
 ## 실행 절차
 
@@ -54,6 +57,9 @@ cd ~/doosan_ws
 source install/setup.bash
 ros2 launch strawberry_motion workspace_rviz.launch.py
 ```
+
+참고: 이 launch가 생성하는 identity TF는 marker 화면 표시를 위한
+standalone 기준점입니다. 실제 로봇 TF tree와 합쳐 쓰지 않습니다.
 
 RViz에서 확인할 것:
 
@@ -90,6 +96,7 @@ READY_TO_EXECUTE_NO_ROBOT_MOTION
 - RViz에 보인 cell 방향:
 - initial next cell:
 - 상태 전환 후 next cell:
+- display-only identity TF로 `No tf data` 해소 여부:
 - 실제 overview image와의 대응 판정: `PASS / FAIL`
 - screenshot 경로:
 - 발견한 문제:

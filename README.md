@@ -192,6 +192,11 @@ source ~/doosan_ws/install/setup.bash
 ros2 launch strawberry_motion workspace_rviz.launch.py
 ```
 
+이 launch는 RViz 표시를 위해
+`workspace_visualization_world -> cultivation_panel`의 identity TF를 함께
+publish합니다. 실제 `base_link -> cultivation_panel` 측정 transform은
+아직 정의되지 않았으며, 이 표시용 TF를 robot motion에 사용하지 않습니다.
+
 상태 갱신 확인 예시:
 
 ```bash

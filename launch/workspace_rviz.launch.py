@@ -16,6 +16,30 @@ def generate_launch_description() -> LaunchDescription:
     return LaunchDescription(
         [
             Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="workspace_visualization_frame_publisher",
+                arguments=[
+                    "--x",
+                    "0",
+                    "--y",
+                    "0",
+                    "--z",
+                    "0",
+                    "--roll",
+                    "0",
+                    "--pitch",
+                    "0",
+                    "--yaw",
+                    "0",
+                    "--frame-id",
+                    "workspace_visualization_world",
+                    "--child-frame-id",
+                    "cultivation_panel",
+                ],
+                output="screen",
+            ),
+            Node(
                 package="strawberry_motion",
                 executable="workspace_marker_node",
                 name="workspace_marker_node",

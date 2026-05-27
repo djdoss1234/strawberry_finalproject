@@ -68,6 +68,9 @@
 - overview 정렬 screenshot에서 네 cell, 중앙 교차점, `LIVE 30.0 FPS` 확인
 - RViz cell/physical direction 검증용 `workspace_rviz.launch.py`와
   `rviz/workspace_exploration.rviz` 추가 준비
+- RViz standalone 표시에서 발생한 `No tf data`에 대응해
+  `workspace_visualization_world -> cultivation_panel` identity TF를
+  visualization launch에서만 publish하도록 보완
 
 ## 4. 물리 Workspace 현재 사실
 
