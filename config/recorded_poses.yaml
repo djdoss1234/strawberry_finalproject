@@ -1,29 +1,38 @@
 # Physically observed reference poses. These are records, not autonomous motion commands.
 overview_alignment:
-  recorded_date: "2026-05-26"
+  recorded_date: "2026-05-27"
   purpose: align_camera_center_crosshair_to_cultivation_panel_tape_intersection
   acquisition:
     robot_control: doosan_dart_manual_joint_control
     image_viewer: realsense_alignment_viewer_display_only
-    evidence_image: docs/assets/exploration/RUN-20260526-002_overview_camera.png
+    evidence_image: docs/assets/exploration/RUN-20260527-002_overview_alignment_revised.png
   joint_position_deg:
-    j1: 102.79
-    j2: -109.75
-    j3: 120.08
-    j4: -18.36
-    j5: 54.45
-    j6: -85.46
+    j1: 101.90
+    j2: -102.63
+    j3: 86.28
+    j4: -13.75
+    j5: 82.21
+    j6: -93.33
   tcp_pose_base_mm_deg:
-    x: 73.02
-    y: -122.02
-    z: 520.19
-    rx: 86.27
-    ry: 64.30
-    rz: -89.05
+    x: 104.97
+    y: -301.08
+    z: 550.01
+    rx: 87.01
+    ry: 66.36
+    rz: -89.14
   result: aligned
   observed_display_fps: 30.0
   use_for_automated_motion: false
   note: >-
     This DART-recorded TCP pose reproduces the overview camera alignment
     posture. It does not by itself define the cultivation_panel-to-base
-    transform or authorize automated robot motion.
+    transform or authorize automated robot motion. Joint 2 is outside the
+    current cuRobo operational range of +/-95 degrees, so this pose is only
+    used for read-only registration capture.
+
+superseded_overview_alignment:
+  recorded_date: "2026-05-26"
+  superseded_reason: j2_exceeded_current_curobo_operational_range
+  joint_position_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]
+  tcp_pose_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
+  use_for_automated_motion: false
