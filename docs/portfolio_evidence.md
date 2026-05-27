@@ -191,6 +191,20 @@ status: NOT_CAPTURED
 - corrected evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_corrected.png`
 - status: visualization correction before motion integration
 
+### 9. Observation Pose를 TCP 후보로 변환하고 실행 전 검증 경계 유지
+
+- 네 cell의 camera observation 후보를 기존 eye-in-hand calibration을
+  이용해 TCP target transform으로 변환하는 exporter를 구현했습니다.
+- 후보는 geometry-only config로 저장하고 `use_for_automated_motion: false`
+  상태를 유지했습니다.
+- cuRobo dry-run을 시도하기 전 환경을 점검한 결과 CUDA device가 노출되지
+  않아, IK/collision 결과는 아직 주장하지 않고 blocker로 기록했습니다.
+
+근거:
+
+- candidate config: `config/scan_pose_candidates.yaml`
+- exporter: `src/strawberry_motion/exploration/scan_pose_target_exporter.py`
+
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처

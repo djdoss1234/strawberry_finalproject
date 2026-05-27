@@ -1,0 +1,34 @@
+# Geometry-only targets. Never send directly to robot execution.
+scan_pose_candidates:
+  status: geometry_ready_pending_curobo_dry_run
+  capture_date: "2026-05-27"
+  source_registration: config/panel_registration.yaml
+  source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
+  standoff_m: 0.921486
+  camera_orientation_rule: optical_z_points_from_camera_to_panel
+  use_for_automated_motion: false
+  targets:
+    - cell_id: root/nw
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, -0.413315571]
+        - [0.867228374, -0.410137163, -0.282316358, -0.244933469]
+        - [0.425090123, 0.905104863, -0.009091473, 0.733263697]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/ne
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, 0.117755079]
+        - [0.867228374, -0.410137163, -0.282316358, -0.387640319]
+        - [0.425090123, 0.905104863, -0.009091473, 0.743194497]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/sw
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, -0.405821571]
+        - [0.867228374, -0.410137163, -0.282316358, -0.244874669]
+        - [0.425090123, 0.905104863, -0.009091473, 0.333334097]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/se
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, 0.125249079]
+        - [0.867228374, -0.410137163, -0.282316358, -0.387581519]
+        - [0.425090123, 0.905104863, -0.009091473, 0.343264897]
+        - [0.0, 0.0, 0.0, 1.0]

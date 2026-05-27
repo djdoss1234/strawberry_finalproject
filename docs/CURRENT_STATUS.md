@@ -79,6 +79,9 @@
 - scan pose preview 최초 표시에서 arrow 방향 의미 오류를 발견하고,
   camera candidate에서 cell center를 향하도록 수정
 - 수정된 scan pose preview의 네 cell 방향 표시를 RViz 캡처로 확인
+- cell camera pose를 hand-eye calibration 기준 TCP target으로 변환하는
+  geometry-only exporter 구현 및 후보 config 생성
+- cuRobo offline 검증 전 CUDA 점검 결과 현재 `torch.cuda.is_available() == False`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -143,7 +146,8 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. 네 scan pose candidate의 IK/관절 제한/collision을 실행 없이 검증
+1. CUDA/NVIDIA driver가 정상 노출된 환경에서 네 scan pose candidate의
+   cuRobo IK/관절 제한/collision을 실행 없이 검증
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -186,6 +190,7 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 - geometry/config: `config/workspace.yaml`
 - registration candidate: `config/panel_registration.yaml`
+- scan TCP candidates: `config/scan_pose_candidates.yaml`
 - reference poses: `config/recorded_poses.yaml`
 - testbed: `docs/testbed_setup.md`
 - 현재 run: `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
