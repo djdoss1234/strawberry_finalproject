@@ -78,6 +78,7 @@
 - registered panel/cell이 `base_link` 기준으로 표시되는 RViz evidence 확보
 - scan pose preview 최초 표시에서 arrow 방향 의미 오류를 발견하고,
   camera candidate에서 cell center를 향하도록 수정
+- 수정된 scan pose preview의 네 cell 방향 표시를 RViz 캡처로 확인
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -142,7 +143,7 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. 수정된 RViz scan pose preview에서 노란 camera 위치와 cell 방향을 확인
+1. 네 scan pose candidate의 IK/관절 제한/collision을 실행 없이 검증
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -176,7 +177,7 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
 2. 기존 hand-eye calibration과 depth 기반 `base_link -> cultivation_panel` 후보 검증
-3. RViz에서 registered frame 기준 scan pose preview 방향 검증
+3. cell별 scan pose offline IK 및 joint-limit validation 구현
 4. tape dead-zone/margin 설정 추가 여부 결정
 5. safety-checked `scan_pose_generator.py` 구현
 6. cell center observation pose를 RViz에서 먼저 검증
