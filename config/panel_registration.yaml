@@ -1,8 +1,8 @@
-# Read-only registration candidate. Do not use for robot motion until validated.
+# Active visualization/offline-validation registration. This does not authorize robot motion.
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: active_original_tf_refit_candidate_pending_rviz_review
+  status: refit_rviz_display_confirmed_offline_validation_only
   capture_date: "2026-05-27"
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
@@ -22,20 +22,27 @@ panel_registration:
     corrected_refit_result: MEASURED_PASS_PENDING_MOTION_MARGIN
     corrected_rms_error_mm: 9.229
     corrected_max_error_mm: 10.981
-    active_transform_replacement: pending_rviz_review
+    active_transform_replacement: promoted_for_visualization_and_offline_collision_only
+  refit_rviz_review:
+    evidence_image_local: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
+    result: RVIZ_DISPLAY_CONFIRMED
+    note: >-
+      The refit candidate panel and four quadtree cells were visibly rendered
+      in RViz. This confirms display orientation only and is not physical
+      motion authorization.
   transform:
     translation_m:
-      x: 0.112833
-      y: 0.597764
-      z: 0.643978
+      x: 0.107826964
+      y: 0.597288721
+      z: 0.648167716
     rotation_xyzw:
-      x: 0.701914023
-      y: -0.099086927
-      z: -0.085965950
-      w: 0.700077382
+      x: 0.710000901
+      y: -0.014030832
+      z: -0.005680988
+      w: 0.704038055
     matrix:
-      - [0.965583, -0.018735, -0.259418, 0.112833]
-      - [-0.259467, -0.000147, -0.965752, 0.597764]
-      - [0.018056, 0.999824, -0.005003, 0.643978]
+      - [0.999541724, -0.011924544, -0.027823492, 0.107826964]
+      - [-0.027923070, -0.008267105, -0.999575889, 0.597288721]
+      - [0.011689467, 0.999894725, -0.008596286, 0.648167716]
       - [0.0, 0.0, 0.0, 1.0]
   use_for_automated_motion: false

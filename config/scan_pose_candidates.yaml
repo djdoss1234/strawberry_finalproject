@@ -13,11 +13,15 @@
 # SE: panel_normal IK_FAIL (all standoffs exceed J5/J6 op limits); base_neg_y 0.40 m PLAN_VALID.
 scan_pose_candidates:
   version: v6
-  status: curobo_dry_run_validated
+  status: superseded_by_panel_refit_registration
   capture_date: "2026-05-27"
   curobo_dry_run_date: "2026-05-27"
   curobo_run_record: docs/runs/RUN-20260527-006_v6_orientation_dryrun.yaml
   collision_dry_run_record: docs/runs/RUN-20260527-007_registered_whiteboard_collision_dryrun.yaml
+  superseded_by: config/scan_pose_candidates_refit_candidate.yaml
+  superseded_reason: >-
+    The active cultivation_panel transform changed after white-paper landmark
+    refit and RViz review. These targets remain historical evidence only.
   curobo_start_state: overview_pose_operational_limit
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml

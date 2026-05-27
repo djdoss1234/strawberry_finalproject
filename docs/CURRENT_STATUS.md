@@ -124,8 +124,12 @@
     기준 오류를 발견하고 white-paper inner-corner 기준으로 수정
   - refit 후보: `RMS=9.229 mm`, `MAX=10.981 mm`, plane offset max
     `4.125 mm`, `MEASURED_PASS_PENDING_MOTION_MARGIN`
-  - active panel TF 교체는 RViz 검토 전까지 보류
-  - 후보 검토 launch: `ros2 launch strawberry_motion panel_refit_review.launch.py`
+  - RViz 표시 확인 후 refit TF를 시각화/오프라인 검증 기준으로 승격
+  - 확인 화면(local): `/home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png`
+  - 새 TF로 재생성한 v7 scan collision dry-run 결과:
+    `NW/NE/SE=PLAN_VALID`, `SW=IK_FAIL`
+  - 결과: `docs/runs/RUN-20260527-010_refit_panel_collision_dryrun.yaml`
+  - 이는 자동 motion 허가가 아니며 실행 잠금은 유지
 - 첫 실기 scan은 전체 순회가 아니라 `root/ne` 또는 `root/nw` 중 명시한
   단일 cell만 가능하도록 executor gate를 제한
   - 절차: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
@@ -228,15 +232,14 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 
 우선순위 순서:
 
-1. `panel_registration_refit_candidate.yaml`을 RViz에서 표시해 물리
-   방향/배치가 일치하는지 확인하고, 승인 후 collision world를 재검증
+1. refit 이후 `IK_FAIL`이 된 `root/sw`의 standoff/approach 후보를 재탐색
 2. self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정
 3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
    `use_for_automated_motion` 승인 검토
 4. detector 결과와 cell state 연결
    - scan 후 YOLO detection → cell 상태(SCANNED_FOUND / SCANNED_EMPTY) 갱신
-5. panel_registration TF 물리 위치 오차 정량 검증
+5. panel registration 오차를 motion margin에 반영
 6. tray localization 및 자동 place (미니프로젝트 baseline 이식)
 
 ## 8. 핵심 문서와 Git

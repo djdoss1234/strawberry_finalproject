@@ -1,0 +1,61 @@
+# Scan targets regenerated from the RViz-reviewed white-paper panel refit.
+# They are offline-validation inputs only and must never trigger robot motion.
+scan_pose_candidates:
+  version: v7_refit_panel_registration
+  status: collision_dry_run_partial_plan_valid_not_authorized
+  capture_date: "2026-05-27"
+  curobo_start_state: overview_pose_operational_limit
+  curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+  source_registration: config/panel_registration.yaml
+  source_registration_evidence: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
+  source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
+  collision_dry_run_record: docs/runs/RUN-20260527-010_refit_panel_collision_dryrun.yaml
+  derivation: >-
+    Regenerated using the v6 gripper_rh TCP orientation method with the
+    RViz-reviewed refit cultivation_panel transform. NW/NE/SW retain the
+    panel_normal 0.65 m policy; SE retains the base_neg_y 0.40 m policy.
+  use_for_automated_motion: false
+  collision_world_validated_for_motion: false
+  validation_scope: >-
+    Collision-aware cuRobo dry-run only. NW, NE and SE planned successfully,
+    while SW failed IK under the refit transform. Table, tray, fruit, cable,
+    human obstacles and self-collision are not validated. Actual robot scan
+    execution remains fail-closed.
+  targets:
+    - cell_id: root/nw
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, -0.200261895]
+        - [0.381526086, 0.063300028, 0.922188133, -0.078445149]
+        - [-0.924280420, 0.013193458, 0.381486090, 0.739734036]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/ne
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, 0.349486054]
+        - [0.381526086, 0.063300028, 0.922188133, -0.093802838]
+        - [-0.924280420, 0.013193458, 0.381486090, 0.746163243]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/sw
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: IK_FAIL
+      note: Refit transform invalidated the previous v6 PLAN_VALID result; new target policy required.
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, -0.195492077]
+        - [0.381526086, 0.063300028, 0.922188133, -0.075138307]
+        - [-0.924280420, 0.013193458, 0.381486090, 0.339776146]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/se
+      approach: base_neg_y
+      standoff_m: 0.40
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, 0.372341141]
+        - [0.381526086, 0.063300028, 0.922188133, 0.159228332]
+        - [-0.924280420, 0.013193458, 0.381486090, 0.351792939]
+        - [0.0, 0.0, 0.0, 1.0]

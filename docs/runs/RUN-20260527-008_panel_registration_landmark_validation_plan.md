@@ -73,7 +73,10 @@ MAX absolute plane offset = 4.125 mm
 ```
 
 - refit TF 후보는 `config/panel_registration_refit_candidate.yaml`에 저장했다.
-- 이 값은 RViz 확인 전까지 active TF 또는 자동 motion 입력으로 사용하지 않는다.
+- `2026-05-27 16:49` RViz 화면에서 refit frame과 네 cell 표시를 확인했고,
+  `config/panel_registration.yaml`의 시각화/오프라인 검증 기준으로 승격했다.
+- 확인 근거(local): `/home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png`
+- 이 승격은 자동 motion 허가가 아니며 `use_for_automated_motion: false`를 유지한다.
 
 RViz 검토 명령:
 

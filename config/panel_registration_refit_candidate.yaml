@@ -2,7 +2,7 @@
 panel_registration_refit_candidate:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: measured_pass_pending_rviz_review
+  status: rviz_confirmed_promoted_to_active_offline_reference
   capture_date: "2026-05-27"
   source_observations: docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml
   landmark_definition: tape_crossing_and_white_paper_inner_corners_approx_20mm_inset
@@ -28,3 +28,5 @@ panel_registration_refit_candidate:
       - [0.011689467, 0.999894725, -0.008596286, 0.648167716]
       - [0.0, 0.0, 0.0, 1.0]
   use_for_automated_motion: false
+  promotion_target: config/panel_registration.yaml
+  rviz_evidence_image_local: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png

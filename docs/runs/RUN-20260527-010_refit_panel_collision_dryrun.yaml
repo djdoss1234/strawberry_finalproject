@@ -1,0 +1,128 @@
+scan_pose_collision_validation:
+  run_date: '2026-05-27'
+  method: curobo_motion_gen_registered_whiteboard_dry_run
+  candidate_version: v7_refit_panel_registration
+  robot_geometry_source: /home/user/doosan_ws/src/e0509_gripper_description/config/curobo
+  robot_collision_spheres_enabled: true
+  self_collision_check_enabled: false
+  collision_world_config: config/scan_collision_world.yaml
+  active_obstacles:
+  - registered_whiteboard
+  validation_scope: Robot/tool collision spheres reused from the mini-project baseline
+    and a whiteboard cuboid derived from the RViz-reviewed white-paper landmark refit
+    registration. This world is for cuRobo offline revalidation only. Table, tray,
+    fruit, cable and human obstacles are not included. Self-collision remains disabled
+    because the baseline coarse sphere model previously produced false positives.
+  start_state: overview_pose_operational_limit
+  start_joints_deg:
+  - 97.84
+  - -94.4
+  - 65.95
+  - -10.93
+  - 95.49
+  - -94.79
+  total_elapsed_s: 14.83
+  use_for_automated_motion: false
+  results:
+    root/nw:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      success: true
+      curobo_status: SUCCESS
+      plan_time_s: 1.407
+      target_pos_m:
+      - -0.200262
+      - -0.078445
+      - 0.739734
+      joint_range_deg:
+        J1:
+        - 48.35
+        - 97.84
+        J2:
+        - -94.4
+        - -74.64
+        J3:
+        - 65.95
+        - 81.08
+        J4:
+        - -10.93
+        - 39.58
+        J5:
+        - 62.54
+        - 95.49
+        J6:
+        - -94.8
+        - -93.62
+    root/ne:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      success: true
+      curobo_status: SUCCESS
+      plan_time_s: 1.404
+      target_pos_m:
+      - 0.349486
+      - -0.093803
+      - 0.746163
+      joint_range_deg:
+        J1:
+        - 97.84
+        - 143.24
+        J2:
+        - -94.4
+        - -73.06
+        J3:
+        - 62.91
+        - 65.95
+        J4:
+        - -54.2
+        - -10.93
+        J5:
+        - 73.31
+        - 95.49
+        J6:
+        - -98.08
+        - -94.79
+    root/sw:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: IK_FAIL
+      success: false
+      curobo_status: IK_FAIL
+      plan_time_s: 0.508
+      target_pos_m:
+      - -0.195492
+      - -0.075138
+      - 0.339776
+      joint_range_deg: null
+    root/se:
+      approach: base_neg_y
+      standoff_m: 0.4
+      label: PLAN_VALID
+      success: true
+      curobo_status: SUCCESS
+      plan_time_s: 1.343
+      target_pos_m:
+      - 0.372341
+      - 0.159228
+      - 0.351793
+      joint_range_deg:
+        J1:
+        - 0.02
+        - 97.84
+        J2:
+        - -94.4
+        - 17.07
+        J3:
+        - 65.95
+        - 120.45
+        J4:
+        - -10.93
+        - 108.29
+        J5:
+        - 95.49
+        - 103.78
+        J6:
+        - -94.79
+        - 134.74
