@@ -87,6 +87,16 @@
   - NW/SW target x ≈ -0.41m은 현재 orientation 조건에서 E0509 workspace 밖
   - NE/SE target x ≈ 0.12m은 도달 가능, 경로 계획 성공
 - 상세 결과: `docs/runs/RUN-20260527-004_curobo_dry_run.yaml`
+- standoff 격자 탐색으로 NW는 0.5–0.7m 범위에서 PLAN_VALID 확인
+- SW는 전 구간 IK_FAIL — z≈0.335m 저고도 + x≈-0.34m + panel-facing orientation = workspace 밖
+- v2 candidates (standoff 0.65m): NW/NE/SE = PLAN_VALID, SW = REQUIRES_ALTERNATIVE
+- `config/scan_pose_candidates.yaml` v2로 갱신, v1(0.921m) superseded로 보존
+- VLA 인터페이스 구현 완료:
+  - `src/strawberry_motion/interfaces/approach_proposal.py`
+  - `ApproachDirection`, `ApproachProposal`, `MotionValidationResult`, `MotionValidationStatus`
+  - `validate_approach_proposal()`: proposal → validation result, no robot motion
+  - offline lookup에 v2 dry-run 결과 반영, SW = REQUIRES_ALTERNATIVE
+  - 전체 테스트 38개 통과
 
 ## 4. 물리 Workspace 현재 사실
 

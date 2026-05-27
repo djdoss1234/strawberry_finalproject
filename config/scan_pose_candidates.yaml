@@ -1,34 +1,93 @@
 # Geometry-only targets. Never send directly to robot execution.
+# v2 candidates (standoff 0.65 m) have been cuRobo dry-run validated.
+# v1 candidates (standoff 0.921 m) are retained as superseded history.
+
+# ── Recommended v2 candidates (standoff 0.65 m, cuRobo dry-run validated) ─────
 scan_pose_candidates:
-  status: geometry_ready_pending_curobo_dry_run
+  version: v2
+  status: curobo_dry_run_validated
   capture_date: "2026-05-27"
+  standoff_m: 0.65
+  curobo_dry_run_date: "2026-05-27"
+  curobo_start_state: overview_pose_operational_limit
+  curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
-  standoff_m: 0.921486
   camera_orientation_rule: optical_z_points_from_camera_to_panel
   use_for_automated_motion: false
   targets:
     - cell_id: root/nw
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, -0.342887216]
+        - [0.867228374, -0.410137163, -0.282316358,  0.017254678]
+        - [0.425090123,  0.905104863, -0.009091473,  0.734621942]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/ne
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, 0.188183434]
+        - [0.867228374, -0.410137163, -0.282316358, -0.125452172]
+        - [0.425090123,  0.905104863, -0.009091473,  0.744552742]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/sw
+      curobo_status: IK_FAIL
+      note: >-
+        IK_FAIL at all tested standoffs (0.35–0.921 m) with panel-facing orientation.
+        z ≈ 0.335 m + x ≈ -0.335 m combination is outside E0509 workspace at this
+        orientation. Requires alternative observation strategy (e.g., observe SW
+        from NW scan position with camera tilted, or robot-base repositioning).
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, -0.335393216]
+        - [0.867228374, -0.410137163, -0.282316358,  0.017313478]
+        - [0.425090123,  0.905104863, -0.009091473,  0.334692342]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/se
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, 0.195677434]
+        - [0.867228374, -0.410137163, -0.282316358, -0.125393372]
+        - [0.425090123,  0.905104863, -0.009091473,  0.344623142]
+        - [0.0, 0.0, 0.0, 1.0]
+
+# ── Superseded v1 candidates (standoff 0.921 m) ────────────────────────────────
+scan_pose_candidates_v1_superseded:
+  version: v1
+  status: geometry_ready_superseded_by_v2
+  capture_date: "2026-05-27"
+  standoff_m: 0.921486
+  curobo_dry_run_date: "2026-05-27"
+  curobo_result_summary: "NE/SE=PLAN_VALID, NW/SW=IK_FAIL"
+  superseded_reason: >-
+    NW/SW IK_FAIL at 0.921 m standoff; reduced to 0.65 m where NW becomes PLAN_VALID.
+    SW remains IK_FAIL at all standoffs; requires alternative strategy.
+  use_for_automated_motion: false
+  targets:
+    - cell_id: root/nw
+      curobo_status: IK_FAIL
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, -0.413315571]
         - [0.867228374, -0.410137163, -0.282316358, -0.244933469]
-        - [0.425090123, 0.905104863, -0.009091473, 0.733263697]
+        - [0.425090123,  0.905104863, -0.009091473,  0.733263697]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/ne
+      curobo_status: PLAN_VALID
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, 0.117755079]
         - [0.867228374, -0.410137163, -0.282316358, -0.387640319]
-        - [0.425090123, 0.905104863, -0.009091473, 0.743194497]
+        - [0.425090123,  0.905104863, -0.009091473,  0.743194497]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
+      curobo_status: IK_FAIL
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, -0.405821571]
         - [0.867228374, -0.410137163, -0.282316358, -0.244874669]
-        - [0.425090123, 0.905104863, -0.009091473, 0.333334097]
+        - [0.425090123,  0.905104863, -0.009091473,  0.333334097]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/se
+      curobo_status: PLAN_VALID
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, 0.125249079]
         - [0.867228374, -0.410137163, -0.282316358, -0.387581519]
-        - [0.425090123, 0.905104863, -0.009091473, 0.343264897]
+        - [0.425090123,  0.905104863, -0.009091473,  0.343264897]
         - [0.0, 0.0, 0.0, 1.0]

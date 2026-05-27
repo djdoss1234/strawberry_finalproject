@@ -191,6 +191,25 @@ status: NOT_CAPTURED
 - corrected evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_corrected.png`
 - status: visualization correction before motion integration
 
+### 11. VLA ↔ Motion Layer 인터페이스 설계 및 구현
+
+- VLA가 수확 target을 제안할 때 motion layer가 실제 실행 없이 검증하는
+  structured interface를 구현했습니다.
+- `ApproachProposal` dataclass로 VLA 제안(cell_id, direction, confidence)을
+  수신하고, `validate_approach_proposal()`이 robot motion 없이
+  `MotionValidationResult`를 반환합니다.
+- RECOVER_HOME 제안은 VLA/rule layer가 보낼 수 있지만, motion layer가
+  safety warning을 포함해 반환하고 실제 실행은 executor에게만 허용됩니다.
+- offline lookup table에 cuRobo dry-run 결과(v2, 0.65m standoff)를 반영해
+  SW cell = REQUIRES_ALTERNATIVE, 나머지 3셀 = VALID로 기록했습니다.
+- 19개 전용 단위 테스트 통과.
+
+근거:
+
+- interface: `src/strawberry_motion/interfaces/approach_proposal.py`
+- tests: `tests/test_approach_proposal.py` (19 tests passed)
+- status: implemented and unit-tested; runtime cuRobo path is placeholder
+
 ### 10. cuRobo Offline IK/Motion 검증으로 실행 가능한 cell과 불가능한 cell 식별
 
 - GPU가 정상 노출된 환경에서 geometry-only TCP candidate 네 개를 cuRobo
