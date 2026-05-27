@@ -5,6 +5,7 @@ import math
 from strawberry_motion.execution.scan_safety import (
     joints_within_tolerance_deg,
     motion_start_allowed,
+    single_cell_request_allowed,
 )
 
 
@@ -45,3 +46,9 @@ def test_overview_pose_tolerance_check():
     far = [math.radians(v) for v in [98.0, -91.0, 66.2]]
     assert joints_within_tolerance_deg(actual, expected, 1.0) is True
     assert joints_within_tolerance_deg(far, expected, 1.0) is False
+
+
+def test_single_cell_validation_requires_nw_or_ne():
+    assert single_cell_request_allowed("root/nw", ["root/nw", "root/ne"])[0] is True
+    assert single_cell_request_allowed("", ["root/nw", "root/ne"])[0] is False
+    assert single_cell_request_allowed("root/se", ["root/nw", "root/ne"])[0] is False

@@ -1,0 +1,59 @@
+"""Evaluate measured cultivation-panel landmarks against a registration pose."""
+
+from __future__ import annotations
+
+from typing import Mapping
+
+import numpy as np
+
+
+DEFAULT_LANDMARKS_PANEL_M = {
+    "origin_crossing": [0.0, 0.0, 0.0],
+    "outer_nw": [-0.545, 0.395, 0.0],
+    "outer_ne": [0.555, 0.395, 0.0],
+    "outer_sw": [-0.545, -0.405, 0.0],
+    "outer_se": [0.555, -0.405, 0.0],
+}
+
+
+def predicted_base_point(transform_matrix, point_panel_m):
+    transform = np.asarray(transform_matrix, dtype=float)
+    point = np.asarray([*point_panel_m, 1.0], dtype=float)
+    return (transform @ point)[:3]
+
+
+def evaluate_landmarks(transform_matrix, observations: Mapping[str, Mapping]) -> dict:
+    """Calculate per-landmark and aggregate registration error in millimeters."""
+    results = {}
+    errors_mm = []
+    for landmark_id, observation in observations.items():
+        expected = predicted_base_point(
+            transform_matrix, observation["point_panel_m"]
+        )
+        measured = np.asarray(observation["observed_base_m"], dtype=float)
+        vector_mm = (measured - expected) * 1000.0
+        norm_mm = float(np.linalg.norm(vector_mm))
+        results[landmark_id] = {
+            "expected_base_m": [round(value, 6) for value in expected.tolist()],
+            "observed_base_m": [round(value, 6) for value in measured.tolist()],
+            "error_vector_mm": [round(value, 3) for value in vector_mm.tolist()],
+            "error_norm_mm": round(norm_mm, 3),
+        }
+        errors_mm.append(norm_mm)
+    if not errors_mm:
+        raise ValueError("At least one panel landmark observation is required.")
+    rms_mm = float(np.sqrt(np.mean(np.square(errors_mm))))
+    max_mm = float(np.max(errors_mm))
+    status = (
+        "MEASURED_PASS_PENDING_MOTION_MARGIN"
+        if len(errors_mm) == len(DEFAULT_LANDMARKS_PANEL_M) and rms_mm <= 10.0 and max_mm <= 15.0
+        else "MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE"
+    )
+    return {
+        "landmark_count": len(errors_mm),
+        "rms_error_mm": round(rms_mm, 3),
+        "max_error_mm": round(max_mm, 3),
+        "status": status,
+        "use_for_automated_motion": False,
+        "landmarks": results,
+    }

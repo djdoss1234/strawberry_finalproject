@@ -29,6 +29,7 @@ setup(
             "camera_alignment_node = strawberry_motion.visualization.camera_alignment_node:main",
             "realsense_alignment_viewer = strawberry_motion.visualization.realsense_alignment_viewer:main",
             "panel_frame_capture = strawberry_motion.registration.panel_frame_capture:main",
+            "panel_landmark_capture = strawberry_motion.registration.panel_landmark_capture:main",
             "scan_pose_target_exporter = strawberry_motion.exploration.scan_pose_target_exporter:main",
             "scan_pose_tcp_preview_node = strawberry_motion.visualization.scan_pose_tcp_preview_node:main",
             "scan_executor_node = strawberry_motion.execution.scan_executor_node:main",

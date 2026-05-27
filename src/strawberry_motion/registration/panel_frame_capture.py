@@ -92,6 +92,16 @@ def median_depth(depth_frame, u: int, v: int, radius: int):
     return float(np.median(depths)) if depths else None
 
 
+def depth_pixel_to_base(rs, depth_frame, intrinsics, t_base_camera, u, v, radius):
+    """Return an observed point in base_link, or None if depth is invalid."""
+    depth = median_depth(depth_frame, u, v, radius)
+    if depth is None:
+        return None
+    point_camera = rs.rs2_deproject_pixel_to_point(intrinsics, [u, v], depth)
+    homogeneous = np.array([*point_camera, 1.0], dtype=float)
+    return (t_base_camera @ homogeneous)[:3]
+
+
 def print_panel_transform(rs, depth_frame, intrinsics, t_base_camera, options):
     width, height = intrinsics.width, intrinsics.height
     center = (width // 2, height // 2)
@@ -102,13 +112,13 @@ def print_panel_transform(rs, depth_frame, intrinsics, t_base_camera, options):
     }
     points_base = {}
     for name, (u, v) in pixels.items():
-        depth = median_depth(depth_frame, u, v, options.patch_radius_px)
-        if depth is None:
+        point_base = depth_pixel_to_base(
+            rs, depth_frame, intrinsics, t_base_camera, u, v, options.patch_radius_px
+        )
+        if point_base is None:
             print("No valid depth for %s sample; keep camera still and retry." % name)
             return
-        point_camera = rs.rs2_deproject_pixel_to_point(intrinsics, [u, v], depth)
-        homogeneous = np.array([*point_camera, 1.0], dtype=float)
-        points_base[name] = (t_base_camera @ homogeneous)[:3]
+        points_base[name] = point_base
 
     panel = estimate_panel_transform(
         points_base["origin"], points_base["right"], points_base["up"]

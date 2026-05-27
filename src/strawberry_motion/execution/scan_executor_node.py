@@ -10,6 +10,7 @@ This node never starts from joint-state arrival. Motion requires all of:
   - config authorization and collision-world validation flags
   - an explicit /strawberry/scan/start Trigger request
   - a live joint state matching the manually verified overview pose
+  - one explicitly selected initial-validation cell (root/nw or root/ne)
 
 The current candidate config intentionally keeps authorization false.
 
@@ -48,6 +49,7 @@ from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGen
 from strawberry_motion.execution.scan_safety import (
     joints_within_tolerance_deg,
     motion_start_allowed,
+    single_cell_request_allowed,
 )
 
 _CUROBO_DIR = Path("/home/user/doosan_ws/src/e0509_gripper_description/config/curobo")
@@ -59,7 +61,7 @@ _ENVIRONMENT_YAML = Path(
 _JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 
 # Z-order: left-to-right top row, then right-to-left bottom row
-_SCAN_ORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
+_INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne"]
 
 _OVERVIEW_JOINTS_DEG = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
 
@@ -130,7 +132,9 @@ class ScanExecutorNode(Node):
         self._started = False
         self._mg: Optional[MotionGen] = None
         self.declare_parameter("execute_motion", False)
+        self.declare_parameter("target_cell", "")
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
+        self._target_cell = str(self.get_parameter("target_cell").value)
 
         pkg = get_package_share_directory("strawberry_motion")
         candidates_path = Path(pkg) / "config" / "scan_pose_candidates.yaml"
@@ -217,6 +221,10 @@ class ScanExecutorNode(Node):
         )
         if self._started:
             allowed, reason = False, "scan already started"
+        if allowed:
+            allowed, reason = single_cell_request_allowed(
+                self._target_cell, _INITIAL_SINGLE_CELL_CANDIDATES
+            )
         if allowed and not joints_within_tolerance_deg(
             self._current_joints or [], _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
         ):
@@ -358,9 +366,10 @@ class ScanExecutorNode(Node):
         # The operator must manually place the robot at this verified overview
         # pose before requesting start; the executor does not move there blindly.
         current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
-        self._pub_status("SCAN_STARTED order=%s" % str(_SCAN_ORDER))
+        scan_order = [self._target_cell]
+        self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
 
-        for cell_id in _SCAN_ORDER:
+        for cell_id in scan_order:
             if cell_id not in self._targets:
                 self.get_logger().warn("%s not in candidates — skipping" % cell_id)
                 continue

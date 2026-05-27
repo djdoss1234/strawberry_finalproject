@@ -112,6 +112,14 @@
   - 결과: `docs/runs/RUN-20260527-007_registered_whiteboard_collision_dryrun.yaml`
   - self-collision, table/tray/cable/human obstacle와 registration 오차는
     아직 미검증이므로 자동 motion은 계속 금지
+- panel TF 물리 오차 정량화를 위한 read-only landmark capture/evaluation
+  도구 추가 준비
+  - 측정점: 중앙 교차점 + outer NW/NE/SW/SE
+  - 판정: `RMS <= 10 mm`, `MAX <= 15 mm`는 registration 측정 통과 기준만 의미
+  - 절차: `docs/runs/RUN-20260527-008_panel_registration_landmark_validation_plan.md`
+- 첫 실기 scan은 전체 순회가 아니라 `root/ne` 또는 `root/nw` 중 명시한
+  단일 cell만 가능하도록 executor gate를 제한
+  - 절차: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -211,7 +219,7 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 
 우선순위 순서:
 
-1. panel registration 물리 오차를 정량 측정하고, board margin을
+1. `panel_landmark_capture`로 panel registration 물리 오차를 정량 측정하고, board margin을
    collision world에 반영
 2. self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정

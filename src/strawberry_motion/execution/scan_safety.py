@@ -36,3 +36,12 @@ def joints_within_tolerance_deg(
         abs(measured * rad_to_deg - taught) <= tolerance_deg
         for measured, taught in zip(actual, expected)
     )
+
+
+def single_cell_request_allowed(target_cell: str, allowed_cells: Iterable[str]) -> Tuple[bool, str]:
+    """Require one explicitly selected cell from the initial validation allowlist."""
+    if not target_cell:
+        return False, "target_cell parameter is required for single-cell validation"
+    if target_cell not in set(allowed_cells):
+        return False, f"target_cell {target_cell} is not approved for initial validation"
+    return True, f"single-cell target accepted: {target_cell}"

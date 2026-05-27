@@ -35,6 +35,11 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="false",
                 description="Start the locked scan executor node; never moves without explicit authorization.",
             ),
+            DeclareLaunchArgument(
+                "target_cell",
+                default_value="",
+                description="Initial physical validation permits one explicitly selected root/nw or root/ne cell only.",
+            ),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -76,7 +81,12 @@ def generate_launch_description() -> LaunchDescription:
                 executable="scan_executor_node",
                 name="scan_executor_node",
                 condition=IfCondition(LaunchConfiguration("enable_robot_execution")),
-                parameters=[{"execute_motion": True}],
+                parameters=[
+                    {
+                        "execute_motion": True,
+                        "target_cell": LaunchConfiguration("target_cell"),
+                    }
+                ],
                 output="screen",
             ),
         ]
