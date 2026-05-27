@@ -71,6 +71,8 @@
 - RViz standalone 표시에서 발생한 `No tf data`에 대응해
   `workspace_visualization_world -> cultivation_panel` identity TF를
   visualization launch에서만 publish하도록 보완
+- RViz marker topic 설정 오류를 수정하고 cell/axis 방향 대응을 사용자
+  현장 확인으로 `PASS` 판정, screenshot evidence는 전달 대기
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -135,9 +137,9 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. `ros2 launch strawberry_motion workspace_rviz.launch.py`를 실행하고
-   RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
-2. `cultivation_panel`과 `base_link` 사이 frame 관계를 정의/검증
+1. 가능하면 RViz cell 방향 확인 화면을 screenshot evidence로 저장
+2. panel registration용 AprilTag 또는 ArUco marker를 준비하고 출력 크기,
+   panel origin까지의 offset을 측정
 3. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -165,10 +167,11 @@ tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
 현장 입력을 받은 뒤:
 
 1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
-2. RViz에서 실측 cell alignment 확인 및 frame 관계 정의
-3. tape dead-zone/margin 설정 추가 여부 결정
-4. safety-checked `scan_pose_generator.py` 구현
-5. cell center observation pose를 RViz에서 먼저 검증
+2. panel marker 기반 `base_link -> cultivation_panel` registration 준비/구현
+3. RViz에서 registered frame 기준 실측 cell alignment 재검증
+4. tape dead-zone/margin 설정 추가 여부 결정
+5. safety-checked `scan_pose_generator.py` 구현
+6. cell center observation pose를 RViz에서 먼저 검증
 
 ## 8. 핵심 문서와 Git
 
@@ -177,6 +180,7 @@ tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
 - testbed: `docs/testbed_setup.md`
 - 현재 run: `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
 - 다음 run: `docs/runs/RUN-20260527-001_rviz_physical_workspace_alignment.md`
+- registration run: `docs/runs/RUN-20260527-002_panel_frame_registration_plan.md`
 - 측정 issue: `docs/issues/ISSUE-20260526-003_workspace_measurement_boundary_mismatch.md`
 - evidence: `docs/portfolio_evidence.md`
 - baseline: https://github.com/djdoss1234/strawberry_miniproject

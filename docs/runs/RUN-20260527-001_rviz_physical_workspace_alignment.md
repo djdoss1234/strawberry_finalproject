@@ -9,6 +9,7 @@
 | 단계 | exploration visualization / frame validation |
 | scene | 종이 4분할 workspace, robot motion 없음 |
 | 입력 근거 | `RUN-20260526-002`, `config/recorded_poses.yaml` |
+| 확인 방식 | 사용자 RViz 육안 확인, screenshot 전달 대기 |
 
 ## 목적과 완료 기준
 
@@ -91,23 +92,23 @@ ros2 topic pub --once /strawberry/exploration/set_cell_state \
 ## 판정
 
 ```text
-READY_TO_EXECUTE_NO_ROBOT_MOTION
+PASS_DIRECTION_CONFIRMED_SCREENSHOT_PENDING
 ```
 
-## 실행 후 기록할 결과
+## 실행 결과
 
-- RViz에 보인 cell 방향:
-- initial next cell:
-- 상태 전환 후 next cell:
-- display-only identity TF로 `No tf data` 해소 여부:
-- MarkerArray topic 설정 수정 후 cell marker 표시 여부:
-- 실제 overview image와의 대응 판정: `PASS / FAIL`
-- screenshot 경로:
-- 발견한 문제:
+- RViz `No tf data`: visualization-only identity TF 추가로 해소
+- MarkerArray 표시 실패: RViz topic property 수정 후 해소
+- publish 확인: `/strawberry/exploration/workspace_cells`에 marker payload 확인
+- state 확인: 사용자 확인 중 `root/nw=SCANNED_EMPTY`가 반영되어
+  `/strawberry/exploration/next_cell`이 `root/ne`로 갱신된 것을 topic으로 확인
+- 실제 overview image와의 cell/axis 방향 대응: 사용자 현장 확인 `PASS`
+- screenshot: 사용자 전달 전이므로 공개 evidence 갱신 대기
 
 ## 다음 행동
 
-1. RViz/physical 대응이 통과하면 evidence asset과 run 결과를 갱신합니다.
-2. 그 후 `cultivation_panel`과 `base_link` 사이 transform을 어떤 측정으로
-   정의할지 결정합니다.
-3. transform이 없는 상태에서 scan pose나 robot motion을 실행하지 않습니다.
+1. 캡처를 받으면 공개 evidence asset을 추가합니다.
+2. `RUN-20260527-002`에서 `cultivation_panel`과 `base_link` 사이
+   transform의 registration 절차를 확정합니다.
+3. transform이 검증되기 전에는 scan pose나 자동 robot motion을
+   실행하지 않습니다.
