@@ -191,6 +191,22 @@ status: NOT_CAPTURED
 - corrected evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_corrected.png`
 - status: visualization correction before motion integration
 
+### 10. cuRobo Offline IK/Motion 검증으로 실행 가능한 cell과 불가능한 cell 식별
+
+- GPU가 정상 노출된 환경에서 geometry-only TCP candidate 네 개를 cuRobo
+  `MotionGen.plan_single`로 dry-run 검증했습니다.
+- 실행 없이 cell별 도달 가능 여부를 미리 판단해, 안전하지 않은 pose를
+  실제 robot 실행 전에 필터링했습니다.
+- 결과: NE/SE = PLAN_VALID(경로 계획 성공), NW/SW = IK_FAIL(workspace 밖)
+  - NW/SW는 panel 왼쪽 x ≈ -0.41m 위치가 현재 orientation 조건에서 E0509 workspace 밖
+  - NE/SE는 x ≈ 0.12m 위치로 도달 가능 및 충돌 없는 경로 생성 확인
+
+근거:
+
+- script: `scripts/validate_scan_poses.py`
+- result: `docs/runs/RUN-20260527-004_curobo_dry_run.yaml`
+- status: IK validation complete; NW/SW pose correction required before motion integration
+
 ### 9. Observation Pose를 TCP 후보로 변환하고 실행 전 검증 경계 유지
 
 - 네 cell의 camera observation 후보를 기존 eye-in-hand calibration을

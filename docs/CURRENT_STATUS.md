@@ -81,7 +81,12 @@
 - 수정된 scan pose preview의 네 cell 방향 표시를 RViz 캡처로 확인
 - cell camera pose를 hand-eye calibration 기준 TCP target으로 변환하는
   geometry-only exporter 구현 및 후보 config 생성
-- cuRobo offline 검증 전 CUDA 점검 결과 현재 `torch.cuda.is_available() == False`
+- CUDA 재점검에서 `torch.cuda.is_available() == True`(GPU 1개)로 변경 확인
+- `scripts/validate_scan_poses.py` 구현 후 cuRobo `MotionGen` dry-run 실행 완료
+- 결과: NE/SE = `PLAN_VALID`, NW/SW = `IK_FAIL`
+  - NW/SW target x ≈ -0.41m은 현재 orientation 조건에서 E0509 workspace 밖
+  - NE/SE target x ≈ 0.12m은 도달 가능, 경로 계획 성공
+- 상세 결과: `docs/runs/RUN-20260527-004_curobo_dry_run.yaml`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -146,8 +151,11 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. CUDA/NVIDIA driver가 정상 노출된 환경에서 네 scan pose candidate의
-   cuRobo IK/관절 제한/collision을 실행 없이 검증
+1. NW/SW IK_FAIL 대응 방향 결정:
+   a. 더 작은 standoff로 NW/SW scan pose 재계산 후 IK 재검증
+   b. NW/SW 용 diagonal orientation 적용
+   c. robot base 위치 재배치 (물리 작업)
+   d. panel_registration TF 정밀 검증 후 candidate 재계산
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -179,12 +187,12 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 현장 입력을 받은 뒤:
 
-1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
-2. 기존 hand-eye calibration과 depth 기반 `base_link -> cultivation_panel` 후보 검증
-3. cell별 scan pose offline IK 및 joint-limit validation 구현
-4. tape dead-zone/margin 설정 추가 여부 결정
-5. safety-checked `scan_pose_generator.py` 구현
-6. cell center observation pose를 RViz에서 먼저 검증
+1. NW/SW IK_FAIL 대응 — standoff 조정 또는 orientation 완화로 scan pose 재계산
+2. 재계산된 NW/SW candidate를 `scan_pose_candidates.yaml`에 superseded 이력으로 남기고
+   새 candidate 추가
+3. VLA 협업용 `ApproachDirection`/`ApproachProposal` 인터페이스 설계 및 구현
+4. `ISSUE-20260526-006` 후속 automated motion safety validation 설계
+5. panel_registration TF 물리 위치 오차 정량 검증
 
 ## 8. 핵심 문서와 Git
 

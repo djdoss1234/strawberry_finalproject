@@ -1,0 +1,74 @@
+scan_pose_validation:
+  run_date: '2026-05-27'
+  method: curobo_motion_gen_dry_run
+  robot_urdf: /home/user/doosan_ws/src/e0509_gripper_description/config/curobo/e0509_gripper.urdf
+  ee_link: gripper_rh_p12_rn_base
+  world_obstacles:
+  - floor
+  start_state: overview_pose_operational_limit
+  start_joints_deg:
+  - 97.84
+  - -94.4
+  - 65.95
+  - -10.93
+  - 95.49
+  - -94.79
+  total_elapsed_s: 15.2
+  use_for_automated_motion: false
+  results:
+    root/nw:
+      label: IK_FAIL
+      success: false
+      curobo_status: IK_FAIL
+      plan_time_s: 0.484
+      target_pos_m:
+      - -0.4133
+      - -0.2449
+      - 0.7333
+      target_quat_wxyz:
+      - 0.458265
+      - 0.647782
+      - 0.291419
+      - 0.534273
+    root/ne:
+      label: PLAN_VALID
+      success: true
+      curobo_status: None
+      plan_time_s: 1.332
+      target_pos_m:
+      - 0.1178
+      - -0.3876
+      - 0.7432
+      target_quat_wxyz:
+      - 0.458265
+      - 0.647782
+      - 0.291419
+      - 0.534273
+    root/sw:
+      label: IK_FAIL
+      success: false
+      curobo_status: IK_FAIL
+      plan_time_s: 0.443
+      target_pos_m:
+      - -0.4058
+      - -0.2449
+      - 0.3333
+      target_quat_wxyz:
+      - 0.458265
+      - 0.647782
+      - 0.291419
+      - 0.534273
+    root/se:
+      label: PLAN_VALID
+      success: true
+      curobo_status: None
+      plan_time_s: 1.153
+      target_pos_m:
+      - 0.1252
+      - -0.3876
+      - 0.3433
+      target_quat_wxyz:
+      - 0.458265
+      - 0.647782
+      - 0.291419
+      - 0.534273
