@@ -76,6 +76,8 @@
 - 기존 hand-eye calibration과 aligned depth로 `base_link -> cultivation_panel`
   TF candidate를 계산하고 RViz에 적용
 - registered panel/cell이 `base_link` 기준으로 표시되는 RViz evidence 확보
+- scan pose preview 최초 표시에서 arrow 방향 의미 오류를 발견하고,
+  camera candidate에서 cell center를 향하도록 수정
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -140,7 +142,7 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. RViz scan pose preview에서 cell 중심/normal 방향을 확인
+1. 수정된 RViz scan pose preview에서 노란 camera 위치와 cell 방향을 확인
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:

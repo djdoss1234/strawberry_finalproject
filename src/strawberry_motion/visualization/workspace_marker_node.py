@@ -104,6 +104,7 @@ class WorkspaceMarkerNode(Node):
                 generate_observation_pose_previews(cells, self.config.preview_standoff_m)
             ):
                 marker_array.markers.append(self._scan_pose_preview_marker(preview, 20000 + index))
+                marker_array.markers.append(self._scan_camera_preview_marker(preview, 21000 + index))
 
         next_cell = self.tree.next_scan_cell()
         if next_cell is not None:
@@ -165,9 +166,18 @@ class WorkspaceMarkerNode(Node):
         marker.scale.z = 0.022
         marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.75, 0.0, 0.7)
         marker.points = [
-            self._point(preview.x, preview.y),
             self._point_3d(preview.x, preview.y, preview.z),
+            self._point(preview.x, preview.y),
         ]
+        return marker
+
+    def _scan_camera_preview_marker(
+        self, preview: ObservationPosePreview, marker_id: int
+    ) -> Marker:
+        marker = self._base_marker("scan_camera_previews", marker_id, Marker.SPHERE)
+        marker.pose.position = self._point_3d(preview.x, preview.y, preview.z)
+        marker.scale.x = marker.scale.y = marker.scale.z = 0.04
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.75, 0.0, 0.9)
         return marker
 
     @staticmethod

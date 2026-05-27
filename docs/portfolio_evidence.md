@@ -176,6 +176,19 @@ status: NOT_CAPTURED
 - critical issue: `ISSUE-20260526-006`
 - mitigation: motion service 호출 제거, unsafe option 거부 test 포함
 
+### 8. Scan Pose Preview에서 실행 전 시각화 오류 발견
+
+- registered panel 위에 cell별 camera observation pose preview를 표시하는
+  단계에서, arrow가 cell에서 camera 후보 위치로 향해 실제 시선 방향과
+  반대로 읽히는 문제를 확인했습니다.
+- robot motion에 연결하기 전에 marker 의미를 수정하여, camera 후보
+  위치에서 cell center를 향하는 방향으로 표시하도록 정리했습니다.
+
+근거:
+
+- evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_direction_issue.png`
+- status: visualization correction before motion integration
+
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처
@@ -195,7 +208,7 @@ status: NOT_CAPTURED
 | Physical workspace 정렬 | 종이 4분할과 overview camera 정렬 화면 확보 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
 | Camera 중심 정렬 보조 | direct viewer 표시 및 `30.0 FPS` 실기 확인 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
 | Cartesian step alignment | joint-limit 사고 후 철회, safety guard 재설계 필요 | `WITHDRAWN` | `docs/issues/ISSUE-20260526-006_cartesian_step_without_joint_limit_guard.md` |
-| Scan pose 생성 | cell + camera pose RViz 캡처 | `NOT_STARTED` | `docs/assets/exploration/` |
+| Scan pose 생성 | initial preview 방향 오류 발견, 수정 후 재캡처 필요 | `IN_PROGRESS` | `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_direction_issue.png` |
 | Robot scan motion | 실제 로봇 관찰 순회 영상 | `NOT_STARTED` | 공개 clip 결정 후 `docs/assets/motion/` 또는 외부 링크 |
 | Tray 자동 place | tray 이동 전후 place 영상 | `NOT_STARTED` | `docs/assets/tray/` 또는 외부 링크 |
 | Planner/collision 개선 | 수정 전후 비교 그림/영상 | `NOT_STARTED` | `docs/assets/motion/` |
