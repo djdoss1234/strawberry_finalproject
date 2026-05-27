@@ -49,6 +49,9 @@ root/se = X 양수, Y 음수
 - RViz의 `No tf data`를 피하기 위해
   `workspace_visualization_world -> cultivation_panel` identity TF를
   표시용으로만 publish합니다. 이것은 실측 robot/base transform이 아닙니다.
+- 첫 `.rviz` 설정에서는 MarkerArray property를 `Marker Topic`으로
+  작성해 RViz가 기본 `/visualization_marker_array`를 구독했고 marker가
+  표시되지 않았습니다. ROS 2 RViz 속성인 `Topic`으로 수정했습니다.
 
 ## 실행 절차
 
@@ -97,6 +100,7 @@ READY_TO_EXECUTE_NO_ROBOT_MOTION
 - initial next cell:
 - 상태 전환 후 next cell:
 - display-only identity TF로 `No tf data` 해소 여부:
+- MarkerArray topic 설정 수정 후 cell marker 표시 여부:
 - 실제 overview image와의 대응 판정: `PASS / FAIL`
 - screenshot 경로:
 - 발견한 문제:

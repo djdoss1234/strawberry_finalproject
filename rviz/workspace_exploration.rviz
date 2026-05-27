@@ -24,7 +24,7 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Marker Topic:
+      Topic:
         Depth: 5
         Durability Policy: Transient Local
         History Policy: Keep Last
