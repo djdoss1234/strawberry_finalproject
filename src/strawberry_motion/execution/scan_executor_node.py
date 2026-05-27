@@ -37,6 +37,7 @@ from scipy.spatial.transform import Rotation
 import rclpy
 from rclpy.node import Node
 import rclpy.callback_groups
+from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray, String
 from std_srvs.srv import Trigger
@@ -64,8 +65,10 @@ _CANDIDATES_FNAME = "scan_pose_candidates_refit_candidate.yaml"
 _COLLISION_WORLD_FNAME = "scan_collision_world.yaml"
 _JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 
-# Z-order: left-to-right top row, then right-to-left bottom row
+# Single-cell initial validation gate
 _INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne"]
+# Full traversal Z-order (nw→ne top row, sw→se bottom row)
+_ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
 
 _OVERVIEW_JOINTS_DEG = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
 
@@ -113,6 +116,7 @@ class ScanExecutorNode(Node):
         self._current_joints: Optional[List[float]] = None
         self._started = False
         self._mg: Optional[MotionGen] = None
+        self._detection_event = threading.Event()
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
@@ -145,6 +149,9 @@ class ScanExecutorNode(Node):
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
         self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
+        self.create_subscription(
+            PoseStamped, "/dsr01/curobo/pick_pose", self._pick_cb, 10
+        )
         self._state_pub = self.create_publisher(
             String, "/strawberry/exploration/set_cell_state", 10
         )
@@ -212,6 +219,9 @@ class ScanExecutorNode(Node):
         if None not in joints:
             self._current_joints = joints
 
+    def _pick_cb(self, _msg: PoseStamped) -> None:
+        self._detection_event.set()
+
     def _start_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         del request
         allowed, reason = motion_start_allowed(
@@ -222,9 +232,13 @@ class ScanExecutorNode(Node):
         if self._started:
             allowed, reason = False, "scan already started"
         if allowed:
-            allowed, reason = single_cell_request_allowed(
-                self._target_cell, _INITIAL_SINGLE_CELL_CANDIDATES
-            )
+            if self._target_cell == "all":
+                # 4-cell traversal mode: bypasses single-cell gate
+                reason = "traversal mode all cells accepted"
+            else:
+                allowed, reason = single_cell_request_allowed(
+                    self._target_cell, _INITIAL_SINGLE_CELL_CANDIDATES
+                )
         if allowed and not joints_within_tolerance_deg(
             self._current_joints or [], _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
         ):
@@ -363,11 +377,14 @@ class ScanExecutorNode(Node):
 
     def _scan_sequence(self) -> None:
         self._init_motion_gen()
-        # The operator must manually place the robot at this verified overview
-        # pose before requesting start; the executor does not move there blindly.
         current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
-        scan_order = [self._target_cell]
-        self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
+
+        if self._target_cell == "all":
+            scan_order = [c for c in _ALL_CELLS_ZORDER if c in self._targets]
+            self._pub_status("TRAVERSAL_SCAN_STARTED cells=%s" % scan_order)
+        else:
+            scan_order = [self._target_cell]
+            self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
 
         for cell_id in scan_order:
             if cell_id not in self._targets:
@@ -396,23 +413,47 @@ class ScanExecutorNode(Node):
                 self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                 return
 
-            self._pub_status("AT_SCAN_POSE %s — dwell %.1fs" % (cell_id, _SCAN_DWELL_SEC))
+            # Reset detection flag just before dwell so only picks arriving
+            # while at this scan pose are counted.
+            self._detection_event.clear()
+            joints_now = self._current_joints or []
+            joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+            self._pub_status(
+                "AT_SCAN_POSE %s joints_deg=[%s] — dwell %.1fs"
+                % (cell_id, joints_deg_str, _SCAN_DWELL_SEC)
+            )
             time.sleep(_SCAN_DWELL_SEC)
 
-            self._pub_state(cell_id, "SCAN_POSE_REACHED")
-            self._pub_status("SCAN_POSE_REACHED %s; detector result pending" % cell_id)
+            if self._detection_event.is_set():
+                self._pub_state(cell_id, "TARGET_FOUND")
+                self._pub_status("TARGET_FOUND %s pick candidate detected" % cell_id)
+            else:
+                self._pub_state(cell_id, "SCANNED_EMPTY")
+                self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
 
-            # Return to overview between cells so each plan uses the same
-            # start state as the dry-run, preventing J6 branch flip issues.
-            self._pub_status("RETURNING_TO_OVERVIEW after %s" % cell_id)
-            if not self._movej(_OVERVIEW_JOINTS_DEG, vel=20.0, acc=20.0):
-                self._pub_status("ABORT overview return failed after %s" % cell_id)
-                return
-            if not self._wait_at_overview():
-                self._pub_status("ABORT overview pose was not confirmed after %s" % cell_id)
-                return
-            current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
+            # Return to overview between cells so every next-cell plan starts
+            # from the validated overview state (prevents J6 wind-up).
+            if cell_id != scan_order[-1]:
+                self._pub_status("INTER_CELL_OVERVIEW_RESET")
+                if not self._movej(_OVERVIEW_JOINTS_DEG, vel=60.0, acc=60.0):
+                    self._pub_status("ABORT inter-cell overview return failed")
+                    return
+                if not self._wait_at_overview(timeout_sec=15.0):
+                    self._pub_status("ABORT overview not confirmed between cells")
+                    return
+                current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
 
+        # Return to overview at the end of the full scan sequence.
+        self._pub_status("RETURNING_TO_OVERVIEW")
+        if not self._movej(_OVERVIEW_JOINTS_DEG, vel=20.0, acc=20.0):
+            self._pub_status("ABORT overview return failed after scan sequence")
+            return
+        if not self._wait_at_overview():
+            self._pub_status("ABORT overview pose was not confirmed after scan sequence")
+            return
+        joints_ov = self._current_joints or []
+        joints_ov_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_ov)
+        self._pub_status("AT_OVERVIEW joints_deg=[%s]" % joints_ov_str)
         self._pub_status("SCAN_COMPLETE")
 
 

@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-27 (executor collision backend 완성, 단일 셀 scan 물리 확인만 남음)
+최종 갱신일: 2026-05-27 (단일 셀 실기 완료, 4셀 순회 J6 wind-up 수정, SW=overview 문제 발견)
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -245,25 +245,29 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 ## 7. 다음 구현
 
-scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
-**collision-aware 단일 cell scan 검증 준비**
+현재 상태: NE/NW 단일 셀 실기 완료, 4셀 순회 실행 중 두 가지 미해결 이슈 발견.
 
-우선순위 순서:
+**다음 세션 우선 해결 항목:**
+
+| 번호 | 항목 | 내용 |
+| --- | --- | --- |
+| A | SW = overview 문제 | overview FK TCP 계산 → SW TCP와 비교 → SW 스캔 후보 재탐색(standoff ≤ 0.40m) |
+| B | SE J1 114° 스윙 | IK seed 또는 standoff 조정으로 J1 스윙 범위 축소, 경로 부드럽게 |
+| C | YOLO detector 물리 연동 | pick_pose 토픽 연동 + 딸기 배치 후 TARGET_FOUND 확인 |
+
+이후 순서:
 
 1. ~~refit 이후 `IK_FAIL`이 된 `root/sw`의 standoff/approach 후보를 재탐색~~ **완료**
 2. ~~self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정~~ **완료**
 3. ~~executor runtime collision backend 연결~~ **완료**
-   - `scan_executor_node._init_motion_gen()` 실제 collision world로 교체
-4. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
-   `use_for_automated_motion` 승인 검토
-   - abort/recovery 절차 문서 완료 (RUN-20260527-013)
-   - **남은 게이트: 현장 E-stop 담당자 + clear space 확인 (물리 작업)**
-   - 확인 후 `use_for_automated_motion: true` 설정 → `root/ne` 단일 셀 scan 실행
-4. detector 결과와 cell state 연결
-   - scan 후 YOLO detection → cell 상태(SCANNED_FOUND / SCANNED_EMPTY) 갱신
-5. panel registration 오차를 motion margin에 반영
-6. tray localization 및 자동 place (미니프로젝트 baseline 이식)
+4. ~~단일 셀 실기 실행 (NE, NW)~~ **완료**
+5. ~~4셀 순회 J6 wind-up 수정 (inter-cell overview reset)~~ **완료**
+6. SW 스캔 후보 재탐색 (**진행 중**)
+7. SE IK 경로 안정화 (**진행 중**)
+8. detector 결과와 cell state 연결 (YOLO → SCANNED_FOUND/EMPTY)
+9. panel registration 오차를 motion margin에 반영
+10. tray localization 및 자동 place (미니프로젝트 baseline 이식)
 
 ## 8. 핵심 문서와 Git
 

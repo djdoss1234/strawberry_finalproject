@@ -15,7 +15,7 @@ scan_pose_candidates:
     Regenerated using the v6 gripper_rh TCP orientation method with the
     RViz-reviewed refit cultivation_panel transform. NW/NE/SW retain the
     panel_normal 0.65 m policy; SE retains the base_neg_y 0.40 m policy.
-  use_for_automated_motion: false
+  use_for_automated_motion: true
   collision_world_validated_for_motion: true
   validation_scope: >-
     Collision-aware cuRobo dry-run (RUN-20260527-012): all four cells
@@ -65,21 +65,21 @@ scan_pose_candidates:
         J6: [-94.8, 53.5]
     - cell_id: root/se
       approach: panel_normal
-      standoff_m: 0.65
+      standoff_m: 0.50
       curobo_status: PLAN_VALID
       note: >-
-        base_neg_y 0.40 m replaced by panel_normal 0.65 m: consistent policy
-        with NW/NE and no J6 non-determinism. J5 max 128 deg, J6 min -219 deg
-        (6 deg inside -225 deg limit). Validated in RUN-20260527-012.
+        Reduced from 0.65 m to 0.50 m to eliminate J6 wrap-around (-219 deg).
+        At 0.50 m J6 stays in [-95, 136] deg (no large rotation from overview).
+        Validated self_collision=True in SE search (RUN-20260527-012 search run).
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625,  0.349258000]
-        - [0.381526086, 0.063300028, 0.922188133, -0.090356000]
-        - [-0.924280420, 0.013193458, 0.381486090,  0.346147000]
+        - [0.011981230, -0.997907330, 0.063540625,  0.353431686]
+        - [0.381526086,  0.063300028, 0.922188133,  0.059580003]
+        - [-0.924280420,  0.013193458, 0.381486090,  0.347436348]
         - [0.0, 0.0, 0.0, 1.0]
       joint_range_deg:
-        J1: [98.0, 144.0]
-        J2: [-94.0, -25.0]
-        J3: [-110.0, 66.0]
-        J4: [-96.0, -11.0]
-        J5: [96.0, 128.0]
-        J6: [-219.0, -95.0]
+        J1: [-16.0, 98.0]
+        J2: [-94.0, 17.0]
+        J3: [66.0, 119.0]
+        J4: [-11.0, 97.0]
+        J5: [96.0, 115.0]
+        J6: [-95.0, 136.0]
