@@ -1,0 +1,30 @@
+# White-paper landmark refit candidate. RViz review required before replacing active TF.
+panel_registration_refit_candidate:
+  frame_id: cultivation_panel
+  parent_frame_id: base_link
+  status: measured_pass_pending_rviz_review
+  capture_date: "2026-05-27"
+  source_observations: docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml
+  landmark_definition: tape_crossing_and_white_paper_inner_corners_approx_20mm_inset
+  landmark_inset_assumption_m: 0.020
+  evaluation:
+    rms_error_mm: 9.229
+    max_error_mm: 10.981
+    max_abs_plane_offset_mm: 4.125
+    status: MEASURED_PASS_PENDING_MOTION_MARGIN
+  transform:
+    translation_m:
+      x: 0.107826964
+      y: 0.597288721
+      z: 0.648167716
+    rotation_xyzw:
+      x: 0.710000901
+      y: -0.014030832
+      z: -0.005680988
+      w: 0.704038055
+    matrix:
+      - [0.999541724, -0.011924544, -0.027823492, 0.107826964]
+      - [-0.027923070, -0.008267105, -0.999575889, 0.597288721]
+      - [0.011689467, 0.999894725, -0.008596286, 0.648167716]
+      - [0.0, 0.0, 0.0, 1.0]
+  use_for_automated_motion: false

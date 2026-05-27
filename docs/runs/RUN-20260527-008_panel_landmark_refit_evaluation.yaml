@@ -1,0 +1,25 @@
+panel_registration_refit_evaluation:
+  run_date: "2026-05-27"
+  source_observations: docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml
+  original_embedded_evaluation_status: invalid_landmark_definition_mismatch
+  correction: >-
+    The capture instruction selected white paper points immediately inside the
+    black outer tape, but the original evaluator compared them to the outer tape
+    boundary coordinates. Evaluation was repeated using an approximate 20 mm
+    inner-paper inset matching the clicked landmarks.
+  landmark_definition: tape_crossing_and_white_paper_inner_corners_approx_20mm_inset
+  landmark_inset_assumption_m: 0.020
+  fitted_transform_candidate: config/panel_registration_refit_candidate.yaml
+  evaluation:
+    rms_error_mm: 9.229
+    max_error_mm: 10.981
+    max_abs_plane_offset_mm: 4.125
+    status: MEASURED_PASS_PENDING_MOTION_MARGIN
+    use_for_automated_motion: false
+  residual_error_mm:
+    origin_crossing: 3.838
+    paper_inner_nw: 10.981
+    paper_inner_ne: 9.509
+    paper_inner_sw: 10.147
+    paper_inner_se: 9.858
+  next_action: rviz_review_refit_candidate_before_collision_world_revalidation

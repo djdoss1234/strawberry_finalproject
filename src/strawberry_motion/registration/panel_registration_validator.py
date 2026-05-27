@@ -7,7 +7,7 @@ from typing import Mapping
 import numpy as np
 
 
-DEFAULT_LANDMARKS_PANEL_M = {
+OUTER_TAPE_LANDMARKS_PANEL_M = {
     "origin_crossing": [0.0, 0.0, 0.0],
     "outer_nw": [-0.545, 0.395, 0.0],
     "outer_ne": [0.555, 0.395, 0.0],
@@ -15,11 +15,43 @@ DEFAULT_LANDMARKS_PANEL_M = {
     "outer_se": [0.555, -0.405, 0.0],
 }
 
+# Measured points are clicked on white paper approximately one 20 mm tape width
+# inside the outer black tape boundary. Refine these coordinates if the exact
+# paper-side inset is measured later.
+DEFAULT_LANDMARKS_PANEL_M = {
+    "origin_crossing": [0.0, 0.0, 0.0],
+    "paper_inner_nw": [-0.525, 0.375, 0.0],
+    "paper_inner_ne": [0.535, 0.375, 0.0],
+    "paper_inner_sw": [-0.525, -0.385, 0.0],
+    "paper_inner_se": [0.535, -0.385, 0.0],
+}
+
 
 def predicted_base_point(transform_matrix, point_panel_m):
     transform = np.asarray(transform_matrix, dtype=float)
     point = np.asarray([*point_panel_m, 1.0], dtype=float)
     return (transform @ point)[:3]
+
+
+def fit_panel_transform(observations: Mapping[str, Mapping]) -> np.ndarray:
+    """Fit a rigid panel-to-base transform from matched landmark observations."""
+    source = np.asarray([item["point_panel_m"] for item in observations.values()], dtype=float)
+    target = np.asarray([item["observed_base_m"] for item in observations.values()], dtype=float)
+    if len(source) < 3:
+        raise ValueError("At least three landmark observations are required for fitting.")
+    source_center = source.mean(axis=0)
+    target_center = target.mean(axis=0)
+    left, _, right_t = np.linalg.svd(
+        (source - source_center).T @ (target - target_center)
+    )
+    rotation = right_t.T @ left.T
+    if np.linalg.det(rotation) < 0:
+        right_t[-1] *= -1
+        rotation = right_t.T @ left.T
+    transform = np.eye(4)
+    transform[:3, :3] = rotation
+    transform[:3, 3] = target_center - rotation @ source_center
+    return transform
 
 
 def evaluate_landmarks(transform_matrix, observations: Mapping[str, Mapping]) -> dict:

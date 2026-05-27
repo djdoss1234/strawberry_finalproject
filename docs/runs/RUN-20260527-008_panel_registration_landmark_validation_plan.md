@@ -58,6 +58,34 @@ MAX absolute plane offset = 136.540 mm
 - raw screenshot: `/home/user/Pictures/Screenshot from 2026-05-27 16-24-32.png`
   - 배경에 인물이 보여 공개 asset/Git에는 추가하지 않음
 
+## Retry 측정 및 기준 수정 결과
+
+- Retry에서는 외곽점들을 검은 테이프가 아니라 흰 종이 안쪽 면에 찍었다.
+- 이 과정에서 최초 evaluator가 흰 종이 클릭을 외곽 테이프 좌표와
+  비교하는 기준 오류를 가진 것을 발견했다.
+- 약 `20 mm` tape inset을 반영한 white-paper landmark 기준으로 refit한 결과:
+
+```text
+RMS error = 9.229 mm
+MAX error = 10.981 mm
+MAX absolute plane offset = 4.125 mm
+판정 = MEASURED_PASS_PENDING_MOTION_MARGIN
+```
+
+- refit TF 후보는 `config/panel_registration_refit_candidate.yaml`에 저장했다.
+- 이 값은 RViz 확인 전까지 active TF 또는 자동 motion 입력으로 사용하지 않는다.
+
+RViz 검토 명령:
+
+```bash
+cd ~/doosan_ws
+source install/setup.bash
+ros2 launch strawberry_motion panel_refit_review.launch.py
+```
+
+이 launch는 refit 후보 frame과 cell marker만 표시하며 robot motion을
+발생시키지 않는다.
+
 ## 안전 조건
 
 - Ubuntu 쪽 도구는 RGB-D 읽기와 YAML 저장만 한다.

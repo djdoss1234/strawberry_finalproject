@@ -2,7 +2,7 @@
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: rviz_display_confirmed_landmark_recapture_required
+  status: active_original_tf_refit_candidate_pending_rviz_review
   capture_date: "2026-05-27"
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
@@ -15,7 +15,14 @@ panel_registration:
     max_error_mm: 139.001
     max_abs_plane_offset_mm: 136.540
     cause_under_review: outer_landmark_depth_invalid_on_black_tape
-    next_action: recapture_outer_landmarks_on_adjacent_white_paper_surface
+    next_action: review_refit_candidate_in_rviz_before_replacing_active_transform
+    retry_capture: docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml
+    retry_embedded_result_superseded_reason: landmark_definition_mismatch
+    refit_candidate: config/panel_registration_refit_candidate.yaml
+    corrected_refit_result: MEASURED_PASS_PENDING_MOTION_MARGIN
+    corrected_rms_error_mm: 9.229
+    corrected_max_error_mm: 10.981
+    active_transform_replacement: pending_rviz_review
   transform:
     translation_m:
       x: 0.112833

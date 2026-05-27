@@ -1,0 +1,154 @@
+panel_registration_validation:
+  raw_capture_note: >-
+    This file was generated before the landmark-definition correction. The
+    embedded evaluation below used outer tape coordinates even though clicks
+    were on white paper inside the tape. Use
+    RUN-20260527-008_panel_landmark_refit_evaluation.yaml for the corrected result.
+  capture_method: read_only_realsense_landmark_clicks_at_overview_pose
+  panel_registration_source: /home/user/doosan_ws/install/strawberry_motion/share/strawberry_motion/config/panel_registration.yaml
+  landmark_definition: tape_crossing_and_outer_tape_corners
+  observations:
+    origin_crossing:
+      point_panel_m:
+      - 0.0
+      - 0.0
+      - 0.0
+      pixel_uv:
+      - 319
+      - 239
+      observed_base_m:
+      - 0.11034892659965896
+      - 0.5949606657198888
+      - 0.6464505792072626
+    outer_nw:
+      point_panel_m:
+      - -0.545
+      - 0.395
+      - 0.0
+      pixel_uv:
+      - 104
+      - 88
+      observed_base_m:
+      - -0.4164658000220157
+      - 0.6058150103790969
+      - 1.0076637315444772
+    outer_ne:
+      point_panel_m:
+      - 0.555
+      - 0.395
+      - 0.0
+      pixel_uv:
+      - 533
+      - 90
+      observed_base_m:
+      - 0.6338020601265664
+      - 0.5835595810258755
+      - 1.0220827580143343
+    outer_sw:
+      point_panel_m:
+      - -0.545
+      - -0.405
+      - 0.0
+      pixel_uv:
+      - 111
+      - 386
+      observed_base_m:
+      - -0.4145080223503594
+      - 0.6192368254043761
+      - 0.2660940357494169
+    outer_se:
+      point_panel_m:
+      - 0.555
+      - -0.405
+      - 0.0
+      pixel_uv:
+      - 528
+      - 386
+      observed_base_m:
+      - 0.6461869831991025
+      - 0.5824784053065437
+      - 0.27878336993906266
+  evaluation:
+    landmark_count: 5
+    rms_error_mm: 117.712
+    max_error_mm: 135.078
+    max_abs_plane_offset_mm: 127.715
+    status: MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
+    use_for_automated_motion: false
+    landmarks:
+      origin_crossing:
+        expected_base_m:
+        - 0.112833
+        - 0.597764
+        - 0.643978
+        observed_base_m:
+        - 0.110349
+        - 0.594961
+        - 0.646451
+        error_vector_mm:
+        - -2.484
+        - -2.803
+        - 2.473
+        error_norm_mm: 4.488
+        plane_offset_mm: 3.339
+      outer_nw:
+        expected_base_m:
+        - -0.42081
+        - 0.739115
+        - 1.029068
+        observed_base_m:
+        - -0.416466
+        - 0.605815
+        - 1.007664
+        error_vector_mm:
+        - 4.344
+        - -133.3
+        - -21.404
+        error_norm_mm: 135.078
+        plane_offset_mm: 127.715
+      outer_ne:
+        expected_base_m:
+        - 0.641331
+        - 0.453702
+        - 1.04893
+        observed_base_m:
+        - 0.633802
+        - 0.58356
+        - 1.022083
+        error_vector_mm:
+        - -7.529
+        - 129.858
+        - -26.847
+        error_norm_mm: 132.818
+        plane_offset_mm: -123.323
+      outer_sw:
+        expected_base_m:
+        - -0.405822
+        - 0.739233
+        - 0.229209
+        observed_base_m:
+        - -0.414508
+        - 0.619237
+        - 0.266094
+        error_vector_mm:
+        - -8.686
+        - -119.996
+        - 36.885
+        error_norm_mm: 125.837
+        plane_offset_mm: 117.955
+      outer_se:
+        expected_base_m:
+        - 0.656319
+        - 0.453819
+        - 0.24907
+        observed_base_m:
+        - 0.646187
+        - 0.582478
+        - 0.278783
+        error_vector_mm:
+        - -10.132
+        - 128.659
+        - 29.713
+        error_norm_mm: 132.434
+        plane_offset_mm: -121.773
+  use_for_automated_motion: false

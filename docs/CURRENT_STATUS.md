@@ -120,6 +120,12 @@
   - 1차 캡처 결과: 중앙점 `2.663 mm` 오차이나 외곽점은 검은 테이프
     depth 오측정으로 `131~139 mm` 오차, `RECAPTURE_REQUIRED`
   - raw screenshot은 배경 인물이 있어 Git 공개 asset으로 추가하지 않음
+  - retry 과정에서 흰 종이 클릭과 outer tape 좌표를 비교하던 evaluator
+    기준 오류를 발견하고 white-paper inner-corner 기준으로 수정
+  - refit 후보: `RMS=9.229 mm`, `MAX=10.981 mm`, plane offset max
+    `4.125 mm`, `MEASURED_PASS_PENDING_MOTION_MARGIN`
+  - active panel TF 교체는 RViz 검토 전까지 보류
+  - 후보 검토 launch: `ros2 launch strawberry_motion panel_refit_review.launch.py`
 - 첫 실기 scan은 전체 순회가 아니라 `root/ne` 또는 `root/nw` 중 명시한
   단일 cell만 가능하도록 executor gate를 제한
   - 절차: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
@@ -222,8 +228,8 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 
 우선순위 순서:
 
-1. `panel_landmark_capture`를 외곽 흰 종이 면 클릭으로 재실행해
-   panel registration 물리 오차를 정량 확정하고, board margin을 collision world에 반영
+1. `panel_registration_refit_candidate.yaml`을 RViz에서 표시해 물리
+   방향/배치가 일치하는지 확인하고, 승인 후 collision world를 재검증
 2. self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정
 3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만

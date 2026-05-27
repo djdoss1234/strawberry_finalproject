@@ -3,6 +3,7 @@ import numpy as np
 from strawberry_motion.registration.panel_registration_validator import (
     DEFAULT_LANDMARKS_PANEL_M,
     evaluate_landmarks,
+    fit_panel_transform,
     predicted_base_point,
 )
 
@@ -51,3 +52,16 @@ def test_depth_point_off_panel_plane_is_rejected():
     result = evaluate_landmarks(transform, observations)
     assert result["max_abs_plane_offset_mm"] == 20.0
     assert result["status"] == "MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE"
+
+
+def test_fits_rigid_transform_from_white_paper_landmarks():
+    transform = np.eye(4)
+    transform[:3, 3] = [0.1, 0.2, 0.3]
+    observations = {
+        key: {
+            "point_panel_m": point,
+            "observed_base_m": predicted_base_point(transform, point).tolist(),
+        }
+        for key, point in DEFAULT_LANDMARKS_PANEL_M.items()
+    }
+    np.testing.assert_allclose(fit_panel_transform(observations), transform, atol=1e-9)

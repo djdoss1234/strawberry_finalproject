@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-BLOCKED_PENDING_PANEL_ERROR_AND_RUNTIME_COLLISION_BACKEND
+BLOCKED_PENDING_REFIT_RVIZ_REVIEW_AND_RUNTIME_COLLISION_BACKEND
 ```
 
 ## 목적
@@ -16,8 +16,8 @@ BLOCKED_PENDING_PANEL_ERROR_AND_RUNTIME_COLLISION_BACKEND
 - `config/scan_pose_candidates.yaml`: `use_for_automated_motion: false`
 - `config/scan_collision_world.yaml`: `use_for_automated_motion: false`
 - executor collision-aware runtime backend: 아직 잠금 상태
-- panel landmark RMS/MAX error: 1차 측정 실패 (`RMS=120.874 mm`,
-  `MAX=139.001 mm`), 흰 종이 면 기준 재측정 필요
+- panel landmark refit: 흰 종이 기준 후보는 `RMS=9.229 mm`,
+  `MAX=10.981 mm`로 측정 기준 통과, RViz 확인 전 active TF 미교체
 
 ## 후보 우선순위
 
@@ -38,7 +38,7 @@ BLOCKED_PENDING_PANEL_ERROR_AND_RUNTIME_COLLISION_BACKEND
 
 ## 실행 허용 전 완료해야 할 일
 
-1. `RUN-20260527-008` landmark error 측정 완료
+1. `panel_registration_refit_candidate.yaml` RViz 표시 확인
 2. panel TF 오차를 반영한 collision margin 결정
 3. executor가 `scan_collision_world.yaml`과 robot/tool sphere를 runtime에도
    실제로 로드하도록 연결

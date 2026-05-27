@@ -22,7 +22,7 @@ from strawberry_motion.visualization.alignment_overlay import (
 
 
 WINDOW_NAME = "Panel Landmark Capture - click landmark | s: save | r: reset | q: quit"
-ORDER = ["origin_crossing", "outer_nw", "outer_ne", "outer_sw", "outer_se"]
+ORDER = ["origin_crossing", "paper_inner_nw", "paper_inner_ne", "paper_inner_sw", "paper_inner_se"]
 
 
 def parse_args(args=None):
@@ -75,7 +75,7 @@ def main(args=None):
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.setMouseCallback(WINDOW_NAME, mouse_callback)
     print("Read-only capture. Keep the manually aligned overview pose fixed.")
-    print("Click in order: origin crossing, outer NW, outer NE, outer SW, outer SE.")
+    print("Click in order: origin crossing, inner-paper NW, NE, SW, SE.")
     print("IMPORTANT: click WHITE PAPER just inside the tape corner, not the black tape.")
 
     try:
@@ -135,7 +135,7 @@ def main(args=None):
                     "panel_registration_validation": {
                         "capture_method": "read_only_realsense_landmark_clicks_at_overview_pose",
                         "panel_registration_source": str(options.panel_registration_file),
-                        "landmark_definition": "tape_crossing_and_outer_tape_corners",
+                        "landmark_definition": "tape_crossing_and_white_paper_inner_corners_approx_20mm_inset",
                         "observations": observations,
                         "evaluation": evaluation,
                         "use_for_automated_motion": False,

@@ -212,6 +212,22 @@ status: NOT_CAPTURED
 - safety plan: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
 - status: failed measurement diagnosed; recapture required before motion authorization
 
+Retry 결과:
+
+- 흰 종이 안쪽을 클릭한 retry에서 evaluator가 outer tape 좌표와 비교하던
+  기준 불일치를 발견하고 수정했습니다.
+- 약 `20 mm` tape inset을 반영해 refit한 후보는 `RMS=9.229 mm`,
+  `MAX=10.981 mm`, 면 이탈 최대 `4.125 mm`로 registration 측정 기준을
+  통과했습니다.
+- 잘못된 판정 원인을 단순 센서 탓으로 확정하지 않고 측정 기준 자체를
+  재검토해 수정한 사례이며, refit TF는 RViz 검토 전까지 실행에 사용하지 않습니다.
+
+근거:
+
+- retry raw: `docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml`
+- corrected evaluation: `docs/runs/RUN-20260527-008_panel_landmark_refit_evaluation.yaml`
+- candidate: `config/panel_registration_refit_candidate.yaml`
+
 ### 12. Registered Whiteboard Collision Dry-run으로 Scan 후보 검증 범위 확장
 
 - `v6` scan pose 네 개를 단순 IK/empty-world 조건에서 끝내지 않고,
