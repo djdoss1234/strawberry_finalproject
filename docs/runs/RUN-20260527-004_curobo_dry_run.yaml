@@ -1,3 +1,5 @@
+# This run is v1 dry-run (panel-normal 0.921 m for all cells).
+# NW/SW IK_FAIL root cause and v4 fix are documented below under analysis.
 scan_pose_validation:
   run_date: '2026-05-27'
   method: curobo_motion_gen_dry_run
@@ -72,3 +74,26 @@ scan_pose_validation:
       - 0.647782
       - 0.291419
       - 0.534273
+
+analysis:
+  nw_sw_ik_fail_root_cause: >-
+    The cultivation_panel is rotated in base frame, so its surface normal
+    has a significant -X component. As standoff increases along this normal,
+    the computed ee_link x drifts away from the cell center x. For NW the
+    drift carries x to ~-0.41 m; at NW z (~0.73 m) this is still within
+    workspace. For SW the same x=-0.41 m occurs at z~0.335 m (low height),
+    which puts the wrist joint beyond its limit — IK_FAIL. Reducing standoff
+    does not help because the panel-normal direction itself has the -X component
+    (even at d=0.30 m the x offset is ~-0.35 m, still out of range at SW z).
+  nw_fix: >-
+    Reduced panel-normal standoff to 0.65 m. At this distance, NW x is ~-0.34 m
+    which is within workspace at NW z (~0.73 m). Consistently PLAN_VALID.
+  sw_fix: >-
+    Changed to base -Y approach (pure base-frame -Y direction). This direction
+    has no x-component, so ee_link x stays at SW cell center x = -0.147 m
+    regardless of standoff. At z~0.335 m, x=-0.147 m is comfortably reachable.
+    Valid standoff range confirmed: 0.30–0.42 m. Chose d=0.40 m as nominal.
+    Camera orientation adjusted so Z points +Y (direct panel view).
+    Visual consequence: SW arrow in RViz is near-horizontal; NW/NE/SE arrows
+    are diagonal (following the tilted panel normal).
+  fix_recorded_in: config/scan_pose_candidates.yaml (v4)

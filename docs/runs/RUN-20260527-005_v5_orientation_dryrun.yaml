@@ -1,0 +1,47 @@
+scan_pose_v5_validation:
+  run_date: "2026-05-27"
+  method: curobo_motion_gen_dry_run
+  version: v5
+  orientation_fix: >-
+    v4 TCP rotation was synthetic (panel-normal geometry); physical observation
+    confirmed camera faced base +X instead of panel (+Y). v5 recomputes TCP
+    rotation from actual overview pose + hand-eye calibration:
+    camera Z in base = [0.039, 0.998, -0.043] (faces panel). ✓
+  r_tcp_new:
+    - [ 0.063540625, -0.011981230,  0.997907330]
+    - [ 0.922188133, -0.381526086, -0.063300028]
+    - [ 0.381486090,  0.924280420, -0.013193458]
+  robot_urdf: /home/user/doosan_ws/src/e0509_gripper_description/config/curobo/e0509_gripper.urdf
+  ee_link: gripper_rh_p12_rn_base
+  robot_config: from_basic_no_collision_spheres
+  world_obstacles: none
+  start_state: overview_pose_operational_limit
+  start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+  use_for_automated_motion: false
+  results:
+    root/nw:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 0.98
+      tcp_pos_m: [-0.338, 0.009, 0.736]
+    root/ne:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 0.91
+      tcp_pos_m: [0.193, -0.134, 0.746]
+    root/sw:
+      approach: base_neg_y
+      standoff_m: 0.40
+      label: PLAN_VALID
+      plan_time_s: 0.90
+      tcp_pos_m: [-0.162, 0.237, 0.339]
+      note: panel_normal IK_FAIL (same reason as v4); base_neg_y now has correct orientation
+    root/se:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 0.88
+      tcp_pos_m: [0.201, -0.134, 0.346]
+  summary: all_4_cells_PLAN_VALID

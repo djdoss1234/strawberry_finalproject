@@ -1,0 +1,60 @@
+scan_pose_v6_validation:
+  run_date: "2026-05-27"
+  method: curobo_motion_gen_dry_run
+  version: v6
+  orientation_fix: >-
+    v5 TCP rotation was FK_calib(overview) — calibration frame is link_6 @ Rx(π)@Ry(-π/2),
+    but cuRobo plans for gripper_rh_p12_rn_base = link_6 @ Rz(π/2) (gripper_attach_joint
+    rpy="0 0 1.5708"). These differ by a 90°+flip rotation so cuRobo achieved a very
+    different physical orientation. v6 sets R_TCP_NEW = FK_gripper_rh_p12_rn_base(overview).
+    Camera Z in base = [0.039, 0.998, -0.043] (faces panel +Y). ✓
+  r_tcp_new:
+    - [ 0.011981230, -0.997907330,  0.063540625]
+    - [ 0.381526086,  0.063300028,  0.922188133]
+    - [-0.924280420,  0.013193458,  0.381486090]
+  frame_correction: >-
+    T_cam_to_gripper_rh = inv(Rz(π/2)) @ Rx(π)@Ry(-π/2) @ T_cam_to_calib_file.
+    M = [[0,-1,0],[0,0,1],[-1,0,0]]; t_cam_in_rh = M @ t_cam_to_calib = [-0.0774,-0.0119,0.0675].
+  robot_urdf: /home/user/doosan_ws/src/e0509_gripper_description/config/curobo/e0509_gripper.urdf
+  ee_link: gripper_rh_p12_rn_base
+  robot_config: from_basic_no_collision_spheres
+  world_obstacles: none
+  start_state: overview_pose_operational_limit
+  start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+  use_for_automated_motion: false
+  results:
+    root/nw:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 1.1
+      tcp_pos_m: [-0.338, 0.009, 0.736]
+      j_range_deg: "J1=[23,98] J2=[-94,-76] J3=[66,73] J4=[-11,62] J5=[69,95] J6=[-95,-86]"
+    root/ne:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 1.0
+      tcp_pos_m: [0.193, -0.134, 0.746]
+      j_range_deg: "J1=[98,122] J2=[-94,-74] J3=[66,76] J4=[-36,-11] J5=[66,95] J6=[-95,-88]"
+    root/sw:
+      approach: panel_normal
+      standoff_m: 0.65
+      label: PLAN_VALID
+      plan_time_s: 0.9
+      tcp_pos_m: [-0.330, 0.009, 0.336]
+      j_range_deg: "J1=[98,204] J2=[-94,20] J3=[66,119] J4=[-85,-11] J5=[95,125] J6=[-95,46]"
+      note: >-
+        SW now PLAN_VALID with panel_normal (same as NW/NE) — changed from v5 base_neg_y.
+        v6 orientation allows cuRobo to find a valid trajectory; J5 max=125° within 130° limit.
+    root/se:
+      approach: base_neg_y
+      standoff_m: 0.40
+      label: PLAN_VALID
+      plan_time_s: 0.9
+      tcp_pos_m: [0.369, 0.094, 0.349]
+      j_range_deg: "J1=[-10,98] J2=[-94,18] J3=[66,120] J4=[-11,101] J5=[95,111] J6=[-224,-95]"
+      note: >-
+        SE panel_normal 0.65m IK_FAIL with v6 orientation; panel_normal 0.55m/0.50m hit
+        J5 or J6 op limits. base_neg_y 0.40m PLAN_VALID, all joints within limits.
+  summary: all_4_cells_PLAN_VALID

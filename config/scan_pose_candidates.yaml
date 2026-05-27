@@ -1,21 +1,149 @@
 # Geometry-only targets. Never send directly to robot execution.
 # History: v1(0.921m) -> v2(0.65m) -> v3(left_column_center alt) -> v4(SW dedicated pose)
+#          -> v5(wrong ee frame: used FK_calib instead of FK_gripper_rh)
+#          -> v6(corrected: R_TCP = FK_gripper_rh_p12_rn_base(overview_joints))
 
-# ── Recommended v4 candidates (all 4 cells validated, each with dedicated pose) ─
-# NW/NE/SE: panel-facing orientation, standoff 0.65 m.
-# SW: base -Y approach (d=0.40 m). Panel-facing fails at all standoffs for SW;
-#     base -Y keeps x at SW cell center x, making the pose reachable.
-#     Valid range: d=0.30–0.42 m. Orientation: camera Z points +Y (direct panel view).
+# ── Recommended v6 candidates (correct gripper_rh_p12_rn_base orientation) ──────────────
+# v5 bug: R_TCP_NEW_v5 = FK of calibration frame (link_6 @ Rx(π)@Ry(-π/2)).
+#   cuRobo plans for gripper_rh_p12_rn_base = link_6 @ Rz(π/2) (gripper_attach_joint).
+#   Frame difference caused camera to face ~-X instead of +Y.
+# v6 fix: R_TCP_NEW = FK_gripper_rh_p12_rn_base(overview_joints).
+#   Camera Z in base = [0.039, 0.998, -0.043]: faces the panel (+Y). ✓
+# NW/NE/SW: panel_normal 0.65 m.
+# SE: panel_normal IK_FAIL (all standoffs exceed J5/J6 op limits); base_neg_y 0.40 m PLAN_VALID.
 scan_pose_candidates:
-  version: v4
+  version: v6
   status: curobo_dry_run_validated
   capture_date: "2026-05-27"
   curobo_dry_run_date: "2026-05-27"
+  curobo_run_record: docs/runs/RUN-20260527-006_v6_orientation_dryrun.yaml
   curobo_start_state: overview_pose_operational_limit
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
+  orientation_basis: >-
+    R_TCP = FK_gripper_rh_p12_rn_base(overview_joints): the actual URDF FK of the
+    cuRobo ee_link at the overview joint pose [97.84,-94.40,65.95,-10.93,95.49,-94.79].
+    Camera Z in base_link = [0.039, 0.998, -0.043]: faces the panel (+Y). ✓
+    Frame correction applied: T_cam_to_gripper_rh = inv(Rz(π/2)) @ Rx(π)@Ry(-π/2) @ T_cam_to_calib.
   use_for_automated_motion: false
+  targets:
+    - cell_id: root/nw
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, -0.337884193]
+        - [0.381526086,  0.063300028, 0.922188133,  0.008714997]
+        - [-0.924280420, 0.013193458, 0.381486090,  0.736130959]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/ne
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625,  0.193186571]
+        - [0.381526086,  0.063300028, 0.922188133, -0.133991789]
+        - [-0.924280420, 0.013193458, 0.381486090,  0.746061535]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/sw
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      note: >-
+        SW now PLAN_VALID with panel_normal (changed from v5 base_neg_y).
+        v6 orientation allows cuRobo to find valid trajectory; J5 max=125° within 130° limit.
+        J1 swing: 98°→204° (large but within ±225° limit).
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625, -0.330390003]
+        - [0.381526086,  0.063300028, 0.922188133,  0.008773948]
+        - [-0.924280420, 0.013193458, 0.381486090,  0.336201174]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/se
+      approach: base_neg_y
+      standoff_m: 0.40
+      curobo_status: PLAN_VALID
+      note: >-
+        SE panel_normal IK_FAIL with v6 orientation (0.65m IK_FAIL; reduced standoffs hit
+        J5/J6 op limits). base_neg_y 0.40 m PLAN_VALID, J6=[-224,-95]° within ±225° limit.
+      tcp_transform_base:
+        - [0.011981230, -0.997907330, 0.063540625,  0.369302902]
+        - [0.381526086,  0.063300028, 0.922188133,  0.093805958]
+        - [-0.924280420, 0.013193458, 0.381486090,  0.349384050]
+        - [0.0, 0.0, 0.0, 1.0]
+
+# ── Superseded v5 candidates (wrong ee frame: FK_calib instead of FK_gripper_rh) ─────────
+# v5 computed R_TCP from calibration frame FK (link_6 @ Rx(π)@Ry(-π/2)), but cuRobo
+# plans for gripper_rh_p12_rn_base (link_6 @ Rz(π/2)). The two frames differ significantly,
+# causing the camera to face ~-X instead of +Y during physical execution.
+scan_pose_candidates_v5_superseded:
+  version: v5
+  status: superseded_by_v6_wrong_ee_frame
+  superseded_reason: >-
+    v5 R_TCP_NEW = FK of calibration frame (link_6 @ TCP_fixed), NOT FK of the cuRobo
+    ee_link (gripper_rh_p12_rn_base = link_6 @ Rz(π/2)). Physical execution confirmed
+    camera still faced +X (not +Y toward panel). Root cause: gripper_attach_joint
+    rpy="0 0 1.5708" was not accounted for in the FK used to derive R_TCP.
+  use_for_automated_motion: false
+  wrong_rotation_do_not_reuse:
+    - [0.063540625, -0.011981230,  0.997907330]
+    - [0.922188133, -0.381526086, -0.063300028]
+    - [0.381486090,  0.924280420, -0.013193458]
+  targets:
+    - cell_id: root/nw
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.063540625, -0.011981230, 0.997907330, -0.337847564]
+        - [0.922188133, -0.381526086, -0.063300028,  0.008736513]
+        - [0.381486090,  0.924280420, -0.013193458,  0.736138268]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/ne
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.063540625, -0.011981230, 0.997907330,  0.193223200]
+        - [0.922188133, -0.381526086, -0.063300028, -0.133970273]
+        - [0.381486090,  0.924280420, -0.013193458,  0.746068844]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/sw
+      approach: base_neg_y
+      standoff_m: 0.40
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.063540625, -0.011981230, 0.997907330, -0.161731232]
+        - [0.922188133, -0.381526086, -0.063300028,  0.236534260]
+        - [0.381486090,  0.924280420, -0.013193458,  0.339460784]
+        - [0.0, 0.0, 0.0, 1.0]
+    - cell_id: root/se
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      tcp_transform_base:
+        - [0.063540625, -0.011981230, 0.997907330,  0.200717391]
+        - [0.922188133, -0.381526086, -0.063300028, -0.133911322]
+        - [0.381486090,  0.924280420, -0.013193458,  0.346139058]
+        - [0.0, 0.0, 0.0, 1.0]
+
+# ── Superseded v4 candidates (wrong orientation: synthetic panel-normal TCP rotation) ─
+# v4 used a panel-normal derived TCP rotation that placed gripper Z along base +X.
+# Physical observation confirmed camera was NOT facing the panel.
+# EXECUTION FORBIDDEN. Kept for geometry/IK analysis reference only.
+scan_pose_candidates_v4_superseded:
+  version: v4
+  status: superseded_by_v5_wrong_orientation
+  superseded_reason: >-
+    v4 TCP rotation was computed from synthetic panel-normal geometry, not from
+    the actual camera mount orientation. Physical observation (2026-05-27) confirmed
+    the robot faced base +X instead of the panel (+Y). v5 recomputes TCP rotation
+    from actual overview joint pose + hand-eye calibration; camera Z now faces +Y.
+  use_for_automated_motion: false
+  wrong_rotation_do_not_reuse:
+    - [0.259254358, -0.112124559, 0.959278109]
+    - [0.867228374, -0.410137163, -0.282316358]
+    - [0.425090123,  0.905104863, -0.009091473]
   targets:
     - cell_id: root/nw
       approach: panel_normal
@@ -39,11 +167,6 @@ scan_pose_candidates:
       approach: base_neg_y
       standoff_m: 0.40
       curobo_status: PLAN_VALID
-      curobo_valid_range_m: [0.30, 0.42]
-      note: >-
-        Panel-facing IK_FAIL at all standoffs (panel normal approach shifts x to -0.41 m).
-        Base -Y approach keeps x at SW cell center x (-0.147 m), making the pose reachable.
-        Camera Z points +Y directly toward the panel; orientation differs from NW/NE/SE.
       tcp_transform_base:
         - [ 0.032990325, -0.420031105, 0.906909868, -0.078969572]
         - [ 0.999350584,  0.027021240, -0.023838244,  0.280433619]
@@ -60,7 +183,6 @@ scan_pose_candidates:
         - [0.0, 0.0, 0.0, 1.0]
 
 # ── Superseded v3 candidates (left_column_center approach) ───────────────────
-# Kept as reference; superseded by v4 where SW has its own dedicated pose.
 scan_pose_candidates_v3_superseded:
   version: v3
   status: superseded_by_v4
