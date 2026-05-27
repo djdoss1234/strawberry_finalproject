@@ -5,34 +5,39 @@ overview_alignment:
   acquisition:
     robot_control: doosan_dart_manual_joint_control
     image_viewer: realsense_alignment_viewer_display_only
-    evidence_image: docs/assets/exploration/RUN-20260527-002_overview_alignment_revised.png
+    evidence_image: docs/assets/exploration/RUN-20260527-002_overview_alignment_operational_limit.png
   joint_position_deg:
-    j1: 101.90
-    j2: -102.63
-    j3: 86.28
-    j4: -13.75
-    j5: 82.21
-    j6: -93.33
+    j1: 97.84
+    j2: -94.40
+    j3: 65.95
+    j4: -10.93
+    j5: 95.49
+    j6: -94.79
   tcp_pose_base_mm_deg:
-    x: 104.97
-    y: -301.08
-    z: 550.01
-    rx: 87.01
-    ry: 66.36
-    rz: -89.14
+    x: 85.91
+    y: -385.37
+    z: 569.66
+    rx: 86.05
+    ry: 67.57
+    rz: -89.18
   result: aligned
   observed_display_fps: 30.0
   use_for_automated_motion: false
   note: >-
     This DART-recorded TCP pose reproduces the overview camera alignment
     posture. It does not by itself define the cultivation_panel-to-base
-    transform or authorize automated robot motion. Joint 2 is outside the
-    current cuRobo operational range of +/-95 degrees, so this pose is only
-    used for read-only registration capture.
+    transform or authorize automated robot motion. This pose is inside the
+    current cuRobo operational joint range, but remains a read-only
+    registration reference until motion safety validation is completed.
 
-superseded_overview_alignment:
-  recorded_date: "2026-05-26"
-  superseded_reason: j2_exceeded_current_curobo_operational_range
-  joint_position_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]
-  tcp_pose_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
-  use_for_automated_motion: false
+superseded_overview_alignments:
+  - recorded_date: "2026-05-26"
+    superseded_reason: j2_exceeded_current_curobo_operational_range
+    joint_position_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]
+    tcp_pose_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
+    use_for_automated_motion: false
+  - recorded_date: "2026-05-27"
+    superseded_reason: j2_exceeded_current_curobo_operational_range
+    joint_position_deg: [101.90, -102.63, 86.28, -13.75, 82.21, -93.33]
+    tcp_pose_base_mm_deg: [104.97, -301.08, 550.01, 87.01, 66.36, -89.14]
+    use_for_automated_motion: false

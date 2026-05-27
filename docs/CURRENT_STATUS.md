@@ -156,15 +156,15 @@ docs/assets/exploration/RUN-20260527-001_rviz_cells.png  # 확보 완료
 확보한 overview reference pose:
 
 ```yaml
-joint_deg: [101.90, -102.63, 86.28, -13.75, 82.21, -93.33]
-tcp_base_mm_deg: [104.97, -301.08, 550.01, 87.01, 66.36, -89.14]
+joint_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+tcp_base_mm_deg: [85.91, -385.37, 569.66, 86.05, 67.57, -89.18]
 ```
 
 상세 저장 위치: `config/recorded_poses.yaml`
 
-이 pose는 중앙 정렬/registration 관측용이다. `J2=-102.63 deg`가 현재
-cuRobo 운용 제한 `-95~+95 deg` 밖이므로 자동 scan/motion 입력으로
-사용하지 않는다.
+이 pose는 여섯 joint가 현재 cuRobo 운용 제한 안에 들어온 중앙 정렬
+reference이다. 단, 아직 motion safety validation 전이므로 자동
+scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한다.
 
 ## 7. 다음 구현
 
