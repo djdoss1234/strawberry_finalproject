@@ -73,6 +73,9 @@
   visualization launch에서만 publish하도록 보완
 - RViz marker topic 설정 오류를 수정하고 cell/axis 방향 대응을 사용자
   현장 확인 및 screenshot evidence로 `PASS` 판정
+- 기존 hand-eye calibration과 aligned depth로 `base_link -> cultivation_panel`
+  TF candidate를 계산하고 RViz에 적용
+- registered panel/cell이 `base_link` 기준으로 표시되는 RViz evidence 확보
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -128,7 +131,7 @@ root split = (0.0, 0.0)
 ## 5. 아직 확정하지 않은 것
 
 - motion safety margin용 경계별 tape overlap 정밀 치수
-- `cultivation_panel`과 실제 robot `base_link` 사이 transform의 RViz 검증
+- `cultivation_panel` TF의 물리 위치 오차 정량 검증
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
 - 실제 `scan_pose_generator`와 robot scan motion
@@ -137,8 +140,7 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. 저장된 overview pose에서 중앙 십자선을 확인하고 read-only depth
-   capture로 panel transform 후보를 출력
+1. RViz scan pose preview에서 cell 중심/normal 방향을 확인
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -172,7 +174,7 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
 2. 기존 hand-eye calibration과 depth 기반 `base_link -> cultivation_panel` 후보 검증
-3. RViz에서 registered frame 기준 실측 cell alignment 재검증
+3. RViz에서 registered frame 기준 scan pose preview 방향 검증
 4. tape dead-zone/margin 설정 추가 여부 결정
 5. safety-checked `scan_pose_generator.py` 구현
 6. cell center observation pose를 RViz에서 먼저 검증

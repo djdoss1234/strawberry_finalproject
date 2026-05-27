@@ -13,6 +13,10 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from strawberry_motion.exploration.quadtree_map import QuadtreeCell, QuadtreeMap
 from strawberry_motion.exploration.region_state import RegionState
+from strawberry_motion.exploration.scan_pose_generator import (
+    ObservationPosePreview,
+    generate_observation_pose_previews,
+)
 from strawberry_motion.exploration.workspace_config import load_workspace_config
 
 
@@ -95,6 +99,11 @@ class WorkspaceMarkerNode(Node):
         for index, cell in enumerate(cells):
             marker_array.markers.append(self._cell_outline_marker(cell, index * 2))
             marker_array.markers.append(self._cell_label_marker(cell, index * 2 + 1))
+        if self.config.preview_standoff_m is not None:
+            for index, preview in enumerate(
+                generate_observation_pose_previews(cells, self.config.preview_standoff_m)
+            ):
+                marker_array.markers.append(self._scan_pose_preview_marker(preview, 20000 + index))
 
         next_cell = self.tree.next_scan_cell()
         if next_cell is not None:
@@ -147,12 +156,30 @@ class WorkspaceMarkerNode(Node):
         marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.0, 1.0, 1.0)
         return marker
 
+    def _scan_pose_preview_marker(
+        self, preview: ObservationPosePreview, marker_id: int
+    ) -> Marker:
+        marker = self._base_marker("scan_pose_previews", marker_id, Marker.ARROW)
+        marker.scale.x = 0.008
+        marker.scale.y = 0.018
+        marker.scale.z = 0.022
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.75, 0.0, 0.7)
+        marker.points = [
+            self._point(preview.x, preview.y),
+            self._point_3d(preview.x, preview.y, preview.z),
+        ]
+        return marker
+
     @staticmethod
     def _point(x: float, y: float) -> Point:
+        return WorkspaceMarkerNode._point_3d(x, y, 0.0)
+
+    @staticmethod
+    def _point_3d(x: float, y: float, z: float) -> Point:
         point = Point()
         point.x = x
         point.y = y
-        point.z = 0.0
+        point.z = z
         return point
 
 

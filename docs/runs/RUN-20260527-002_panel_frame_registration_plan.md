@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-CANDIDATE_CAPTURED_PENDING_RVIZ_VALIDATION
+RVIZ_DISPLAY_CONFIRMED_PENDING_PHYSICAL_ERROR_VALIDATION
 ```
 
 ## 목적
@@ -80,7 +80,7 @@ rotation_xyzw: [0.701914023, -0.099086927, -0.085965950, 0.700077382]
 ```
 
 - 저장 위치: `config/panel_registration.yaml`
-- 현재 상태: RViz 방향/위치 확인 전 candidate
+- 현재 상태: RViz에서 `base_link` 기준 panel/cell 표시 확인, 물리 오차 정량 검증 전
 - 사용 제한: 자동 motion 입력 금지
 
 ## 시각자료 계획
@@ -89,4 +89,4 @@ rotation_xyzw: [0.701914023, -0.099086927, -0.085965950, 0.700077382]
 | --- | --- | --- |
 | 십자선과 중앙 교차점 정렬 화면 | `CAPTURED` | `docs/assets/exploration/` |
 | TF 후보 출력 terminal 값 | `RECORDED` | `config/panel_registration.yaml` |
-| TF 적용 후 RViz 비교 화면 | `NOT_CAPTURED` | `docs/assets/exploration/` 후보 |
+| TF 적용 후 RViz 비교 화면 | `CAPTURED` | `docs/assets/exploration/RUN-20260527-002_registered_panel_rviz.png` |

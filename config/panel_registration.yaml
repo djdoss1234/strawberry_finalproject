@@ -2,11 +2,12 @@
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: candidate_pending_rviz_validation
+  status: rviz_display_confirmed_pending_physical_error_validation
   capture_date: "2026-05-27"
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   reference_pose: overview_alignment
+  rviz_evidence_image: docs/assets/exploration/RUN-20260527-002_registered_panel_rviz.png
   transform:
     translation_m:
       x: 0.112833

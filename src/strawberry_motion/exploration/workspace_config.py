@@ -15,6 +15,7 @@ class WorkspaceConfig:
     root_split: tuple[float, float]
     max_depth: int
     initial_subdivision_depth: int
+    preview_standoff_m: float | None
 
 
 def load_workspace_config(path: Path) -> WorkspaceConfig:
@@ -35,8 +36,15 @@ def load_workspace_config(path: Path) -> WorkspaceConfig:
         root_split=(float(split["x"]), float(split["y"])),
         max_depth=int(workspace["max_depth"]),
         initial_subdivision_depth=int(raw["scan_policy"]["initial_subdivision_depth"]),
+        preview_standoff_m=(
+            float(raw["scan_pose"]["preview_standoff_m"])
+            if raw.get("scan_pose", {}).get("preview_standoff_m") is not None
+            else None
+        ),
     )
     if config.initial_subdivision_depth > config.max_depth:
         raise ValueError("initial_subdivision_depth cannot exceed max_depth.")
     config.bounds.quadrants(config.root_split)
+    if config.preview_standoff_m is not None and config.preview_standoff_m <= 0:
+        raise ValueError("preview_standoff_m must be positive.")
     return config
