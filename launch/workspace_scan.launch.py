@@ -1,16 +1,19 @@
-"""Launch workspace scan: TF publisher + marker node + RViz + scan executor.
+"""Launch workspace scan visualization; robot execution is opt-in and locked.
 
-The scan executor moves the robot automatically once joint states arrive.
+By default this launch starts TF, markers, scan-pose preview and RViz only.
+Even with enable_robot_execution:=true, the executor requires an explicit
+Trigger request and an authorized collision-aware candidate config.
 Monitor progress:
   ros2 topic echo /strawberry/scan/status
-Stop early:
-  Ctrl-C in the terminal running this launch
 """
 
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import yaml
 
@@ -27,6 +30,11 @@ def generate_launch_description() -> LaunchDescription:
 
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "enable_robot_execution",
+                default_value="false",
+                description="Start the locked scan executor node; never moves without explicit authorization.",
+            ),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -67,6 +75,8 @@ def generate_launch_description() -> LaunchDescription:
                 package="strawberry_motion",
                 executable="scan_executor_node",
                 name="scan_executor_node",
+                condition=IfCondition(LaunchConfiguration("enable_robot_execution")),
+                parameters=[{"execute_motion": True}],
                 output="screen",
             ),
         ]

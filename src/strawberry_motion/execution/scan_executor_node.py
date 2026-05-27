@@ -1,15 +1,20 @@
-"""Workspace scan executor: visits v6 scan poses in Z-order (NW→NE→SE→SW).
+"""Fail-closed workspace scan executor for validated scan candidates.
 
 Cell state published to /strawberry/exploration/set_cell_state:
   SCANNING      while robot is moving to the cell
-  SCANNED_EMPTY after dwell (no detector attached yet)
+  SCAN_POSE_REACHED after dwell; perception has not classified the cell yet
   PLANNING_FAIL if cuRobo or execution fails
 
-After all cells: returns to overview pose via MoveJoint.
-Scan starts automatically once the first /dsr01/joint_states message arrives.
+This node never starts from joint-state arrival. Motion requires all of:
+  - launch/parameter opt-in: execute_motion:=true
+  - config authorization and collision-world validation flags
+  - an explicit /strawberry/scan/start Trigger request
+  - a live joint state matching the manually verified overview pose
+
+The current candidate config intentionally keeps authorization false.
 
 Run:
-  ros2 launch strawberry_motion workspace_scan.launch.py
+  ros2 launch strawberry_motion workspace_scan.launch.py  # preview only
 Status monitoring:
   ros2 topic echo /strawberry/scan/status
 """
@@ -29,6 +34,7 @@ from rclpy.node import Node
 import rclpy.callback_groups
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray, String
+from std_srvs.srv import Trigger
 
 from ament_index_python.packages import get_package_share_directory
 from dsr_msgs2.srv import MoveJoint, MoveSplineJoint
@@ -39,6 +45,10 @@ from curobo.types.math import Pose
 from curobo.types.robot import JointState as CuroboJointState, RobotConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 
+from strawberry_motion.execution.scan_safety import (
+    joints_within_tolerance_deg,
+    motion_start_allowed,
+)
 
 _CUROBO_DIR = Path("/home/user/doosan_ws/src/e0509_gripper_description/config/curobo")
 _URDF_PATH = _CUROBO_DIR / "e0509_gripper.urdf"
@@ -57,6 +67,10 @@ _MAX_SPLINE_PTS = 12
 _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
+_OVERVIEW_TOLERANCE_DEG = 1.0
+# This stays false until a robot/tool collision model and measured panel world
+# are used by this executor, then validated in an offline run record.
+_COLLISION_BACKEND_READY_FOR_MOTION = False
 
 _OP_LIMITS_DEG = [
     (-225.0, 225.0),
@@ -114,25 +128,61 @@ class ScanExecutorNode(Node):
 
         self._current_joints: Optional[List[float]] = None
         self._started = False
+        self._mg: Optional[MotionGen] = None
+        self.declare_parameter("execute_motion", False)
+        self._execute_motion = bool(self.get_parameter("execute_motion").value)
 
         pkg = get_package_share_directory("strawberry_motion")
         candidates_path = Path(pkg) / "config" / "scan_pose_candidates.yaml"
         with candidates_path.open() as fh:
             data = yaml.safe_load(fh)
+        candidate_cfg = data["scan_pose_candidates"]
+        self._candidate_authorized = bool(
+            candidate_cfg.get("use_for_automated_motion", False)
+            and candidate_cfg.get("collision_world_validated_for_motion", False)
+            and _COLLISION_BACKEND_READY_FOR_MOTION
+        )
         self._targets: Dict[str, dict] = {
             t["cell_id"]: t
-            for t in data["scan_pose_candidates"]["targets"]
+            for t in candidate_cfg["targets"]
             if t.get("tcp_transform_base") is not None
         }
         self.get_logger().info(
             "Loaded %d scan targets from %s" % (len(self._targets), candidates_path)
         )
 
-        self.get_logger().info("Initialising cuRobo MotionGen …")
+        if not self._candidate_authorized:
+            self.get_logger().warn(
+                "Motion locked: scan candidates are preview/dry-run evidence only; "
+                "a collision-aware execution backend is not validated."
+            )
+
+        cb = rclpy.callback_groups.ReentrantCallbackGroup()
+        self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
+        self._state_pub = self.create_publisher(
+            String, "/strawberry/exploration/set_cell_state", 10
+        )
+        self._status_pub = self.create_publisher(String, "/strawberry/scan/status", 10)
+        self.create_service(Trigger, "/strawberry/scan/start", self._start_cb, callback_group=cb)
+        self._cli_spline = self.create_client(
+            MoveSplineJoint, "/dsr01/motion/move_spline_joint", callback_group=cb
+        )
+        self._cli_movej = self.create_client(
+            MoveJoint, "/dsr01/motion/move_joint", callback_group=cb
+        )
+
+        self.get_logger().info(
+            "scan_executor_node ready; explicit /strawberry/scan/start required"
+        )
+
+    def _init_motion_gen(self) -> None:
+        if self._mg is not None:
+            return
+        self.get_logger().info("Initialising cuRobo MotionGen")
         tensor_args = TensorDeviceType(device=torch.device("cuda:0"))
-        # Use from_basic (no collision spheres) to match the dry-run conditions
-        # that validated these scan poses. The scan poses are at 0.4–0.65 m
-        # standoff in front of the panel — no real collision risk with whiteboard.
+        # This backend is unreachable while the current config is unauthorized.
+        # Replace this empty-world setup with the verified collision scene before
+        # setting collision_world_validated_for_motion=true.
         robot_cfg = RobotConfig.from_basic(
             urdf_path=str(_URDF_PATH),
             base_link="base_link",
@@ -150,22 +200,6 @@ class ScanExecutorNode(Node):
         self._mg.warmup(warmup_js_trajopt=False)
         self.get_logger().info("cuRobo MotionGen ready")
 
-        cb = rclpy.callback_groups.ReentrantCallbackGroup()
-        self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
-        self._state_pub = self.create_publisher(
-            String, "/strawberry/exploration/set_cell_state", 10
-        )
-        self._status_pub = self.create_publisher(String, "/strawberry/scan/status", 10)
-        self._cli_spline = self.create_client(
-            MoveSplineJoint, "/dsr01/motion/move_spline_joint", callback_group=cb
-        )
-        self._cli_movej = self.create_client(
-            MoveJoint, "/dsr01/motion/move_joint", callback_group=cb
-        )
-
-        self.create_timer(1.0, self._check_start)
-        self.get_logger().info("scan_executor_node ready — waiting for /dsr01/joint_states")
-
     # ── callbacks ─────────────────────────────────────────────────────────────
 
     def _joint_cb(self, msg: JointState) -> None:
@@ -174,11 +208,29 @@ class ScanExecutorNode(Node):
         if None not in joints:
             self._current_joints = joints
 
-    def _check_start(self) -> None:
-        if self._started or self._current_joints is None:
-            return
+    def _start_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
+        del request
+        allowed, reason = motion_start_allowed(
+            execute_motion=self._execute_motion,
+            candidate_authorized=self._candidate_authorized,
+            has_joint_state=self._current_joints is not None,
+        )
+        if self._started:
+            allowed, reason = False, "scan already started"
+        if allowed and not joints_within_tolerance_deg(
+            self._current_joints or [], _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
+        ):
+            allowed = False
+            reason = "current joints do not match verified overview pose within 1.0 deg"
+        response.success = allowed
+        response.message = reason
+        if not allowed:
+            self._pub_status("START_REJECTED " + reason)
+            return response
         self._started = True
+        self._pub_status("START_ACCEPTED explicit request; initial pose verified")
         threading.Thread(target=self._scan_sequence, daemon=True).start()
+        return response
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
@@ -192,9 +244,6 @@ class ScanExecutorNode(Node):
         msg.data = text
         self._status_pub.publish(msg)
         self.get_logger().info(text)
-
-    def _clamp(self, joints: List[float]) -> List[float]:
-        return [float(np.clip(j, lo, hi)) for j, (lo, hi) in zip(joints, _JOINT_LIMITS_RAD)]
 
     def _traj_ok(self, traj: np.ndarray, label: str) -> bool:
         deg = np.rad2deg(traj)
@@ -213,7 +262,7 @@ class ScanExecutorNode(Node):
     ) -> Optional[Tuple[np.ndarray, float]]:
         start = CuroboJointState.from_position(
             position=torch.tensor(
-                [self._clamp(start_joints)], device="cuda:0", dtype=torch.float32
+                [start_joints], device="cuda:0", dtype=torch.float32
             ),
             joint_names=_JOINT_NAMES,
         )
@@ -221,6 +270,9 @@ class ScanExecutorNode(Node):
             position=torch.tensor([pos], device="cuda:0", dtype=torch.float32),
             quaternion=torch.tensor([quat_wxyz], device="cuda:0", dtype=torch.float32),
         )
+        if self._mg is None:
+            self.get_logger().error("MotionGen unavailable")
+            return None
         result = self._mg.plan_single(
             start, goal, MotionGenPlanConfig(enable_graph=True, max_attempts=4)
         )
@@ -286,15 +338,25 @@ class ScanExecutorNode(Node):
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
 
+    def _is_at_overview(self) -> bool:
+        return self._current_joints is not None and joints_within_tolerance_deg(
+            self._current_joints, _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
+        )
+
+    def _wait_at_overview(self, timeout_sec: float = 10.0) -> bool:
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            if self._is_at_overview():
+                return True
+            time.sleep(0.05)
+        return False
+
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
-        self._pub_status("MOVING_TO_OVERVIEW before scan start")
-        if not self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0):
-            self._pub_status("ABORT overview move failed")
-            return
-        # Use the known overview joint values as cuRobo start state so the
-        # world-collision check matches the validated dry-run start state.
+        self._init_motion_gen()
+        # The operator must manually place the robot at this verified overview
+        # pose before requesting start; the executor does not move there blindly.
         current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
         self._pub_status("SCAN_STARTED order=%s" % str(_SCAN_ORDER))
 
@@ -328,13 +390,18 @@ class ScanExecutorNode(Node):
             self._pub_status("AT_SCAN_POSE %s — dwell %.1fs" % (cell_id, _SCAN_DWELL_SEC))
             time.sleep(_SCAN_DWELL_SEC)
 
-            self._pub_state(cell_id, "SCANNED_EMPTY")
-            self._pub_status("SCANNED %s" % cell_id)
+            self._pub_state(cell_id, "SCAN_POSE_REACHED")
+            self._pub_status("SCAN_POSE_REACHED %s; detector result pending" % cell_id)
 
             # Return to overview between cells so each plan uses the same
             # start state as the dry-run, preventing J6 branch flip issues.
             self._pub_status("RETURNING_TO_OVERVIEW after %s" % cell_id)
-            self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+            if not self._movej(_OVERVIEW_JOINTS_DEG, vel=20.0, acc=20.0):
+                self._pub_status("ABORT overview return failed after %s" % cell_id)
+                return
+            if not self._wait_at_overview():
+                self._pub_status("ABORT overview pose was not confirmed after %s" % cell_id)
+                return
             current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
 
         self._pub_status("SCAN_COMPLETE")

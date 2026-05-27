@@ -27,6 +27,11 @@ scan_pose_candidates:
     Camera Z in base_link = [0.039, 0.998, -0.043]: faces the panel (+Y). ✓
     Frame correction applied: T_cam_to_gripper_rh = inv(Rz(π/2)) @ Rx(π)@Ry(-π/2) @ T_cam_to_calib.
   use_for_automated_motion: false
+  collision_world_validated_for_motion: false
+  validation_scope: >-
+    Empty-world cuRobo kinematic dry-run only. No robot/tool collision sphere
+    model or measured panel/tray world was active; this does not authorize
+    physical scan execution.
   targets:
     - cell_id: root/nw
       approach: panel_normal

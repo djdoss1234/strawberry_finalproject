@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-27 (세션 2 반영)
+최종 갱신일: 2026-05-27 (Codex 재인수 및 scan 안전 게이트 반영)
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -88,14 +88,22 @@
   - NW: panel-normal standoff 0.65m → PLAN_VALID
   - SW: base -Y 방향 d=0.40m → PLAN_VALID (유효범위 0.30–0.42m)
     panel-normal approach는 x를 -0.41m로 밀어 IK_FAIL; base -Y는 x=-0.147m 유지
-- **scan_pose_candidates.yaml v4**: 4셀 전부 독립 전용 포즈, 전부 PLAN_VALID
-  - v1(0.921m) → v2(0.65m) → v3(left_column_center alt) → v4(SW base-neg-Y) 이력 보존
+- **scan_pose_candidates.yaml v6**: cuRobo ee link(`gripper_rh_p12_rn_base`) 기준
+  orientation frame 오류를 수정한 4셀 후보
+  - NW/NE/SW: panel-normal `0.65 m`, SE: base-neg-Y `0.40 m`
+  - empty-world cuRobo dry-run에서는 전부 `PLAN_VALID`
+  - collision sphere와 panel/tray world가 없는 검증이므로 실기 실행 허가는 아님
 - VLA 인터페이스 구현 완료 (`src/strawberry_motion/interfaces/approach_proposal.py`):
   - `ApproachDirection`: FRONT/LEFT/RIGHT/UPPER_LEFT/UPPER_RIGHT/REOBSERVE/SKIP/RECOVER_HOME
   - `validate_approach_proposal()`: proposal → MotionValidationResult, no robot motion
-  - offline table에 v4 dry-run 결과 반영, 전체 4셀 FRONT = VALID
-  - 전체 테스트 38개 통과
-- 최신 commit: `019031b`
+  - offline table에 v6 dry-run 결과 반영, 전체 4셀 FRONT = VALID
+  - offline `VALID`는 검증 범위 내 결과일 뿐 `is_executable=False`
+  - fail-closed gate 테스트 추가 후 전체 테스트 44개 통과
+- `scan_executor_node` 초안의 자동 실행 위험을 발견해 fail-closed 구조로 수정
+  - 기본 launch는 RViz/preview only
+  - executor opt-in 및 `/strawberry/scan/start` 명시 호출 필요
+  - collision-aware backend가 검증되기 전에는 실제 motion을 강제 거부
+  - detector 결과 전에는 `SCANNED_EMPTY` 대신 `SCAN_POSE_REACHED` 사용
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -154,7 +162,7 @@ root split = (0.0, 0.0)
 - `cultivation_panel` TF의 물리 위치 오차 정량 검증
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
-- 실제 `scan_pose_generator`와 robot scan motion
+- 실제 robot scan motion: v6 후보는 있으나 collision-aware 검증 전 실행 금지
 - joint-limit 사고 당시 alarm/recovery 상세 log는 미기록이며, 이후
   DART 수동 조작으로 overview 정렬이 가능한 상태는 확인
 
@@ -190,19 +198,21 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 ## 7. 다음 구현
 
-scan pose 검증 완료 → 다음 단계: **실제 scan motion 연결**
+scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
+**collision-aware 단일 cell scan 검증 준비**
 
 우선순위 순서:
 
-1. `scan_pose_candidates.yaml` v4를 `workspace_marker_node` 또는
-   scan executor에 연결해 실제 robot scan motion 실행
-   - 연결 전 RViz에서 v4 포즈 preview 재확인 (SW의 다른 orientation 포함)
-2. `ISSUE-20260526-006` 후속 — automated motion safety validation layer 설계
-   - 실제 실행 전 IK/collision 검사 pipeline 구현
-3. detector 결과와 cell state 연결
+1. 미니프로젝트의 검증된 robot/tool collision geometry와 panel world를
+   finalproject의 scan planner 입력으로 연결
+2. `v6`를 collision-aware offline plan으로 재검증하고, clearance와
+   joint margin을 cell별 기록
+3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
+   `use_for_automated_motion` 승인 검토
+4. detector 결과와 cell state 연결
    - scan 후 YOLO detection → cell 상태(SCANNED_FOUND / SCANNED_EMPTY) 갱신
-4. panel_registration TF 물리 위치 오차 정량 검증
-5. tray localization 및 자동 place (미니프로젝트 baseline 이식)
+5. panel_registration TF 물리 위치 오차 정량 검증
+6. tray localization 및 자동 place (미니프로젝트 baseline 이식)
 
 ## 8. 핵심 문서와 Git
 

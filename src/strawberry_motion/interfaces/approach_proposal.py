@@ -5,8 +5,8 @@ The VLA (or rule layer) calls validate_approach_proposal() with an
 ApproachProposal.  The function returns a MotionValidationResult WITHOUT
 executing any robot motion.  The caller decides whether to proceed.
 
-Execution is only permitted when MotionValidationStatus.VALID is returned
-AND the caller explicitly invokes the executor.
+Offline VALID means a recorded candidate passed its stated validation scope.
+It never authorizes physical motion by itself.
 """
 
 from __future__ import annotations
@@ -70,9 +70,9 @@ class ApproachProposal:
 class MotionValidationResult:
     """Validation result returned to VLA or rule layer.
 
-    No robot motion has occurred.  VALID status means the trajectory
-    planner found a collision-free path; the caller must explicitly
-    trigger execution.
+    No robot motion has occurred. VALID status means the proposed action
+    satisfied the validation scope described in ``planner_note``. Offline
+    empty-world validation is not physical execution authorization.
 
     Fields:
         proposal         - the original proposal that was validated
@@ -81,6 +81,8 @@ class MotionValidationResult:
                            from proposal if the direction was adjusted)
         joint_solution   - joint angles (deg) of the IK solution, or None
         planner_note     - diagnostic message from the motion layer
+        authorizes_physical_motion - set true only after runtime scene,
+                           start-state and operator authorization checks
     """
 
     proposal: ApproachProposal
@@ -88,33 +90,36 @@ class MotionValidationResult:
     validated_pos_m: Optional[Tuple[float, float, float]] = None
     joint_solution: Optional[Tuple[float, ...]] = None
     planner_note: Optional[str] = None
+    authorizes_physical_motion: bool = False
 
     @property
     def is_executable(self) -> bool:
-        return self.status == MotionValidationStatus.VALID
+        return (
+            self.status == MotionValidationStatus.VALID
+            and self.authorizes_physical_motion
+        )
 
 
 # ── Pre-loaded offline validation table ────────────────────────────────────────
-# Populated from scan_pose_candidates.yaml dry-run results (v2, standoff 0.65 m).
+# Populated from scan_pose_candidates.yaml v6 empty-world dry-run results.
 # Key: (cell_id, ApproachDirection) -> MotionValidationStatus
 # This is a static lookup; runtime cuRobo validation will supersede these.
 
 _OFFLINE_TABLE: dict = {
     ("root/nw", ApproachDirection.FRONT): MotionValidationStatus.VALID,
     ("root/ne", ApproachDirection.FRONT): MotionValidationStatus.VALID,
-    # SW: panel-facing (FRONT) fails; base-neg-Y (FRONT with adjusted geometry) is VALID.
-    # ApproachDirection.FRONT for SW is mapped to VALID in v4 because the scan_pose_candidates
-    # config already selects the correct pose (base_neg_y) per cell_id at execution time.
     ("root/sw", ApproachDirection.FRONT): MotionValidationStatus.VALID,
     ("root/se", ApproachDirection.FRONT): MotionValidationStatus.VALID,
 }
 
 _OFFLINE_NOTES: dict = {
     ("root/sw", ApproachDirection.FRONT): (
-        "PLAN_VALID via base-neg-Y approach (d=0.40 m, valid range 0.30–0.42 m). "
-        "Panel-normal approach IK_FAIL at all standoffs (x drifts to -0.41 m). "
-        "base-neg-Y keeps x at SW cell center (-0.147 m); orientation differs from NW/NE/SE. "
-        "See scan_pose_candidates.yaml v4 root/sw for tcp_transform_base."
+        "v6 PLAN_VALID via panel_normal d=0.65 m in empty-world cuRobo dry-run only. "
+        "J1 range is large (98 to 204 deg); collision-aware runtime validation is required."
+    ),
+    ("root/se", ApproachDirection.FRONT): (
+        "v6 PLAN_VALID via base_neg_y d=0.40 m in empty-world cuRobo dry-run only. "
+        "J6 approaches the operational bound; collision-aware runtime validation is required."
     ),
 }
 
@@ -133,8 +138,8 @@ def validate_approach_proposal(
 
     Returns:
         MotionValidationResult with status and optional diagnostic info.
-        Status VALID does NOT authorise execution; the caller must
-        explicitly invoke the robot executor.
+        Status VALID does NOT authorise execution. A collision-aware runtime
+        validator and explicitly armed executor are still required.
     """
     direction = proposal.direction
 
@@ -147,14 +152,12 @@ def validate_approach_proposal(
         )
 
     if direction == ApproachDirection.RECOVER_HOME:
-        # HOME pose is pre-validated as safe; a real implementation would
-        # verify start-state collision before accepting.
         return MotionValidationResult(
             proposal=proposal,
-            status=MotionValidationStatus.VALID,
+            status=MotionValidationStatus.NOT_VALIDATED,
             planner_note=(
-                "RECOVER_HOME accepted by motion layer. "
-                "Actual path safety must be verified before execution."
+                "RECOVER_HOME requested, but no current-state-to-home collision-aware "
+                "path has been validated; execution is blocked pending runtime safety checks."
             ),
         )
 
@@ -166,6 +169,11 @@ def validate_approach_proposal(
             note = (
                 f"No offline record for ({proposal.cell_id}, {direction.value}). "
                 "Run cuRobo dry-run to obtain a validation result."
+            )
+        elif note is None:
+            note = (
+                "v6 empty-world cuRobo dry-run recorded PLAN_VALID; this is not "
+                "collision-aware physical motion authorization."
             )
         return MotionValidationResult(
             proposal=proposal,

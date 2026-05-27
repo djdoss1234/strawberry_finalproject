@@ -19,6 +19,10 @@ scan_pose_v6_validation:
   ee_link: gripper_rh_p12_rn_base
   robot_config: from_basic_no_collision_spheres
   world_obstacles: none
+  validation_scope: >-
+    Empty-world kinematic planning check only. Robot/tool collision spheres and
+    measured panel/tray obstacles were not active. PLAN_VALID does not authorize
+    physical robot motion.
   start_state: overview_pose_operational_limit
   start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   use_for_automated_motion: false

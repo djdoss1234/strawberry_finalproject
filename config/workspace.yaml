@@ -58,6 +58,8 @@ scan_policy:
   terminal_states:
     - SCANNED_EMPTY
     - HARVESTED
+  intermediate_states:
+    - SCAN_POSE_REACHED
 
 # The exact camera stand-off distance and orientation will be measured after
 # the overview camera pose is fixed.

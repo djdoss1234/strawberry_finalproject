@@ -41,11 +41,20 @@ class TestApproachProposal:
 
 
 class TestMotionValidationResult:
-    def test_valid_is_executable(self):
+    def test_valid_without_physical_authorization_is_not_executable(self):
         proposal = ApproachProposal(cell_id="root/ne", direction=ApproachDirection.FRONT)
         result = MotionValidationResult(
             proposal=proposal,
             status=MotionValidationStatus.VALID,
+        )
+        assert result.is_executable is False
+
+    def test_valid_runtime_authorization_is_executable(self):
+        proposal = ApproachProposal(cell_id="root/ne", direction=ApproachDirection.FRONT)
+        result = MotionValidationResult(
+            proposal=proposal,
+            status=MotionValidationStatus.VALID,
+            authorizes_physical_motion=True,
         )
         assert result.is_executable is True
 
@@ -73,7 +82,7 @@ class TestValidateApproachProposal:
         p = ApproachProposal(cell_id="root/ne", direction=ApproachDirection.FRONT)
         result = validate_approach_proposal(p)
         assert result.status == MotionValidationStatus.VALID
-        assert result.is_executable is True
+        assert result.is_executable is False
 
     def test_nw_front_is_valid(self):
         p = ApproachProposal(cell_id="root/nw", direction=ApproachDirection.FRONT)
@@ -85,17 +94,16 @@ class TestValidateApproachProposal:
         result = validate_approach_proposal(p)
         assert result.status == MotionValidationStatus.VALID
 
-    def test_sw_front_is_valid_via_base_neg_y(self):
-        # v4: SW uses base-neg-Y approach; FRONT maps to VALID for SW
+    def test_sw_front_is_empty_world_valid_via_panel_normal_v6(self):
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
         result = validate_approach_proposal(p)
         assert result.status == MotionValidationStatus.VALID
-        assert result.is_executable is True
+        assert result.is_executable is False
 
-    def test_sw_front_note_mentions_base_neg_y(self):
+    def test_sw_front_note_mentions_empty_world_scope(self):
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
         result = validate_approach_proposal(p)
-        assert "base-neg-Y" in (result.planner_note or "") or "base_neg_y" in (result.planner_note or "").lower()
+        assert "empty-world" in (result.planner_note or "")
 
     def test_unknown_cell_returns_not_validated(self):
         p = ApproachProposal(cell_id="root/unknown", direction=ApproachDirection.FRONT)
@@ -113,10 +121,10 @@ class TestValidateApproachProposal:
         result = validate_approach_proposal(p)
         assert result.status == MotionValidationStatus.VALID
 
-    def test_recover_home_is_valid(self):
+    def test_recover_home_requires_runtime_validation(self):
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.RECOVER_HOME)
         result = validate_approach_proposal(p)
-        assert result.status == MotionValidationStatus.VALID
+        assert result.status == MotionValidationStatus.NOT_VALIDATED
 
     def test_recover_home_note_mentions_safety(self):
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.RECOVER_HOME)
