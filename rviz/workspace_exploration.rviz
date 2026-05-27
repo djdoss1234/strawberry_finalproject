@@ -38,7 +38,7 @@ Visualization Manager:
       Value: true
   Global Options:
     Background Color: 35; 35; 35
-    Fixed Frame: cultivation_panel
+    Fixed Frame: base_link
     Frame Rate: 30
   Name: root
   Tools:

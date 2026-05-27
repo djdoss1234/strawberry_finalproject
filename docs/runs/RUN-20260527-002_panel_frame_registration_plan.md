@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-READ_ONLY_CAPTURE_TOOL_IMPLEMENTED_PENDING_CAPTURE
+CANDIDATE_CAPTURED_PENDING_RVIZ_VALIDATION
 ```
 
 ## 목적
@@ -66,10 +66,27 @@ ros2 run strawberry_motion panel_frame_capture -- \
 - RViz에서 실제 보드의 좌우/상하 방향과 cell 배치가 일치한다.
 - 이 단계에서는 자동 scan motion을 실행하지 않는다.
 
+## 측정 결과
+
+운용 제한 안의 overview pose에서 `panel_frame_capture` 출력값을 확보했다.
+
+```yaml
+translation_m: [0.112833, 0.597764, 0.643978]
+rotation_matrix:
+  - [0.965583, -0.018735, -0.259418]
+  - [-0.259467, -0.000147, -0.965752]
+  - [0.018056, 0.999824, -0.005003]
+rotation_xyzw: [0.701914023, -0.099086927, -0.085965950, 0.700077382]
+```
+
+- 저장 위치: `config/panel_registration.yaml`
+- 현재 상태: RViz 방향/위치 확인 전 candidate
+- 사용 제한: 자동 motion 입력 금지
+
 ## 시각자료 계획
 
 | 자료 | 상태 | 저장 위치 |
 | --- | --- | --- |
 | 십자선과 중앙 교차점 정렬 화면 | `CAPTURED` | `docs/assets/exploration/` |
-| TF 후보 출력 terminal 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` 후보 |
+| TF 후보 출력 terminal 값 | `RECORDED` | `config/panel_registration.yaml` |
 | TF 적용 후 RViz 비교 화면 | `NOT_CAPTURED` | `docs/assets/exploration/` 후보 |

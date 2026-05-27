@@ -128,7 +128,7 @@ root split = (0.0, 0.0)
 ## 5. 아직 확정하지 않은 것
 
 - motion safety margin용 경계별 tape overlap 정밀 치수
-- `cultivation_panel`과 실제 robot `base_link` 사이 transform
+- `cultivation_panel`과 실제 robot `base_link` 사이 transform의 RViz 검증
 - camera stand-off distance와 orientation
 - RViz physical alignment 캡처
 - 실제 `scan_pose_generator`와 robot scan motion
@@ -180,6 +180,7 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 ## 8. 핵심 문서와 Git
 
 - geometry/config: `config/workspace.yaml`
+- registration candidate: `config/panel_registration.yaml`
 - reference poses: `config/recorded_poses.yaml`
 - testbed: `docs/testbed_setup.md`
 - 현재 run: `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
