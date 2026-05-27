@@ -1,13 +1,16 @@
 # Geometry-only targets. Never send directly to robot execution.
-# v2 candidates (standoff 0.65 m) have been cuRobo dry-run validated.
+# v3 adds left_column_center pose as SW alternative (standoff 0.60 m, PLAN_VALID).
+# v2 candidates (standoff 0.65 m) are retained.
 # v1 candidates (standoff 0.921 m) are retained as superseded history.
 
-# ── Recommended v2 candidates (standoff 0.65 m, cuRobo dry-run validated) ─────
+# ── Recommended v3 candidates ────────────────────────────────────────────────
+# SW cannot be reached with panel-facing orientation at any standoff.
+# SW is observed from left_column_center: panel (x=-0.2725, y=0.0, z=0.60),
+# which covers both NW and SW cells within camera FoV from a single pose.
 scan_pose_candidates:
-  version: v2
+  version: v3
   status: curobo_dry_run_validated
   capture_date: "2026-05-27"
-  standoff_m: 0.65
   curobo_dry_run_date: "2026-05-27"
   curobo_start_state: overview_pose_operational_limit
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
@@ -17,6 +20,7 @@ scan_pose_candidates:
   use_for_automated_motion: false
   targets:
     - cell_id: root/nw
+      standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, -0.342887216]
@@ -24,6 +28,7 @@ scan_pose_candidates:
         - [0.425090123,  0.905104863, -0.009091473,  0.734621942]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/ne
+      standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, 0.188183434]
@@ -31,24 +36,42 @@ scan_pose_candidates:
         - [0.425090123,  0.905104863, -0.009091473,  0.744552742]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
-      curobo_status: IK_FAIL
+      standoff_m: null
+      curobo_status: IK_FAIL_USE_ALTERNATIVE
+      alternative_pose_id: left_column_center
       note: >-
         IK_FAIL at all tested standoffs (0.35–0.921 m) with panel-facing orientation.
-        z ≈ 0.335 m + x ≈ -0.335 m combination is outside E0509 workspace at this
-        orientation. Requires alternative observation strategy (e.g., observe SW
-        from NW scan position with camera tilted, or robot-base repositioning).
-      tcp_transform_base:
-        - [0.259254358, -0.112124559, 0.959278109, -0.335393216]
-        - [0.867228374, -0.410137163, -0.282316358,  0.017313478]
-        - [0.425090123,  0.905104863, -0.009091473,  0.334692342]
-        - [0.0, 0.0, 0.0, 1.0]
+        Observed from left_column_center pose instead: panel (x=-0.2725, y=0.0),
+        standoff=0.60 m, which covers both NW and SW cells within camera FoV.
+      tcp_transform_base: null
     - cell_id: root/se
+      standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
         - [0.259254358, -0.112124559, 0.959278109, 0.195677434]
         - [0.867228374, -0.410137163, -0.282316358, -0.125393372]
         - [0.425090123,  0.905104863, -0.009091473,  0.344623142]
         - [0.0, 0.0, 0.0, 1.0]
+
+# ── Alternative poses ────────────────────────────────────────────────────────
+alternative_scan_poses:
+  - pose_id: left_column_center
+    description: >-
+      Left-column center observation. Panel frame (x=-0.2725, y=0.0, z=0.60 m).
+      Single pose that covers both root/nw and root/sw within camera FoV
+      (RealSense H-FOV ~87 deg; at 0.60 m standoff covers ~1.1 m horizontal and
+      ~0.75 m vertical, which spans the 0.4 m NW+SW combined height).
+    covers_cells: [root/nw, root/sw]
+    standoff_m: 0.60
+    panel_frame_xy: [-0.2725, 0.0]
+    curobo_status: PLAN_VALID
+    curobo_valid_standoff_range_m: [0.45, 0.70]
+    use_for_automated_motion: false
+    tcp_transform_base:
+      - [0.259254358, -0.112124559, 0.959278109, -0.326216153]
+      - [0.867228374, -0.410137163, -0.282316358,  0.065571311]
+      - [0.425090123,  0.905104863, -0.009091473,  0.537406852]
+      - [0.0, 0.0, 0.0, 1.0]
 
 # ── Superseded v1 candidates (standoff 0.921 m) ────────────────────────────────
 scan_pose_candidates_v1_superseded:

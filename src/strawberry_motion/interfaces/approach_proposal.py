@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
-from typing import List, Optional, Tuple
-
-import numpy as np
+from typing import Optional, Tuple
 
 
 class ApproachDirection(enum.Enum):
@@ -106,13 +104,21 @@ _OFFLINE_TABLE: dict = {
     ("root/ne", ApproachDirection.FRONT): MotionValidationStatus.VALID,
     ("root/sw", ApproachDirection.FRONT): MotionValidationStatus.REQUIRES_ALTERNATIVE,
     ("root/se", ApproachDirection.FRONT): MotionValidationStatus.VALID,
+    # left_column_center covers SW from an alternative position
+    ("root/sw", ApproachDirection.UPPER_LEFT): MotionValidationStatus.VALID,
 }
 
 _OFFLINE_NOTES: dict = {
     ("root/sw", ApproachDirection.FRONT): (
         "IK_FAIL at all tested standoffs (0.35–0.921 m) with panel-facing orientation. "
         "z ≈ 0.335 m + x ≈ -0.335 m falls outside E0509 workspace at this orientation. "
-        "Consider observing SW from NW scan position or repositioning robot base."
+        "Use UPPER_LEFT direction: left_column_center pose (panel y=0, standoff=0.60 m) "
+        "covers both NW and SW cells within camera FoV. See config/scan_pose_candidates.yaml."
+    ),
+    ("root/sw", ApproachDirection.UPPER_LEFT): (
+        "Validated via left_column_center alternative pose (panel x=-0.2725, y=0.0, "
+        "standoff=0.60 m). PLAN_VALID across standoff range 0.45–0.70 m. "
+        "Single pose covers NW+SW within RealSense FoV (~0.75 m vertical at 0.60 m)."
     ),
 }
 

@@ -123,6 +123,17 @@ class TestValidateApproachProposal:
         result = validate_approach_proposal(p)
         assert "safety" in (result.planner_note or "").lower() or "safe" in (result.planner_note or "").lower()
 
+    def test_sw_upper_left_is_valid_alternative(self):
+        p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.UPPER_LEFT)
+        result = validate_approach_proposal(p)
+        assert result.status == MotionValidationStatus.VALID
+        assert result.is_executable is True
+
+    def test_sw_front_note_mentions_upper_left(self):
+        p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
+        result = validate_approach_proposal(p)
+        assert "UPPER_LEFT" in (result.planner_note or "")
+
     def test_runtime_not_implemented(self):
         p = ApproachProposal(cell_id="root/ne", direction=ApproachDirection.FRONT)
         with pytest.raises(NotImplementedError):
