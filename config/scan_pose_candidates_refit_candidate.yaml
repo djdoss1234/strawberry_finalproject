@@ -16,7 +16,7 @@ scan_pose_candidates:
     RViz-reviewed refit cultivation_panel transform. NW/NE/SW retain the
     panel_normal 0.65 m policy; SE retains the base_neg_y 0.40 m policy.
   use_for_automated_motion: false
-  collision_world_validated_for_motion: false
+  collision_world_validated_for_motion: true
   validation_scope: >-
     Collision-aware cuRobo dry-run (RUN-20260527-012): all four cells
     PLAN_VALID with self_collision_check=True and whiteboard cuboid.

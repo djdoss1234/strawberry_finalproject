@@ -7,12 +7,15 @@ Cell state published to /strawberry/exploration/set_cell_state:
 
 This node never starts from joint-state arrival. Motion requires all of:
   - launch/parameter opt-in: execute_motion:=true
-  - config authorization and collision-world validation flags
+  - YAML flags: use_for_automated_motion=true AND collision_world_validated_for_motion=true
   - an explicit /strawberry/scan/start Trigger request
   - a live joint state matching the manually verified overview pose
   - one explicitly selected initial-validation cell (root/nw or root/ne)
 
-The current candidate config intentionally keeps authorization false.
+The collision backend uses the validated scene (RUN-20260527-012):
+  robot/tool collision spheres + registered whiteboard cuboid + self_collision.
+Motion remains blocked by use_for_automated_motion in the candidates YAML.
+To authorize: set use_for_automated_motion=true after physical E-stop verification.
 
 Run:
   ros2 launch strawberry_motion workspace_scan.launch.py  # preview only
@@ -22,6 +25,7 @@ Status monitoring:
 
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -40,7 +44,7 @@ from std_srvs.srv import Trigger
 from ament_index_python.packages import get_package_share_directory
 from dsr_msgs2.srv import MoveJoint, MoveSplineJoint
 
-from curobo.geom.types import WorldConfig  # noqa: F401 – kept for WorldConfig(cuboid=[])
+from curobo.geom.types import Cuboid, WorldConfig
 from curobo.types.base import TensorDeviceType
 from curobo.types.math import Pose
 from curobo.types.robot import JointState as CuroboJointState, RobotConfig
@@ -55,9 +59,9 @@ from strawberry_motion.execution.scan_safety import (
 _CUROBO_DIR = Path("/home/user/doosan_ws/src/e0509_gripper_description/config/curobo")
 _URDF_PATH = _CUROBO_DIR / "e0509_gripper.urdf"
 _ROBOT_YML = _CUROBO_DIR / "e0509_gripper.yml"
-_ENVIRONMENT_YAML = Path(
-    "/home/user/doosan_ws/src/e0509_gripper_description/config/environment.yaml"
-)
+_SPHERES_PATH = _CUROBO_DIR / "e0509_spheres.yml"
+_CANDIDATES_FNAME = "scan_pose_candidates_refit_candidate.yaml"
+_COLLISION_WORLD_FNAME = "scan_collision_world.yaml"
 _JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 
 # Z-order: left-to-right top row, then right-to-left bottom row
@@ -70,9 +74,10 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-# This stays false until a robot/tool collision model and measured panel world
-# are used by this executor, then validated in an offline run record.
-_COLLISION_BACKEND_READY_FOR_MOTION = False
+# True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
+# (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
+# in the candidates YAML, which the operator sets after physical E-stop verification.
+_COLLISION_BACKEND_READY_FOR_MOTION = True
 
 _OP_LIMITS_DEG = [
     (-225.0, 225.0),
@@ -102,29 +107,6 @@ def _mat4_to_pos_quat_wxyz(mat4: np.ndarray) -> Tuple[List[float], List[float]]:
 
 class ScanExecutorNode(Node):
 
-    @staticmethod
-    def _load_env_cuboids():
-        from curobo.geom.types import Cuboid
-        if not _ENVIRONMENT_YAML.exists():
-            return []
-        with _ENVIRONMENT_YAML.open() as fh:
-            data = yaml.safe_load(fh) or {}
-        cuboids = []
-        for obj in data.get("objects", []):
-            if not obj.get("enabled", True):
-                continue
-            if obj.get("type", "cuboid") != "cuboid":
-                continue
-            try:
-                cuboids.append(Cuboid(
-                    name=str(obj["name"]),
-                    pose=[float(v) for v in obj["pose"]],
-                    dims=[float(v) for v in obj["dims"]],
-                ))
-            except Exception:
-                pass
-        return cuboids
-
     def __init__(self) -> None:
         super().__init__("scan_executor_node")
 
@@ -137,7 +119,7 @@ class ScanExecutorNode(Node):
         self._target_cell = str(self.get_parameter("target_cell").value)
 
         pkg = get_package_share_directory("strawberry_motion")
-        candidates_path = Path(pkg) / "config" / "scan_pose_candidates.yaml"
+        candidates_path = Path(pkg) / "config" / _CANDIDATES_FNAME
         with candidates_path.open() as fh:
             data = yaml.safe_load(fh)
         candidate_cfg = data["scan_pose_candidates"]
@@ -157,8 +139,8 @@ class ScanExecutorNode(Node):
 
         if not self._candidate_authorized:
             self.get_logger().warn(
-                "Motion locked: scan candidates are preview/dry-run evidence only; "
-                "a collision-aware execution backend is not validated."
+                "Motion locked: set use_for_automated_motion=true in %s "
+                "after physical E-stop verification." % _CANDIDATES_FNAME
             )
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
@@ -182,26 +164,44 @@ class ScanExecutorNode(Node):
     def _init_motion_gen(self) -> None:
         if self._mg is not None:
             return
-        self.get_logger().info("Initialising cuRobo MotionGen")
-        tensor_args = TensorDeviceType(device=torch.device("cuda:0"))
-        # This backend is unreachable while the current config is unauthorized.
-        # Replace this empty-world setup with the verified collision scene before
-        # setting collision_world_validated_for_motion=true.
-        robot_cfg = RobotConfig.from_basic(
-            urdf_path=str(_URDF_PATH),
-            base_link="base_link",
-            ee_link="gripper_rh_p12_rn_base",
-            tensor_args=tensor_args,
+        self.get_logger().info(
+            "Initialising cuRobo MotionGen (spheres + whiteboard + self-collision)"
         )
-        world_cfg = WorldConfig(cuboid=[])
+        tensor_args = TensorDeviceType(device=torch.device("cuda:0"))
+
+        with _ROBOT_YML.open() as fh:
+            robot_data = deepcopy(yaml.safe_load(fh))
+        kine = robot_data["robot_cfg"]["kinematics"]
+        kine["urdf_path"] = str(_URDF_PATH)
+        kine["collision_spheres"] = str(_SPHERES_PATH)
+        robot_cfg = RobotConfig.from_dict(robot_data, tensor_args=tensor_args)
+
+        pkg = get_package_share_directory("strawberry_motion")
+        world_yaml = Path(pkg) / "config" / _COLLISION_WORLD_FNAME
+        with world_yaml.open() as fh:
+            world_meta = yaml.safe_load(fh)["scan_collision_world"]
+        cuboids = [
+            Cuboid(
+                name=o["name"],
+                pose=[float(v) for v in o["pose_wxyz"]],
+                dims=[float(v) for v in o["dims_m"]],
+            )
+            for o in world_meta["objects"]
+            if o.get("enabled", True) and o.get("type") == "cuboid"
+        ]
+        world_cfg = WorldConfig(cuboid=cuboids)
+
         mg_cfg = MotionGenConfig.load_from_robot_config(
             robot_cfg, world_cfg, tensor_args=tensor_args,
             num_trajopt_seeds=16, num_graph_seeds=16,
-            collision_cache={"obb": 10, "mesh": 5},
+            collision_cache={"obb": 30, "mesh": 10},
             use_cuda_graph=False,
+            self_collision_check=True,
+            self_collision_opt=True,
         )
         self._mg = MotionGen(mg_cfg)
         self._mg.warmup(warmup_js_trajopt=False)
+        self._mg.detach_object_from_robot()
         self.get_logger().info("cuRobo MotionGen ready")
 
     # ── callbacks ─────────────────────────────────────────────────────────────

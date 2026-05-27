@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-27 (self_collision_check=True 4셀 전체 PLAN_VALID, SE 정책 변경)
+최종 갱신일: 2026-05-27 (executor collision backend 완성, 단일 셀 scan 물리 확인만 남음)
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -144,6 +144,13 @@
   - `config/scan_pose_candidates_refit_candidate.yaml` 최종 갱신
   - 결과: `docs/runs/RUN-20260527-012_self_collision_4cell_dryrun.yaml`
   - `use_for_automated_motion: false` 유지
+- executor runtime collision backend 완성
+  - `_init_motion_gen()`: robot spheres + whiteboard cuboid + self_collision_check
+  - `_COLLISION_BACKEND_READY_FOR_MOTION = True`
+  - candidates 파일 → `scan_pose_candidates_refit_candidate.yaml`
+  - `collision_world_validated_for_motion: true` (YAML 갱신)
+  - colcon build + 테스트 52개 통과
+  - abort/recovery 절차: `docs/runs/RUN-20260527-013_single_cell_abort_recovery_plan.md`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -246,9 +253,13 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 1. ~~refit 이후 `IK_FAIL`이 된 `root/sw`의 standoff/approach 후보를 재탐색~~ **완료**
 2. ~~self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정~~ **완료**
-   - `self_collision_check=True` 4셀 전체 PLAN_VALID, SE 정책도 변경
-3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
+3. ~~executor runtime collision backend 연결~~ **완료**
+   - `scan_executor_node._init_motion_gen()` 실제 collision world로 교체
+4. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
    `use_for_automated_motion` 승인 검토
+   - abort/recovery 절차 문서 완료 (RUN-20260527-013)
+   - **남은 게이트: 현장 E-stop 담당자 + clear space 확인 (물리 작업)**
+   - 확인 후 `use_for_automated_motion: true` 설정 → `root/ne` 단일 셀 scan 실행
 4. detector 결과와 cell state 연결
    - scan 후 YOLO detection → cell 상태(SCANNED_FOUND / SCANNED_EMPTY) 갱신
 5. panel registration 오차를 motion margin에 반영
