@@ -36,6 +36,20 @@ Visualization Manager:
         workspace_cells: true
         workspace_labels: true
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /strawberry/scan_poses/tcp_preview
+      Name: v4 Scan Pose TCP Preview
+      Namespaces:
+        v4_tcp_arrows: true
+        v4_tcp_spheres: true
+        v4_tcp_labels: true
+      Value: true
   Global Options:
     Background Color: 35; 35; 35
     Fixed Frame: base_link

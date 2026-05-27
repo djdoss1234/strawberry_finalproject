@@ -58,6 +58,12 @@ def generate_launch_description() -> LaunchDescription:
                 output="screen",
             ),
             Node(
+                package="strawberry_motion",
+                executable="scan_pose_tcp_preview_node",
+                name="scan_pose_tcp_preview_node",
+                output="screen",
+            ),
+            Node(
                 package="rviz2",
                 executable="rviz2",
                 name="workspace_rviz",
