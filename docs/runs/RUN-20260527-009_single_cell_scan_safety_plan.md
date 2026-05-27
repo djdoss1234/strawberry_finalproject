@@ -3,8 +3,12 @@
 ## 상태
 
 ```text
-BLOCKED_PENDING_RUNTIME_COLLISION_BACKEND_AND_SW_POLICY_REVIEW
+BLOCKED_PENDING_RUNTIME_COLLISION_BACKEND
 ```
+
+2026-05-27 업데이트: SW 정책 재생성 완료 (panel_normal 0.55 m, RUN-011),
+self-collision 검증 완료 (4셀 전체 PLAN_VALID, RUN-012), SE 정책도 panel_normal
+0.65 m으로 변경. 남은 블로커: executor runtime collision backend 연결.
 
 ## 목적
 
@@ -18,17 +22,17 @@ BLOCKED_PENDING_RUNTIME_COLLISION_BACKEND_AND_SW_POLICY_REVIEW
 - executor collision-aware runtime backend: 아직 잠금 상태
 - panel landmark refit: 흰 종이 기준 `RMS=9.229 mm`,
   `MAX=10.981 mm`; RViz 표시 확인 후 offline 기준 TF로 반영
-- v7 refit collision dry-run: `root/nw`, `root/ne`, `root/se`는
-  `PLAN_VALID`, `root/sw`는 `IK_FAIL`
+- v7 refit + self-collision dry-run (RUN-012): 4셀 전체 `PLAN_VALID`
+  SW=panel_normal 0.55 m, SE=panel_normal 0.65 m
 
 ## 후보 우선순위
 
-| 순서 | Cell | Offline 결과 | 이유 |
+| 순서 | Cell | Offline 결과 (RUN-012) | 이유 |
 | --- | --- | --- | --- |
-| 1 | `root/ne` | `PLAN_VALID` | refit world에서 valid, initial gate 허용 cell |
-| 2 | `root/nw` | `PLAN_VALID` | refit world에서 valid, initial gate 허용 cell |
-| 보류 | `root/sw` | `IK_FAIL` | refit 이후 target policy 재생성 필요 |
-| 보류 | `root/se` | `PLAN_VALID` | 초기 single-cell gate 대상 아님 |
+| 1 | `root/ne` | `PLAN_VALID` | initial gate 허용 cell |
+| 2 | `root/nw` | `PLAN_VALID` | initial gate 허용 cell |
+| 보류 | `root/sw` | `PLAN_VALID` | 초기 gate 대상 아님 (J5 129.6 deg) |
+| 보류 | `root/se` | `PLAN_VALID` | 초기 gate 대상 아님 (J6 -219 deg) |
 
 ## 구현된 fail-closed 규칙
 
@@ -40,10 +44,12 @@ BLOCKED_PENDING_RUNTIME_COLLISION_BACKEND_AND_SW_POLICY_REVIEW
 
 ## 실행 허용 전 완료해야 할 일
 
-1. panel TF 오차를 반영한 collision margin 결정
-2. `root/sw`의 새 standoff/approach 정책을 생성하고 offline 검증
+1. ~~panel TF 오차를 반영한 collision margin 결정~~ RMS=9.229 mm 확인,
+   motion margin은 executor 연결 시 결정
+2. ~~`root/sw`의 새 standoff/approach 정책을 생성하고 offline 검증~~
+   panel_normal 0.55 m PLAN_VALID (RUN-011, RUN-012)
 3. executor가 `scan_collision_world.yaml`과 robot/tool sphere를 runtime에도
-   실제로 로드하도록 연결
+   실제로 로드하도록 연결  **← 현재 블로커**
 4. 실행 전 offline 재검증 결과와 중단 절차 기록
 5. 현장 E-stop/DART 정지 담당자와 clear-space 확인
 

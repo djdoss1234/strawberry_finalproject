@@ -1,0 +1,82 @@
+scan_pose_self_collision_validation:
+  run_date: '2026-05-27'
+  description: >-
+    Full 4-cell cuRobo offline dry-run with self_collision_check=True and
+    registered whiteboard cuboid under refit panel transform. Confirms that
+    the robot/tool collision sphere model does not produce false self-collision
+    positives for any of the four scan targets.
+  robot_geometry_source: /home/user/doosan_ws/src/e0509_gripper_description/config/curobo
+  collision_world_config: config/scan_collision_world.yaml
+  self_collision_check_enabled: true
+  self_collision_opt_enabled: true
+  scan_pose_config: config/scan_pose_candidates_refit_candidate.yaml
+  start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+  total_elapsed_s: 7.0
+  use_for_automated_motion: false
+  policy_changes_vs_run_010:
+    - cell: root/sw
+      old: "panel_normal 0.65 m (IK_FAIL in run-010)"
+      new: "panel_normal 0.55 m (PLAN_VALID, J5 max 129.6 deg)"
+      source: docs/runs/RUN-20260527-011_sw_candidate_search.yaml
+    - cell: root/se
+      old: "base_neg_y 0.40 m (PLAN_VALID without self-col but J6 non-deterministic)"
+      new: "panel_normal 0.65 m (consistent IK, J6 min -219 deg)"
+  results:
+    root/nw:
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      plan_time_s: 2.07
+      tcp_pos_m: [-0.200322, -0.078486, 0.744734]
+      joint_range_deg:
+        J1: [48.0, 98.0]
+        J2: [-94.0, -74.0]
+        J3: [66.0, 80.0]
+        J4: [-11.0, 40.0]
+        J5: [63.0, 96.0]
+        J6: [-95.0, -94.0]
+    root/ne:
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      plan_time_s: 1.67
+      tcp_pos_m: [0.344429, -0.093705, 0.751104]
+      joint_range_deg:
+        J1: [98.0, 143.0]
+        J2: [-94.0, -72.0]
+        J3: [63.0, 66.0]
+        J4: [-54.0, -11.0]
+        J5: [73.0, 96.0]
+        J6: [-98.0, -95.0]
+    root/sw:
+      approach: panel_normal
+      standoff_m: 0.55
+      curobo_status: PLAN_VALID
+      plan_time_s: 1.50
+      tcp_pos_m: [-0.192710, 0.024819, 0.340636]
+      note: J5 max 129.6 deg (0.4 deg inside 130 deg operational limit)
+      joint_range_deg:
+        J1: [-147.0, 98.0]
+        J2: [-94.0, 4.0]
+        J3: [66.0, 140.0]
+        J4: [-73.0, -11.0]
+        J5: [96.0, 130.0]
+        J6: [-95.0, 54.0]
+    root/se:
+      approach: panel_normal
+      standoff_m: 0.65
+      curobo_status: PLAN_VALID
+      plan_time_s: 1.73
+      tcp_pos_m: [0.349258, -0.090356, 0.346147]
+      note: >-
+        Switched from base_neg_y 0.40 m to panel_normal 0.65 m to eliminate
+        J6 non-determinism (base_neg_y 0.40 m alternated between J6=-225 deg
+        and J6=-95 deg IK solutions). panel_normal 0.65 m gives consistent
+        J6 min -219 deg (6 deg margin inside -225 deg limit).
+      joint_range_deg:
+        J1: [98.0, 144.0]
+        J2: [-94.0, -25.0]
+        J3: [-110.0, 66.0]
+        J4: [-96.0, -11.0]
+        J5: [96.0, 128.0]
+        J6: [-219.0, -95.0]
