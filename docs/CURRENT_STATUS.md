@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-27 (Codex 재인수 및 scan 안전 게이트 반영)
+최종 갱신일: 2026-05-27 (root/sw 대체 후보 확보, 4셀 전체 PLAN_VALID)
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -133,6 +133,12 @@
 - 첫 실기 scan은 전체 순회가 아니라 `root/ne` 또는 `root/nw` 중 명시한
   단일 cell만 가능하도록 executor gate를 제한
   - 절차: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
+- `root/sw` refit IK_FAIL 대체 탐색 (`scripts/search_sw_candidates.py`)
+  - panel_normal 0.55 m 채택: J5 max 129.6 deg (운용 제한 130 deg 이내)
+  - `config/scan_pose_candidates_refit_candidate.yaml` 갱신:
+    `status=collision_dry_run_all_cells_plan_valid_not_authorized`
+  - 전체 4셀 `PLAN_VALID`, `use_for_automated_motion: false` 유지
+  - 결과: `docs/runs/RUN-20260527-011_sw_candidate_search.yaml`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -232,7 +238,8 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 
 우선순위 순서:
 
-1. refit 이후 `IK_FAIL`이 된 `root/sw`의 standoff/approach 후보를 재탐색
+1. ~~refit 이후 `IK_FAIL`이 된 `root/sw`의 standoff/approach 후보를 재탐색~~ **완료**
+   - panel_normal 0.55 m 채택, 4셀 전체 PLAN_VALID
 2. self-collision sphere false positive 원인을 검토하고, scan용으로
    신뢰할 수 있는 robot/tool collision profile을 확정
 3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만

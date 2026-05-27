@@ -2,7 +2,7 @@
 # They are offline-validation inputs only and must never trigger robot motion.
 scan_pose_candidates:
   version: v7_refit_panel_registration
-  status: collision_dry_run_partial_plan_valid_not_authorized
+  status: collision_dry_run_all_cells_plan_valid_not_authorized
   capture_date: "2026-05-27"
   curobo_start_state: overview_pose_operational_limit
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
@@ -10,6 +10,7 @@ scan_pose_candidates:
   source_registration_evidence: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   collision_dry_run_record: docs/runs/RUN-20260527-010_refit_panel_collision_dryrun.yaml
+  sw_candidate_search_record: docs/runs/RUN-20260527-011_sw_candidate_search.yaml
   derivation: >-
     Regenerated using the v6 gripper_rh TCP orientation method with the
     RViz-reviewed refit cultivation_panel transform. NW/NE/SW retain the
@@ -17,10 +18,11 @@ scan_pose_candidates:
   use_for_automated_motion: false
   collision_world_validated_for_motion: false
   validation_scope: >-
-    Collision-aware cuRobo dry-run only. NW, NE and SE planned successfully,
-    while SW failed IK under the refit transform. Table, tray, fruit, cable,
-    human obstacles and self-collision are not validated. Actual robot scan
-    execution remains fail-closed.
+    Collision-aware cuRobo dry-run only. All four cells (NW, NE, SW, SE) are
+    PLAN_VALID. SW panel_normal 0.65 m failed IK under the refit transform;
+    replaced by panel_normal 0.55 m (J5 max 129.6 deg, 0.4 deg margin).
+    Table, tray, fruit, cable, human obstacles and self-collision are not
+    validated. Actual robot scan execution remains fail-closed.
   targets:
     - cell_id: root/nw
       approach: panel_normal
@@ -42,14 +44,23 @@ scan_pose_candidates:
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
       approach: panel_normal
-      standoff_m: 0.65
-      curobo_status: IK_FAIL
-      note: Refit transform invalidated the previous v6 PLAN_VALID result; new target policy required.
+      standoff_m: 0.55
+      curobo_status: PLAN_VALID
+      note: >-
+        panel_normal 0.65 m IK_FAIL under refit; replaced by 0.55 m from
+        RUN-20260527-011 grid search. J5 max 129.6 deg (0.4 deg inside 130 deg limit).
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625, -0.195492077]
-        - [0.381526086, 0.063300028, 0.922188133, -0.075138307]
-        - [-0.924280420, 0.013193458, 0.381486090, 0.339776146]
+        - [0.011981230, -0.997907330, 0.063540625, -0.192709728]
+        - [0.381526086, 0.063300028, 0.922188133,  0.024819282]
+        - [-0.924280420, 0.013193458, 0.381486090,  0.340635775]
         - [0.0, 0.0, 0.0, 1.0]
+      joint_range_deg:
+        J1: [-146.6, 97.8]
+        J2: [-94.4, 3.8]
+        J3: [65.9, 140.2]
+        J4: [-72.7, -10.9]
+        J5: [95.5, 129.6]
+        J6: [-94.8, 53.5]
     - cell_id: root/se
       approach: base_neg_y
       standoff_m: 0.40
