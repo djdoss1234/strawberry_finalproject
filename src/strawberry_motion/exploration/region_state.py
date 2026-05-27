@@ -7,6 +7,7 @@ class RegionState(str, Enum):
     """Observable state of a quadtree cell."""
 
     UNSCANNED = "UNSCANNED"
+    SCANNING = "SCANNING"
     SCANNED_EMPTY = "SCANNED_EMPTY"
     TARGET_FOUND = "TARGET_FOUND"
     PICKABLE = "PICKABLE"

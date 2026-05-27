@@ -31,6 +31,7 @@ setup(
             "panel_frame_capture = strawberry_motion.registration.panel_frame_capture:main",
             "scan_pose_target_exporter = strawberry_motion.exploration.scan_pose_target_exporter:main",
             "scan_pose_tcp_preview_node = strawberry_motion.visualization.scan_pose_tcp_preview_node:main",
+            "scan_executor_node = strawberry_motion.execution.scan_executor_node:main",
         ],
     },
 )

@@ -23,6 +23,7 @@ from strawberry_motion.exploration.workspace_config import load_workspace_config
 Color = Tuple[float, float, float, float]
 STATE_COLORS: Dict[RegionState, Color] = {
     RegionState.UNSCANNED: (0.2, 0.6, 1.0, 1.0),
+    RegionState.SCANNING: (1.0, 1.0, 0.0, 1.0),   # yellow: robot is moving here now
     RegionState.SCANNED_EMPTY: (0.5, 0.5, 0.5, 1.0),
     RegionState.TARGET_FOUND: (1.0, 0.8, 0.0, 1.0),
     RegionState.PICKABLE: (0.1, 0.9, 0.2, 1.0),
