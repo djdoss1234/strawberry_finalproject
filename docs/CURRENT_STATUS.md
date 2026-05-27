@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-27
+최종 갱신일: 2026-05-27 (세션 2 반영)
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -83,20 +83,19 @@
   geometry-only exporter 구현 및 후보 config 생성
 - CUDA 재점검에서 `torch.cuda.is_available() == True`(GPU 1개)로 변경 확인
 - `scripts/validate_scan_poses.py` 구현 후 cuRobo `MotionGen` dry-run 실행 완료
-- 결과: NE/SE = `PLAN_VALID`, NW/SW = `IK_FAIL`
-  - NW/SW target x ≈ -0.41m은 현재 orientation 조건에서 E0509 workspace 밖
-  - NE/SE target x ≈ 0.12m은 도달 가능, 경로 계획 성공
 - 상세 결과: `docs/runs/RUN-20260527-004_curobo_dry_run.yaml`
-- standoff 격자 탐색으로 NW는 0.5–0.7m 범위에서 PLAN_VALID 확인
-- SW는 전 구간 IK_FAIL — z≈0.335m 저고도 + x≈-0.34m + panel-facing orientation = workspace 밖
-- v2 candidates (standoff 0.65m): NW/NE/SE = PLAN_VALID, SW = REQUIRES_ALTERNATIVE
-- `config/scan_pose_candidates.yaml` v2로 갱신, v1(0.921m) superseded로 보존
-- VLA 인터페이스 구현 완료:
-  - `src/strawberry_motion/interfaces/approach_proposal.py`
-  - `ApproachDirection`, `ApproachProposal`, `MotionValidationResult`, `MotionValidationStatus`
-  - `validate_approach_proposal()`: proposal → validation result, no robot motion
-  - offline lookup에 v2 dry-run 결과 반영, SW = REQUIRES_ALTERNATIVE
+- standoff/orientation 격자 탐색으로 SW 전용 포즈 확보:
+  - NW: panel-normal standoff 0.65m → PLAN_VALID
+  - SW: base -Y 방향 d=0.40m → PLAN_VALID (유효범위 0.30–0.42m)
+    panel-normal approach는 x를 -0.41m로 밀어 IK_FAIL; base -Y는 x=-0.147m 유지
+- **scan_pose_candidates.yaml v4**: 4셀 전부 독립 전용 포즈, 전부 PLAN_VALID
+  - v1(0.921m) → v2(0.65m) → v3(left_column_center alt) → v4(SW base-neg-Y) 이력 보존
+- VLA 인터페이스 구현 완료 (`src/strawberry_motion/interfaces/approach_proposal.py`):
+  - `ApproachDirection`: FRONT/LEFT/RIGHT/UPPER_LEFT/UPPER_RIGHT/REOBSERVE/SKIP/RECOVER_HOME
+  - `validate_approach_proposal()`: proposal → MotionValidationResult, no robot motion
+  - offline table에 v4 dry-run 결과 반영, 전체 4셀 FRONT = VALID
   - 전체 테스트 38개 통과
+- 최신 commit: `019031b`
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -161,12 +160,8 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. NW/SW IK_FAIL 대응 방향 결정:
-   a. 더 작은 standoff로 NW/SW scan pose 재계산 후 IK 재검증
-   b. NW/SW 용 diagonal orientation 적용
-   c. robot base 위치 재배치 (물리 작업)
-   d. panel_registration TF 정밀 검증 후 candidate 재계산
-2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
+1. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
+2. panel_registration TF 물리 위치 오차 정량 검증 (실제 marker 측정)
 
 자료 경로:
 
@@ -195,14 +190,19 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 
 ## 7. 다음 구현
 
-현장 입력을 받은 뒤:
+scan pose 검증 완료 → 다음 단계: **실제 scan motion 연결**
 
-1. NW/SW IK_FAIL 대응 — standoff 조정 또는 orientation 완화로 scan pose 재계산
-2. 재계산된 NW/SW candidate를 `scan_pose_candidates.yaml`에 superseded 이력으로 남기고
-   새 candidate 추가
-3. VLA 협업용 `ApproachDirection`/`ApproachProposal` 인터페이스 설계 및 구현
-4. `ISSUE-20260526-006` 후속 automated motion safety validation 설계
-5. panel_registration TF 물리 위치 오차 정량 검증
+우선순위 순서:
+
+1. `scan_pose_candidates.yaml` v4를 `workspace_marker_node` 또는
+   scan executor에 연결해 실제 robot scan motion 실행
+   - 연결 전 RViz에서 v4 포즈 preview 재확인 (SW의 다른 orientation 포함)
+2. `ISSUE-20260526-006` 후속 — automated motion safety validation layer 설계
+   - 실제 실행 전 IK/collision 검사 pipeline 구현
+3. detector 결과와 cell state 연결
+   - scan 후 YOLO detection → cell 상태(SCANNED_FOUND / SCANNED_EMPTY) 갱신
+4. panel_registration TF 물리 위치 오차 정량 검증
+5. tray localization 및 자동 place (미니프로젝트 baseline 이식)
 
 ## 8. 핵심 문서와 Git
 
@@ -222,7 +222,8 @@ scan/motion 입력으로 사용하지 않고 registration 관측에만 사용한
 최근 완료 commit:
 
 ```text
-41fb854 feat: apply measured workspace geometry and root split
-7c5a87b docs: clarify tape-based workspace construction
-8dba0f2 docs: record installed workspace config verification
+019031b feat: SW dedicated scan pose via base-neg-Y approach
+d157bf3 feat: SW alternative pose via left_column_center
+a684fb5 feat: VLA approach interface + corrected scan pose candidates (v2)
+c3a33c9 feat: cuRobo dry-run validation for scan pose candidates
 ```
