@@ -1,14 +1,13 @@
 # Geometry-only targets. Never send directly to robot execution.
-# v3 adds left_column_center pose as SW alternative (standoff 0.60 m, PLAN_VALID).
-# v2 candidates (standoff 0.65 m) are retained.
-# v1 candidates (standoff 0.921 m) are retained as superseded history.
+# History: v1(0.921m) -> v2(0.65m) -> v3(left_column_center alt) -> v4(SW dedicated pose)
 
-# ── Recommended v3 candidates ────────────────────────────────────────────────
-# SW cannot be reached with panel-facing orientation at any standoff.
-# SW is observed from left_column_center: panel (x=-0.2725, y=0.0, z=0.60),
-# which covers both NW and SW cells within camera FoV from a single pose.
+# ── Recommended v4 candidates (all 4 cells validated, each with dedicated pose) ─
+# NW/NE/SE: panel-facing orientation, standoff 0.65 m.
+# SW: base -Y approach (d=0.40 m). Panel-facing fails at all standoffs for SW;
+#     base -Y keeps x at SW cell center x, making the pose reachable.
+#     Valid range: d=0.30–0.42 m. Orientation: camera Z points +Y (direct panel view).
 scan_pose_candidates:
-  version: v3
+  version: v4
   status: curobo_dry_run_validated
   capture_date: "2026-05-27"
   curobo_dry_run_date: "2026-05-27"
@@ -16,10 +15,10 @@ scan_pose_candidates:
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
-  camera_orientation_rule: optical_z_points_from_camera_to_panel
   use_for_automated_motion: false
   targets:
     - cell_id: root/nw
+      approach: panel_normal
       standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
@@ -28,6 +27,7 @@ scan_pose_candidates:
         - [0.425090123,  0.905104863, -0.009091473,  0.734621942]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/ne
+      approach: panel_normal
       standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
@@ -36,15 +36,21 @@ scan_pose_candidates:
         - [0.425090123,  0.905104863, -0.009091473,  0.744552742]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
-      standoff_m: null
-      curobo_status: IK_FAIL_USE_ALTERNATIVE
-      alternative_pose_id: left_column_center
+      approach: base_neg_y
+      standoff_m: 0.40
+      curobo_status: PLAN_VALID
+      curobo_valid_range_m: [0.30, 0.42]
       note: >-
-        IK_FAIL at all tested standoffs (0.35–0.921 m) with panel-facing orientation.
-        Observed from left_column_center pose instead: panel (x=-0.2725, y=0.0),
-        standoff=0.60 m, which covers both NW and SW cells within camera FoV.
-      tcp_transform_base: null
+        Panel-facing IK_FAIL at all standoffs (panel normal approach shifts x to -0.41 m).
+        Base -Y approach keeps x at SW cell center x (-0.147 m), making the pose reachable.
+        Camera Z points +Y directly toward the panel; orientation differs from NW/NE/SE.
+      tcp_transform_base:
+        - [ 0.032990325, -0.420031105, 0.906909868, -0.078969572]
+        - [ 0.999350584,  0.027021240, -0.023838244,  0.280433619]
+        - [-0.014493026,  0.907107338,  0.420649770,  0.359195272]
+        - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/se
+      approach: panel_normal
       standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
@@ -53,37 +59,46 @@ scan_pose_candidates:
         - [0.425090123,  0.905104863, -0.009091473,  0.344623142]
         - [0.0, 0.0, 0.0, 1.0]
 
-# ── Alternative poses ────────────────────────────────────────────────────────
-alternative_scan_poses:
-  - pose_id: left_column_center
-    description: >-
-      Left-column center observation. Panel frame (x=-0.2725, y=0.0, z=0.60 m).
-      Single pose that covers both root/nw and root/sw within camera FoV
-      (RealSense H-FOV ~87 deg; at 0.60 m standoff covers ~1.1 m horizontal and
-      ~0.75 m vertical, which spans the 0.4 m NW+SW combined height).
-    covers_cells: [root/nw, root/sw]
-    standoff_m: 0.60
-    panel_frame_xy: [-0.2725, 0.0]
-    curobo_status: PLAN_VALID
-    curobo_valid_standoff_range_m: [0.45, 0.70]
-    use_for_automated_motion: false
-    tcp_transform_base:
-      - [0.259254358, -0.112124559, 0.959278109, -0.326216153]
-      - [0.867228374, -0.410137163, -0.282316358,  0.065571311]
-      - [0.425090123,  0.905104863, -0.009091473,  0.537406852]
-      - [0.0, 0.0, 0.0, 1.0]
+# ── Superseded v3 candidates (left_column_center approach) ───────────────────
+# Kept as reference; superseded by v4 where SW has its own dedicated pose.
+scan_pose_candidates_v3_superseded:
+  version: v3
+  status: superseded_by_v4
+  superseded_reason: >-
+    v3 used left_column_center (shared NW+SW pose). v4 gives SW a dedicated
+    base-neg-Y pose (d=0.40 m), so each cell has its own observation pose.
+  use_for_automated_motion: false
+  targets:
+    - cell_id: root/nw
+      curobo_status: PLAN_VALID
+      standoff_m: 0.65
+    - cell_id: root/ne
+      curobo_status: PLAN_VALID
+      standoff_m: 0.65
+    - cell_id: root/sw
+      curobo_status: IK_FAIL_USE_ALTERNATIVE
+      alternative_pose_id: left_column_center
+    - cell_id: root/se
+      curobo_status: PLAN_VALID
+      standoff_m: 0.65
+  alternative_scan_poses:
+    - pose_id: left_column_center
+      panel_frame_xy: [-0.2725, 0.0]
+      standoff_m: 0.60
+      curobo_status: PLAN_VALID
+      covers_cells: [root/nw, root/sw]
+      tcp_transform_base:
+        - [0.259254358, -0.112124559, 0.959278109, -0.326216153]
+        - [0.867228374, -0.410137163, -0.282316358,  0.065571311]
+        - [0.425090123,  0.905104863, -0.009091473,  0.537406852]
+        - [0.0, 0.0, 0.0, 1.0]
 
-# ── Superseded v1 candidates (standoff 0.921 m) ────────────────────────────────
+# ── Superseded v1/v2 candidates (standoff 0.921 m / 0.65 m panel-normal only) ─
 scan_pose_candidates_v1_superseded:
   version: v1
   status: geometry_ready_superseded_by_v2
-  capture_date: "2026-05-27"
   standoff_m: 0.921486
-  curobo_dry_run_date: "2026-05-27"
   curobo_result_summary: "NE/SE=PLAN_VALID, NW/SW=IK_FAIL"
-  superseded_reason: >-
-    NW/SW IK_FAIL at 0.921 m standoff; reduced to 0.65 m where NW becomes PLAN_VALID.
-    SW remains IK_FAIL at all standoffs; requires alternative strategy.
   use_for_automated_motion: false
   targets:
     - cell_id: root/nw

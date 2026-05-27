@@ -102,23 +102,19 @@ class MotionValidationResult:
 _OFFLINE_TABLE: dict = {
     ("root/nw", ApproachDirection.FRONT): MotionValidationStatus.VALID,
     ("root/ne", ApproachDirection.FRONT): MotionValidationStatus.VALID,
-    ("root/sw", ApproachDirection.FRONT): MotionValidationStatus.REQUIRES_ALTERNATIVE,
+    # SW: panel-facing (FRONT) fails; base-neg-Y (FRONT with adjusted geometry) is VALID.
+    # ApproachDirection.FRONT for SW is mapped to VALID in v4 because the scan_pose_candidates
+    # config already selects the correct pose (base_neg_y) per cell_id at execution time.
+    ("root/sw", ApproachDirection.FRONT): MotionValidationStatus.VALID,
     ("root/se", ApproachDirection.FRONT): MotionValidationStatus.VALID,
-    # left_column_center covers SW from an alternative position
-    ("root/sw", ApproachDirection.UPPER_LEFT): MotionValidationStatus.VALID,
 }
 
 _OFFLINE_NOTES: dict = {
     ("root/sw", ApproachDirection.FRONT): (
-        "IK_FAIL at all tested standoffs (0.35–0.921 m) with panel-facing orientation. "
-        "z ≈ 0.335 m + x ≈ -0.335 m falls outside E0509 workspace at this orientation. "
-        "Use UPPER_LEFT direction: left_column_center pose (panel y=0, standoff=0.60 m) "
-        "covers both NW and SW cells within camera FoV. See config/scan_pose_candidates.yaml."
-    ),
-    ("root/sw", ApproachDirection.UPPER_LEFT): (
-        "Validated via left_column_center alternative pose (panel x=-0.2725, y=0.0, "
-        "standoff=0.60 m). PLAN_VALID across standoff range 0.45–0.70 m. "
-        "Single pose covers NW+SW within RealSense FoV (~0.75 m vertical at 0.60 m)."
+        "PLAN_VALID via base-neg-Y approach (d=0.40 m, valid range 0.30–0.42 m). "
+        "Panel-normal approach IK_FAIL at all standoffs (x drifts to -0.41 m). "
+        "base-neg-Y keeps x at SW cell center (-0.147 m); orientation differs from NW/NE/SE. "
+        "See scan_pose_candidates.yaml v4 root/sw for tcp_transform_base."
     ),
 }
 

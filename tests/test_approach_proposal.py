@@ -85,17 +85,17 @@ class TestValidateApproachProposal:
         result = validate_approach_proposal(p)
         assert result.status == MotionValidationStatus.VALID
 
-    def test_sw_front_requires_alternative(self):
+    def test_sw_front_is_valid_via_base_neg_y(self):
+        # v4: SW uses base-neg-Y approach; FRONT maps to VALID for SW
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
         result = validate_approach_proposal(p)
-        assert result.status == MotionValidationStatus.REQUIRES_ALTERNATIVE
-        assert result.is_executable is False
-        assert result.planner_note is not None
+        assert result.status == MotionValidationStatus.VALID
+        assert result.is_executable is True
 
-    def test_sw_front_note_is_informative(self):
+    def test_sw_front_note_mentions_base_neg_y(self):
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
         result = validate_approach_proposal(p)
-        assert "IK_FAIL" in (result.planner_note or "")
+        assert "base-neg-Y" in (result.planner_note or "") or "base_neg_y" in (result.planner_note or "").lower()
 
     def test_unknown_cell_returns_not_validated(self):
         p = ApproachProposal(cell_id="root/unknown", direction=ApproachDirection.FRONT)
@@ -122,17 +122,6 @@ class TestValidateApproachProposal:
         p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.RECOVER_HOME)
         result = validate_approach_proposal(p)
         assert "safety" in (result.planner_note or "").lower() or "safe" in (result.planner_note or "").lower()
-
-    def test_sw_upper_left_is_valid_alternative(self):
-        p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.UPPER_LEFT)
-        result = validate_approach_proposal(p)
-        assert result.status == MotionValidationStatus.VALID
-        assert result.is_executable is True
-
-    def test_sw_front_note_mentions_upper_left(self):
-        p = ApproachProposal(cell_id="root/sw", direction=ApproachDirection.FRONT)
-        result = validate_approach_proposal(p)
-        assert "UPPER_LEFT" in (result.planner_note or "")
 
     def test_runtime_not_implemented(self):
         p = ApproachProposal(cell_id="root/ne", direction=ApproachDirection.FRONT)
