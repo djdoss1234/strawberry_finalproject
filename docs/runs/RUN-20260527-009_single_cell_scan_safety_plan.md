@@ -16,7 +16,8 @@ BLOCKED_PENDING_PANEL_ERROR_AND_RUNTIME_COLLISION_BACKEND
 - `config/scan_pose_candidates.yaml`: `use_for_automated_motion: false`
 - `config/scan_collision_world.yaml`: `use_for_automated_motion: false`
 - executor collision-aware runtime backend: 아직 잠금 상태
-- panel landmark RMS/MAX error: 아직 미측정
+- panel landmark RMS/MAX error: 1차 측정 실패 (`RMS=120.874 mm`,
+  `MAX=139.001 mm`), 흰 종이 면 기준 재측정 필요
 
 ## 후보 우선순위
 

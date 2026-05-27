@@ -24,8 +24,10 @@ def predicted_base_point(transform_matrix, point_panel_m):
 
 def evaluate_landmarks(transform_matrix, observations: Mapping[str, Mapping]) -> dict:
     """Calculate per-landmark and aggregate registration error in millimeters."""
+    inverse_transform = np.linalg.inv(np.asarray(transform_matrix, dtype=float))
     results = {}
     errors_mm = []
+    plane_offsets_mm = []
     for landmark_id, observation in observations.items():
         expected = predicted_base_point(
             transform_matrix, observation["point_panel_m"]
@@ -33,26 +35,39 @@ def evaluate_landmarks(transform_matrix, observations: Mapping[str, Mapping]) ->
         measured = np.asarray(observation["observed_base_m"], dtype=float)
         vector_mm = (measured - expected) * 1000.0
         norm_mm = float(np.linalg.norm(vector_mm))
+        measured_panel = (
+            inverse_transform @ np.asarray([*measured.tolist(), 1.0], dtype=float)
+        )[:3]
+        plane_offset_mm = float(measured_panel[2] * 1000.0)
         results[landmark_id] = {
             "expected_base_m": [round(value, 6) for value in expected.tolist()],
             "observed_base_m": [round(value, 6) for value in measured.tolist()],
             "error_vector_mm": [round(value, 3) for value in vector_mm.tolist()],
             "error_norm_mm": round(norm_mm, 3),
+            "plane_offset_mm": round(plane_offset_mm, 3),
         }
         errors_mm.append(norm_mm)
+        plane_offsets_mm.append(abs(plane_offset_mm))
     if not errors_mm:
         raise ValueError("At least one panel landmark observation is required.")
     rms_mm = float(np.sqrt(np.mean(np.square(errors_mm))))
     max_mm = float(np.max(errors_mm))
+    max_abs_plane_offset_mm = float(np.max(plane_offsets_mm))
     status = (
         "MEASURED_PASS_PENDING_MOTION_MARGIN"
-        if len(errors_mm) == len(DEFAULT_LANDMARKS_PANEL_M) and rms_mm <= 10.0 and max_mm <= 15.0
+        if (
+            len(errors_mm) == len(DEFAULT_LANDMARKS_PANEL_M)
+            and rms_mm <= 10.0
+            and max_mm <= 15.0
+            and max_abs_plane_offset_mm <= 10.0
+        )
         else "MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE"
     )
     return {
         "landmark_count": len(errors_mm),
         "rms_error_mm": round(rms_mm, 3),
         "max_error_mm": round(max_mm, 3),
+        "max_abs_plane_offset_mm": round(max_abs_plane_offset_mm, 3),
         "status": status,
         "use_for_automated_motion": False,
         "landmarks": results,

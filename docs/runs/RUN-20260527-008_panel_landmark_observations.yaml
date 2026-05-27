@@ -1,0 +1,162 @@
+panel_registration_validation:
+  capture_method: read_only_realsense_landmark_clicks_at_overview_pose
+  panel_registration_source: /home/user/doosan_ws/install/strawberry_motion/share/strawberry_motion/config/panel_registration.yaml
+  landmark_definition: tape_crossing_and_outer_tape_corners
+  observations:
+    origin_crossing:
+      point_panel_m:
+      - 0.0
+      - 0.0
+      - 0.0
+      pixel_uv:
+      - 319
+      - 240
+      observed_base_m:
+      - 0.11032798711818352
+      - 0.5968600035552563
+      - 0.6439898921259785
+    outer_nw:
+      point_panel_m:
+      - -0.545
+      - 0.395
+      - 0.0
+      pixel_uv:
+      - 83
+      - 73
+      observed_base_m:
+      - -0.47442695490280007
+      - 0.6177975340388173
+      - 1.047871440502765
+    outer_ne:
+      point_panel_m:
+      - 0.555
+      - 0.395
+      - 0.0
+      pixel_uv:
+      - 554
+      - 76
+      observed_base_m:
+      - 0.6837026702869868
+      - 0.5780775996825871
+      - 1.0565946404140492
+    outer_sw:
+      point_panel_m:
+      - -0.545
+      - -0.405
+      - 0.0
+      pixel_uv:
+      - 91
+      - 396
+      observed_base_m:
+      - -0.4627606519351024
+      - 0.6130800693961282
+      - 0.24204275641878992
+    outer_se:
+      point_panel_m:
+      - 0.555
+      - -0.405
+      - 0.0
+      pixel_uv:
+      - 541
+      - 392
+      observed_base_m:
+      - 0.6845869602286647
+      - 0.5862102159076199
+      - 0.26039991543916335
+  evaluation:
+    landmark_count: 5
+    rms_error_mm: 120.874
+    max_error_mm: 139.001
+    max_abs_plane_offset_mm: 136.54
+    status: MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
+    use_for_automated_motion: false
+    landmarks:
+      origin_crossing:
+        expected_base_m:
+        - 0.112833
+        - 0.597764
+        - 0.643978
+        observed_base_m:
+        - 0.110328
+        - 0.59686
+        - 0.64399
+        error_vector_mm:
+        - -2.505
+        - -0.904
+        - 0.012
+        error_norm_mm: 2.663
+        plane_offset_mm: 1.52
+      outer_nw:
+        expected_base_m:
+        - -0.42081
+        - 0.739115
+        - 1.029068
+        observed_base_m:
+        - -0.474427
+        - 0.617798
+        - 1.047871
+        error_vector_mm:
+        - -53.617
+        - -121.318
+        - 18.803
+        error_norm_mm: 133.964
+        plane_offset_mm: 130.98
+      outer_ne:
+        expected_base_m:
+        - 0.641331
+        - 0.453702
+        - 1.04893
+        observed_base_m:
+        - 0.683703
+        - 0.578078
+        - 1.056595
+        error_vector_mm:
+        - 42.371
+        - 124.376
+        - 7.665
+        error_norm_mm: 131.619
+        plane_offset_mm: -131.15
+      outer_sw:
+        expected_base_m:
+        - -0.405822
+        - 0.739233
+        - 0.229209
+        observed_base_m:
+        - -0.462761
+        - 0.61308
+        - 0.242043
+        error_vector_mm:
+        - -56.939
+        - -126.153
+        - 12.834
+        error_norm_mm: 139.001
+        plane_offset_mm: 136.54
+      outer_se:
+        expected_base_m:
+        - 0.656319
+        - 0.453819
+        - 0.24907
+        observed_base_m:
+        - 0.684587
+        - 0.58621
+        - 0.2604
+        error_vector_mm:
+        - 28.268
+        - 132.391
+        - 11.33
+        error_norm_mm: 135.848
+        plane_offset_mm: -135.25
+    analysis: >-
+      The center crossing observation is close to the registered panel
+      (2.663 mm total error; 1.52 mm plane offset), while all four outer
+      clicks are approximately 131 to 137 mm off the panel plane. In the
+      captured screen the outer markers were placed on black tape. This
+      pattern is consistent with unreliable RealSense depth on the dark tape,
+      so the capture cannot validate the panel transform or motion margin.
+    recapture_instruction: >-
+      Repeat the five-point capture at the same overview pose. For each outer
+      landmark, click white paper immediately inside the tape boundary rather
+      than the black tape itself.
+    raw_screenshot_local: /home/user/Pictures/Screenshot from 2026-05-27 16-24-32.png
+    public_asset_status: PRIVATE_RAW_NOT_COMMITTED_BACKGROUND_CONTAINS_PEOPLE
+  use_for_automated_motion: false

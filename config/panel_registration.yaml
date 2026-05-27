@@ -2,12 +2,20 @@
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: rviz_display_confirmed_pending_physical_error_validation
+  status: rviz_display_confirmed_landmark_recapture_required
   capture_date: "2026-05-27"
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   reference_pose: overview_alignment
   rviz_evidence_image: docs/assets/exploration/RUN-20260527-002_registered_panel_rviz.png
+  physical_error_validation:
+    attempted_run: docs/runs/RUN-20260527-008_panel_landmark_observations.yaml
+    result: MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
+    rms_error_mm: 120.874
+    max_error_mm: 139.001
+    max_abs_plane_offset_mm: 136.540
+    cause_under_review: outer_landmark_depth_invalid_on_black_tape
+    next_action: recapture_outer_landmarks_on_adjacent_white_paper_surface
   transform:
     translation_m:
       x: 0.112833

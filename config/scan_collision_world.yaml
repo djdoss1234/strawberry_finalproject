@@ -2,7 +2,7 @@
 # This config is evidence for planning review only; it does not authorize robot motion.
 scan_collision_world:
   version: v1_registered_whiteboard
-  status: pending_physical_error_validation
+  status: blocked_pending_panel_landmark_recapture
   frame_id: base_link
   source_registration: config/panel_registration.yaml
   robot_geometry_source_local: ~/doosan_ws/src/e0509_gripper_description/config/curobo
@@ -12,7 +12,9 @@ scan_collision_world:
   validation_scope: >-
     Robot/tool collision spheres reused from the mini-project baseline and a
     whiteboard cuboid derived from the current cultivation_panel registration.
-    The board registration error is not yet measured. Table, tray, fruit,
+    The first board registration landmark capture failed because outer depth
+    samples were approximately 131 to 137 mm off the panel plane and must be
+    recaptured on white paper. Table, tray, fruit,
     cable and human obstacles are not included. Self-collision remains disabled
     because the baseline coarse sphere model previously produced false positives.
   geometry_derivation:

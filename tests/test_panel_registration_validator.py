@@ -25,6 +25,7 @@ def test_five_precise_landmarks_pass_measurement_only():
     result = evaluate_landmarks(transform, observations)
     assert result["status"] == "MEASURED_PASS_PENDING_MOTION_MARGIN"
     assert result["max_error_mm"] == 0.0
+    assert result["max_abs_plane_offset_mm"] == 0.0
     assert result["use_for_automated_motion"] is False
 
 
@@ -36,3 +37,17 @@ def test_large_or_incomplete_measurement_requires_recapture():
     )
     assert result["status"] == "MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE"
     assert result["max_error_mm"] == 20.0
+
+
+def test_depth_point_off_panel_plane_is_rejected():
+    transform = np.eye(4)
+    observations = {
+        key: {
+            "point_panel_m": point,
+            "observed_base_m": [point[0], point[1], point[2] + 0.020],
+        }
+        for key, point in DEFAULT_LANDMARKS_PANEL_M.items()
+    }
+    result = evaluate_landmarks(transform, observations)
+    assert result["max_abs_plane_offset_mm"] == 20.0
+    assert result["status"] == "MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE"

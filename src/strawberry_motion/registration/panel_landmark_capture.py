@@ -76,6 +76,7 @@ def main(args=None):
     cv2.setMouseCallback(WINDOW_NAME, mouse_callback)
     print("Read-only capture. Keep the manually aligned overview pose fixed.")
     print("Click in order: origin crossing, outer NW, outer NE, outer SW, outer SE.")
+    print("IMPORTANT: click WHITE PAPER just inside the tape corner, not the black tape.")
 
     try:
         while True:
@@ -87,9 +88,14 @@ def main(args=None):
             image = draw_alignment_overlay(np.asanyarray(color.get_data()), CrosshairStyle())
             next_id = ORDER[len(observations)] if len(observations) < len(ORDER) else "complete"
             cv2.putText(
-                image, f"NEXT: {next_id} | click point | s: save | r: reset",
+                image, f"NEXT: {next_id} | WHITE PAPER INSIDE TAPE ONLY | s: save | r: reset",
                 (12, image.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.48,
                 (0, 255, 0), 2, cv2.LINE_AA,
+            )
+            cv2.putText(
+                image, "DO NOT CLICK BLACK TAPE: DEPTH MAY JUMP",
+                (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.62,
+                (0, 0, 255), 2, cv2.LINE_AA,
             )
             for landmark_id, item in observations.items():
                 u, v = item["pixel_uv"]
@@ -141,6 +147,7 @@ def main(args=None):
                     yaml.safe_dump(output, stream, sort_keys=False, allow_unicode=True)
                 print(f"Saved: {output_path}")
                 print(f"RMS={evaluation['rms_error_mm']} mm MAX={evaluation['max_error_mm']} mm")
+                print(f"MAX plane offset={evaluation['max_abs_plane_offset_mm']} mm")
                 print("This evidence does not authorize robot motion.")
     finally:
         pipeline.stop()

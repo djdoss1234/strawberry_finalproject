@@ -3,7 +3,7 @@
 ## 상태
 
 ```text
-READY_TO_CAPTURE
+FIRST_CAPTURE_FAILED_RECAPTURE_REQUIRED
 ```
 
 ## 목적
@@ -24,6 +24,39 @@ margin으로 사용할 수 있는 정확도는 구분한다.
 
 검은 테이프 자체보다 테이프 경계에 인접한 흰 종이 표면을 클릭한다.
 테이프의 반사/깊이 결측으로 생기는 오차를 줄이기 위함이다.
+
+## 1차 측정 결과: FAIL
+
+`2026-05-27 16:24` 저장 결과:
+
+| Landmark | Total error | Panel plane offset | 판정 |
+| --- | ---: | ---: | --- |
+| `origin_crossing` | `2.663 mm` | `1.520 mm` | 양호 |
+| `outer_nw` | `133.964 mm` | `130.980 mm` | depth invalid 의심 |
+| `outer_ne` | `131.619 mm` | `-131.150 mm` | depth invalid 의심 |
+| `outer_sw` | `139.001 mm` | `136.540 mm` | depth invalid 의심 |
+| `outer_se` | `135.848 mm` | `-135.250 mm` | depth invalid 의심 |
+
+```text
+RMS error = 120.874 mm
+MAX error = 139.001 mm
+MAX absolute plane offset = 136.540 mm
+판정 = MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
+```
+
+해석:
+
+- 중앙 교차점은 등록된 panel 면과 잘 맞는다.
+- 외곽 네 점은 공통적으로 panel 면에서 약 `13 cm` 벗어난 depth가 측정됐다.
+- 캡처 화면에서 외곽 marker가 검은 절연테이프 위에 놓였으므로,
+  검은 표면의 depth 결측/오측정으로 보는 것이 가장 타당하다.
+- 따라서 현 결과로 TF 오류나 collision margin을 확정하지 않는다.
+
+근거:
+
+- result YAML: `docs/runs/RUN-20260527-008_panel_landmark_observations.yaml`
+- raw screenshot: `/home/user/Pictures/Screenshot from 2026-05-27 16-24-32.png`
+  - 배경에 인물이 보여 공개 asset/Git에는 추가하지 않음
 
 ## 안전 조건
 
@@ -52,6 +85,8 @@ ros2 run strawberry_motion panel_landmark_capture -- \
 
 3. 화면 지시에 따라 `origin_crossing -> outer_nw -> outer_ne -> outer_sw -> outer_se`
    순서로 클릭한다.
+   - 2차 측정에서는 외곽 검은 테이프를 직접 누르지 말고, 경계에서 바로
+     안쪽의 흰 종이 면을 누른다.
 4. 잘못 찍었으면 `r`로 초기화한다. 다섯 점이 끝나면 `s`로 저장한다.
 5. 저장된 `RMS error`와 `MAX error`를 worklog에 반영한다.
 

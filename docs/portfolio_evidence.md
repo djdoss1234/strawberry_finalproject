@@ -191,6 +191,27 @@ status: NOT_CAPTURED
 - corrected evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_corrected.png`
 - status: visualization correction before motion integration
 
+### 13. Panel Landmark 오차 측정에서 Depth 실패를 검출하고 재측정 절차로 차단
+
+- registered panel TF를 실제 motion margin으로 사용하기 전에, 중앙 테이프
+  교차점과 외곽 네 점의 RGB-D 관측값을 예상 좌표와 비교하는 read-only
+  landmark validation 절차를 구현했습니다.
+- 1차 측정에서 중앙점은 `2.663 mm` 오차로 일치했지만, 검은 테이프 위에
+  클릭된 외곽 네 점은 `131.619~139.001 mm` 오차와 최대
+  `136.540 mm`의 panel plane offset을 보였습니다.
+- 이 결과를 TF가 검증됐다고 해석하지 않고, 검은 테이프의 depth
+  오측정 가능성을 실패 원인으로 기록한 뒤 흰 종이 표면 재측정 전까지
+  scan motion 승인을 차단했습니다.
+- 도구에는 검은 테이프 클릭 경고와 plane-offset 판정을 추가했으며,
+  이후 첫 실기도 `NW/NE` 단일 cell만 허용하도록 게이트를 좁혔습니다.
+
+근거:
+
+- result: `docs/runs/RUN-20260527-008_panel_landmark_observations.yaml`
+- procedure: `docs/runs/RUN-20260527-008_panel_registration_landmark_validation_plan.md`
+- safety plan: `docs/runs/RUN-20260527-009_single_cell_scan_safety_plan.md`
+- status: failed measurement diagnosed; recapture required before motion authorization
+
 ### 12. Registered Whiteboard Collision Dry-run으로 Scan 후보 검증 범위 확장
 
 - `v6` scan pose 네 개를 단순 IK/empty-world 조건에서 끝내지 않고,
