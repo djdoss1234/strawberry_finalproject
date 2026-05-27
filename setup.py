@@ -28,6 +28,7 @@ setup(
             "workspace_marker_node = strawberry_motion.visualization.workspace_marker_node:main",
             "camera_alignment_node = strawberry_motion.visualization.camera_alignment_node:main",
             "realsense_alignment_viewer = strawberry_motion.visualization.realsense_alignment_viewer:main",
+            "panel_frame_capture = strawberry_motion.registration.panel_frame_capture:main",
         ],
     },
 )

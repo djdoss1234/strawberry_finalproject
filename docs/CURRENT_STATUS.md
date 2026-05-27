@@ -137,8 +137,8 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. panel registration용 AprilTag 또는 ArUco marker를 준비하고 출력 크기,
-   panel origin까지의 offset을 측정
+1. 저장된 overview pose에서 중앙 십자선을 확인하고 read-only depth
+   capture로 panel transform 후보를 출력
 2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
@@ -167,7 +167,7 @@ tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
 현장 입력을 받은 뒤:
 
 1. `ISSUE-20260526-006` safety incident 후속 및 automated motion safety validation 설계
-2. panel marker 기반 `base_link -> cultivation_panel` registration 준비/구현
+2. 기존 hand-eye calibration과 depth 기반 `base_link -> cultivation_panel` 후보 검증
 3. RViz에서 registered frame 기준 실측 cell alignment 재검증
 4. tape dead-zone/margin 설정 추가 여부 결정
 5. safety-checked `scan_pose_generator.py` 구현
