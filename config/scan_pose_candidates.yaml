@@ -17,6 +17,7 @@ scan_pose_candidates:
   capture_date: "2026-05-27"
   curobo_dry_run_date: "2026-05-27"
   curobo_run_record: docs/runs/RUN-20260527-006_v6_orientation_dryrun.yaml
+  collision_dry_run_record: docs/runs/RUN-20260527-007_registered_whiteboard_collision_dryrun.yaml
   curobo_start_state: overview_pose_operational_limit
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml
@@ -32,6 +33,11 @@ scan_pose_candidates:
     Empty-world cuRobo kinematic dry-run only. No robot/tool collision sphere
     model or measured panel/tray world was active; this does not authorize
     physical scan execution.
+  followup_collision_validation: >-
+    All four candidates were subsequently PLAN_VALID with the mini-project
+    robot/tool collision spheres and a registered-whiteboard cuboid. That
+    follow-up still excludes self-collision, tray/table/cable/human obstacles
+    and registration error, so automated motion remains disabled.
   targets:
     - cell_id: root/nw
       approach: panel_normal

@@ -1,0 +1,33 @@
+# Collision world for offline validation of workspace scan poses.
+# This config is evidence for planning review only; it does not authorize robot motion.
+scan_collision_world:
+  version: v1_registered_whiteboard
+  status: pending_physical_error_validation
+  frame_id: base_link
+  source_registration: config/panel_registration.yaml
+  robot_geometry_source_local: ~/doosan_ws/src/e0509_gripper_description/config/curobo
+  robot_collision_spheres_enabled: true
+  self_collision_check_enabled: false
+  use_for_automated_motion: false
+  validation_scope: >-
+    Robot/tool collision spheres reused from the mini-project baseline and a
+    whiteboard cuboid derived from the current cultivation_panel registration.
+    The board registration error is not yet measured. Table, tray, fruit,
+    cable and human obstacles are not included. Self-collision remains disabled
+    because the baseline coarse sphere model previously produced false positives.
+  geometry_derivation:
+    whiteboard_dimensions_m: [1.500, 0.900, 0.020]
+    panel_origin_definition: tape_intersection_on_paper_workspace
+    whiteboard_center_in_cultivation_panel_m: [0.023, 0.025, -0.010]
+    note: >-
+      x offset = board_width/2 - (paper_left_offset + west_split);
+      y offset = (paper_top_offset + north_split) - board_height/2 because
+      cultivation_panel +Y points upward; z=-thickness/2 places the cuboid
+      behind the registered front plane.
+  objects:
+    - name: registered_whiteboard
+      type: cuboid
+      enabled: true
+      pose_wxyz: [0.137167220, 0.601450120, 0.669438920,
+                  0.700077382, 0.701914023, -0.099086927, -0.085965950]
+      dims_m: [1.500, 0.900, 0.020]

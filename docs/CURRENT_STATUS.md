@@ -104,6 +104,14 @@
   - executor opt-in 및 `/strawberry/scan/start` 명시 호출 필요
   - collision-aware backend가 검증되기 전에는 실제 motion을 강제 거부
   - detector 결과 전에는 `SCANNED_EMPTY` 대신 `SCAN_POSE_REACHED` 사용
+- `config/scan_collision_world.yaml`과
+  `scripts/validate_v6_collision_scan_poses.py` 추가
+  - 미니프로젝트 robot/tool collision sphere 모델 재사용
+  - 현재 `cultivation_panel` 등록값에서 생성한 whiteboard cuboid 활성화
+  - `v6` 네 cell 모두 registered-whiteboard dry-run에서 `PLAN_VALID`
+  - 결과: `docs/runs/RUN-20260527-007_registered_whiteboard_collision_dryrun.yaml`
+  - self-collision, table/tray/cable/human obstacle와 registration 오차는
+    아직 미검증이므로 자동 motion은 계속 금지
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -203,10 +211,10 @@ scan pose의 자세/도달성 후보 확인 완료 → 다음 단계:
 
 우선순위 순서:
 
-1. 미니프로젝트의 검증된 robot/tool collision geometry와 panel world를
-   finalproject의 scan planner 입력으로 연결
-2. `v6`를 collision-aware offline plan으로 재검증하고, clearance와
-   joint margin을 cell별 기록
+1. panel registration 물리 오차를 정량 측정하고, board margin을
+   collision world에 반영
+2. self-collision sphere false positive 원인을 검토하고, scan용으로
+   신뢰할 수 있는 robot/tool collision profile을 확정
 3. 저속 단일 cell 실기 절차와 abort/recovery 기준을 확정한 뒤에만
    `use_for_automated_motion` 승인 검토
 4. detector 결과와 cell state 연결

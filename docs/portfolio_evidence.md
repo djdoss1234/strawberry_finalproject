@@ -191,6 +191,26 @@ status: NOT_CAPTURED
 - corrected evidence: `docs/assets/exploration/RUN-20260527-003_scan_pose_preview_corrected.png`
 - status: visualization correction before motion integration
 
+### 12. Registered Whiteboard Collision Dry-run으로 Scan 후보 검증 범위 확장
+
+- `v6` scan pose 네 개를 단순 IK/empty-world 조건에서 끝내지 않고,
+  미니프로젝트에서 사용하던 robot/tool collision sphere와 현재
+  `panel_registration`에서 생성한 whiteboard cuboid를 함께 넣어
+  offline cuRobo planning으로 재검증했습니다.
+- 결과는 네 cell 모두 `PLAN_VALID`였습니다.
+- 단, `SW`는 `J1=203.77 deg`, `J5=124.70 deg`, `SE`는
+  `J6=-223.67 deg`까지 사용하여 joint-limit margin이 작음을 확인했습니다.
+- self-collision, table/tray, cable, human obstacle, panel TF 오차는 아직
+  포함하지 않았으므로 이 결과를 실제 자동 motion 승인으로 사용하지 않고
+  `use_for_automated_motion: false`를 유지했습니다.
+
+근거:
+
+- world config: `config/scan_collision_world.yaml`
+- validator: `scripts/validate_v6_collision_scan_poses.py`
+- result: `docs/runs/RUN-20260527-007_registered_whiteboard_collision_dryrun.yaml`
+- status: registered-whiteboard collision dry-run complete; physical execution locked
+
 ### 11. VLA ↔ Motion Layer 인터페이스 설계 및 구현
 
 - VLA가 수확 target을 제안할 때 motion layer가 실제 실행 없이 검증하는
@@ -198,17 +218,19 @@ status: NOT_CAPTURED
 - `ApproachProposal` dataclass로 VLA 제안(cell_id, direction, confidence)을
   수신하고, `validate_approach_proposal()`이 robot motion 없이
   `MotionValidationResult`를 반환합니다.
-- RECOVER_HOME 제안은 VLA/rule layer가 보낼 수 있지만, motion layer가
-  safety warning을 포함해 반환하고 실제 실행은 executor에게만 허용됩니다.
-- offline lookup table에 cuRobo dry-run 결과(v2, 0.65m standoff)를 반영해
-  SW cell = REQUIRES_ALTERNATIVE, 나머지 3셀 = VALID로 기록했습니다.
-- 19개 전용 단위 테스트 통과.
+- RECOVER_HOME 제안은 VLA/rule layer가 보낼 수 있지만, 현재 경로 검증
+  전에는 `NOT_VALIDATED`로 반환되어 실행되지 않습니다.
+- offline lookup table에 frame 오류를 수정한 `v6` dry-run 결과를 반영했고,
+  네 cell 모두 검증 범위 내 `VALID`입니다. 다만 offline `VALID`는
+  physical motion authorization과 분리되어 `is_executable=False`입니다.
+- fail-closed motion gate를 포함한 전체 단위 테스트 `46개` 통과.
 
 근거:
 
 - interface: `src/strawberry_motion/interfaces/approach_proposal.py`
-- tests: `tests/test_approach_proposal.py` (19 tests passed)
-- status: implemented and unit-tested; runtime cuRobo path is placeholder
+- tests: `tests/test_approach_proposal.py`, `tests/test_scan_safety.py`,
+  `tests/test_scan_collision_world.py`
+- status: implemented and unit-tested; runtime collision-aware authorization은 미구현
 
 ### 10. cuRobo Offline IK/Motion 검증으로 실행 가능한 cell과 불가능한 cell 식별
 
@@ -216,7 +238,8 @@ status: NOT_CAPTURED
   `MotionGen.plan_single`로 dry-run 검증했습니다.
 - 실행 없이 cell별 도달 가능 여부를 미리 판단해, 안전하지 않은 pose를
   실제 robot 실행 전에 필터링했습니다.
-- 결과: NE/SE = PLAN_VALID(경로 계획 성공), NW/SW = IK_FAIL(workspace 밖)
+- 이 초기 검증 결과는 NE/SE = PLAN_VALID, NW/SW = IK_FAIL이었으며,
+  이후 ee link orientation 오류를 수정한 `v6` 후보로 대체되었습니다.
   - NW/SW는 panel 왼쪽 x ≈ -0.41m 위치가 현재 orientation 조건에서 E0509 workspace 밖
   - NE/SE는 x ≈ 0.12m 위치로 도달 가능 및 충돌 없는 경로 생성 확인
 
@@ -224,7 +247,7 @@ status: NOT_CAPTURED
 
 - script: `scripts/validate_scan_poses.py`
 - result: `docs/runs/RUN-20260527-004_curobo_dry_run.yaml`
-- status: IK validation complete; NW/SW pose correction required before motion integration
+- status: historical baseline; current 기준은 section 12의 `v6` 결과
 
 ### 9. Observation Pose를 TCP 후보로 변환하고 실행 전 검증 경계 유지
 
@@ -243,7 +266,7 @@ status: NOT_CAPTURED
 ## 아직 하지 않은 것
 
 - RViz 화면에서 cell marker 표시 캡처
-- 실제 camera observation pose 생성
+- `v6` camera observation pose의 collision-aware 후보 검증 이후 실기 실행
 - robot scan motion 실행
 - detector 결과를 cell 상태에 반영
 - tray marker localization 및 자동 place
