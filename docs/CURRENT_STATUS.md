@@ -1,6 +1,6 @@
 # 현재 진행 상태 및 다음 세션 Handoff
 
-최종 갱신일: 2026-05-26
+최종 갱신일: 2026-05-27
 
 이 문서는 새 세션에서 가장 먼저 읽을 압축 상태 요약입니다. 상세 근거는
 연결된 run, issue, config, evidence 문서를 확인합니다.
@@ -66,6 +66,8 @@
 - `camera_alignment_node` ROS interface와 synthetic image overlay publish 확인
 - DART 수동 joint 조작과 display-only viewer로 overview pose 정렬 완료
 - overview 정렬 screenshot에서 네 cell, 중앙 교차점, `LIVE 30.0 FPS` 확인
+- RViz cell/physical direction 검증용 `workspace_rviz.launch.py`와
+  `rviz/workspace_exploration.rviz` 추가 준비
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -130,7 +132,8 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
+1. `ros2 launch strawberry_motion workspace_rviz.launch.py`를 실행하고
+   RViz에서 물리 cell과 marker의 의미가 맞는지 캡처
 2. `cultivation_panel`과 `base_link` 사이 frame 관계를 정의/검증
 3. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
@@ -141,6 +144,8 @@ docs/assets/exploration/RUN-20260526-002_workspace_board.jpg  # 확보 완료
 docs/assets/exploration/RUN-20260526-002_overview_camera.png  # 정렬 완료 화면
 docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg  # 기능 preview
 artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
+artifacts/RUN-20260527-001/raw/rviz_cells.png
+artifacts/RUN-20260527-001/raw/rviz_next_ne.png
 ```
 
 확보한 overview reference pose:
@@ -168,6 +173,7 @@ tcp_base_mm_deg: [73.02, -122.02, 520.19, 86.27, 64.30, -89.05]
 - reference poses: `config/recorded_poses.yaml`
 - testbed: `docs/testbed_setup.md`
 - 현재 run: `docs/runs/RUN-20260526-002_workspace_overview_alignment_plan.md`
+- 다음 run: `docs/runs/RUN-20260527-001_rviz_physical_workspace_alignment.md`
 - 측정 issue: `docs/issues/ISSUE-20260526-003_workspace_measurement_boundary_mismatch.md`
 - evidence: `docs/portfolio_evidence.md`
 - baseline: https://github.com/djdoss1234/strawberry_miniproject

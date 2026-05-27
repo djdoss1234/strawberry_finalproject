@@ -184,6 +184,14 @@ RViz에서는 fixed frame을 현재 임시 기준 frame인 `cultivation_panel`�
 `/strawberry/exploration/workspace_cells`를 선택합니다. 실물 테스트베드
 기준 frame이 확정되면 이 frame 이름과 좌표는 실측값으로 교체합니다.
 
+RViz marker 검증과 캡처를 바로 시작할 때는 저장된 화면 구성까지 함께
+실행합니다. 이 launch는 robot motion을 호출하지 않습니다.
+
+```bash
+source ~/doosan_ws/install/setup.bash
+ros2 launch strawberry_motion workspace_rviz.launch.py
+```
+
 상태 갱신 확인 예시:
 
 ```bash

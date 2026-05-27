@@ -1,0 +1,61 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.35
+      Cell Size: 0.1
+      Class: rviz_default_plugins/Grid
+      Color: 120; 120; 120
+      Enabled: true
+      Name: Workspace Grid
+      Normal Cell Count: 0
+      Plane: XY
+      Plane Cell Count: 14
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 0.2
+      Name: Cultivation Panel Origin
+      Radius: 0.01
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Marker Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /strawberry/exploration/workspace_cells
+      Name: Quadtree Workspace Cells
+      Namespaces:
+        next_scan_cell: true
+        workspace_cells: true
+        workspace_labels: true
+      Value: true
+  Global Options:
+    Background Color: 35; 35; 35
+    Fixed Frame: cultivation_panel
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.45
+      Focal Point:
+        X: 0.005
+        Y: -0.005
+        Z: 0
+      Name: Current View
+      Pitch: 1.5707
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 1.5707
+    Saved: ~

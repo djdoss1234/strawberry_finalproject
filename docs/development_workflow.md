@@ -37,6 +37,12 @@ visualization/
 config/
   workspace.yaml           작업영역 frame, 크기, 최대 분할 depth
   scan_policy.yaml         탐색 순서, 재방문, 분할 규칙
+
+rviz/
+  workspace_exploration.rviz quadtree cell 방향/상태 캡처용 RViz 구성
+
+launch/
+  workspace_rviz.launch.py marker node와 캡처용 RViz 동시 실행
 ```
 
 모듈 분리 순서:
