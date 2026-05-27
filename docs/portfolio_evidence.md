@@ -190,7 +190,7 @@ status: NOT_CAPTURED
 
 | 단계 | 자료 | 상태 | 배치 위치 |
 | --- | --- | --- | --- |
-| Quadtree visualization | RViz cell/next marker 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
+| Quadtree visualization | RViz cell/next marker 방향 검증 캡처 | `CAPTURED` | `docs/assets/exploration/RUN-20260527-001_rviz_cells.png` |
 | Quadtree ROS 연결 | `rqt_graph` 캡처 | `NOT_CAPTURED` | `docs/assets/exploration/` |
 | Physical workspace 정렬 | 종이 4분할과 overview camera 정렬 화면 확보 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
 | Camera 중심 정렬 보조 | direct viewer 표시 및 `30.0 FPS` 실기 확인 | `CAPTURED` | `docs/assets/exploration/RUN-20260526-002_overview_camera.png` |
@@ -201,6 +201,8 @@ status: NOT_CAPTURED
 | Planner/collision 개선 | 수정 전후 비교 그림/영상 | `NOT_STARTED` | `docs/assets/motion/` |
 | VLA 통합 | proposal-to-result graph/demo | `NOT_STARTED` | `docs/assets/integration/` |
 | 최종 결과 | 전체 demo 영상과 지표표 | `NOT_STARTED` | `docs/assets/results/` 및 README |
+
+![RViz quadtree cell과 initial next marker](assets/exploration/RUN-20260527-001_rviz_cells.png)
 
 ## 자소서/면접 문장 초안
 

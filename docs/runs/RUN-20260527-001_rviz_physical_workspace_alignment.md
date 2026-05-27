@@ -9,7 +9,7 @@
 | 단계 | exploration visualization / frame validation |
 | scene | 종이 4분할 workspace, robot motion 없음 |
 | 입력 근거 | `RUN-20260526-002`, `config/recorded_poses.yaml` |
-| 확인 방식 | 사용자 RViz 육안 확인, screenshot 전달 대기 |
+| 확인 방식 | 사용자 RViz 육안 확인 및 screenshot 확보 |
 
 ## 목적과 완료 기준
 
@@ -86,13 +86,13 @@ ros2 topic pub --once /strawberry/exploration/set_cell_state \
 
 | 자료 | 필요 장면 | 상태 | 원본 위치 | 공개 위치/사용처 |
 | --- | --- | --- | --- | --- |
-| 기본 cell 방향 | 네 cell label과 `root/nw` next marker | `NOT_CAPTURED` | `artifacts/RUN-20260527-001/raw/rviz_cells.png` | `docs/assets/exploration/RUN-20260527-001_rviz_cells.png`, README/포트폴리오 |
+| 기본 cell 방향 | 네 cell label과 `root/nw` next marker | `PUBLIC` | 사용자 제공 screenshot | `docs/assets/exploration/RUN-20260527-001_rviz_cells.png`, README/포트폴리오 |
 | 상태 전환 | `root/nw` 처리 후 `root/ne` next marker | `NOT_CAPTURED` | `artifacts/RUN-20260527-001/raw/rviz_next_ne.png` | `docs/assets/exploration/RUN-20260527-001_rviz_next_ne.png`, 포트폴리오 |
 
 ## 판정
 
 ```text
-PASS_DIRECTION_CONFIRMED_SCREENSHOT_PENDING
+PASS
 ```
 
 ## 실행 결과
@@ -103,12 +103,13 @@ PASS_DIRECTION_CONFIRMED_SCREENSHOT_PENDING
 - state 확인: 사용자 확인 중 `root/nw=SCANNED_EMPTY`가 반영되어
   `/strawberry/exploration/next_cell`이 `root/ne`로 갱신된 것을 topic으로 확인
 - 실제 overview image와의 cell/axis 방향 대응: 사용자 현장 확인 `PASS`
-- screenshot: 사용자 전달 전이므로 공개 evidence 갱신 대기
+- screenshot: `docs/assets/exploration/RUN-20260527-001_rviz_cells.png`
+
+![RViz quadtree cell 방향과 초기 next marker](../assets/exploration/RUN-20260527-001_rviz_cells.png)
 
 ## 다음 행동
 
-1. 캡처를 받으면 공개 evidence asset을 추가합니다.
-2. `RUN-20260527-002`에서 `cultivation_panel`과 `base_link` 사이
+1. `RUN-20260527-002`에서 `cultivation_panel`과 `base_link` 사이
    transform의 registration 절차를 확정합니다.
-3. transform이 검증되기 전에는 scan pose나 자동 robot motion을
+2. transform이 검증되기 전에는 scan pose나 자동 robot motion을
    실행하지 않습니다.

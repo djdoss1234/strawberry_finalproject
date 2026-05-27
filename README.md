@@ -197,6 +197,10 @@ ros2 launch strawberry_motion workspace_rviz.launch.py
 publish합니다. 실제 `base_link -> cultivation_panel` 측정 transform은
 아직 정의되지 않았으며, 이 표시용 TF를 robot motion에 사용하지 않습니다.
 
+확인된 quadtree workspace 표시 결과:
+
+![RViz quadtree cell과 initial next marker](docs/assets/exploration/RUN-20260527-001_rviz_cells.png)
+
 상태 갱신 확인 예시:
 
 ```bash

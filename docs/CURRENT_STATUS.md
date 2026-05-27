@@ -72,7 +72,7 @@
   `workspace_visualization_world -> cultivation_panel` identity TF를
   visualization launch에서만 publish하도록 보완
 - RViz marker topic 설정 오류를 수정하고 cell/axis 방향 대응을 사용자
-  현장 확인으로 `PASS` 판정, screenshot evidence는 전달 대기
+  현장 확인 및 screenshot evidence로 `PASS` 판정
 
 ## 4. 물리 Workspace 현재 사실
 
@@ -137,10 +137,9 @@ root split = (0.0, 0.0)
 
 ## 6. 현재 필요한 사용자 입력/현장 작업
 
-1. 가능하면 RViz cell 방향 확인 화면을 screenshot evidence로 저장
-2. panel registration용 AprilTag 또는 ArUco marker를 준비하고 출력 크기,
+1. panel registration용 AprilTag 또는 ArUco marker를 준비하고 출력 크기,
    panel origin까지의 offset을 측정
-3. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
+2. motion margin 구현 시 필요한 tape overlap 폭만 정밀 재측정
 
 자료 경로:
 
@@ -151,6 +150,7 @@ docs/assets/exploration/RUN-20260526-003_crosshair_overlay_preview.jpg  # 기능
 artifacts/RUN-20260526-002/raw/rviz_physical_alignment.png
 artifacts/RUN-20260527-001/raw/rviz_cells.png
 artifacts/RUN-20260527-001/raw/rviz_next_ne.png
+docs/assets/exploration/RUN-20260527-001_rviz_cells.png  # 확보 완료
 ```
 
 확보한 overview reference pose:
