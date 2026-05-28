@@ -83,6 +83,9 @@ _SW_NO_MOTION_CHECK_SEC = 5.0
 _SW_FALLBACK_MOVEJ_VEL_DEG_S = 15.0
 _SW_FALLBACK_MOVEJ_ACC_DEG_S2 = 20.0
 _SW_USE_DIRECT_MOVEJ = True
+_SW_STAGED_MOVEJ_POINTS = 6
+_SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
+_SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -420,6 +423,47 @@ class ScanExecutorNode(Node):
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
 
+    def _exec_movej_staged(
+        self, cell_id: str, traj_rad: np.ndarray, endpoint_rad: List[float]
+    ) -> bool:
+        """Execute a problematic scan target through coarse MoveJoint waypoints.
+
+        This is a diagnostic fallback for SW only. The waypoints are sampled
+        from the cuRobo trajectory instead of interpolating joints manually.
+        """
+        deg = np.rad2deg(traj_rad)
+        n = deg.shape[0]
+        count = min(_SW_STAGED_MOVEJ_POINTS, max(n - 1, 1))
+        idx = np.linspace(1, n - 1, count, dtype=int)
+        # Remove duplicates while preserving order.
+        idx = list(dict.fromkeys(int(i) for i in idx))
+        self._pub_status(
+            "%s staged MoveJoint diagnostic: %d waypoint(s), vel=%.0f acc=%.0f"
+            % (cell_id, len(idx), _SW_STAGED_MOVEJ_VEL_DEG_S, _SW_STAGED_MOVEJ_ACC_DEG_S2)
+        )
+        for seq, i in enumerate(idx, start=1):
+            waypoint = deg[i].tolist()
+            self._pub_status(
+                "%s staged MoveJoint %d/%d target=[%s]"
+                % (cell_id, seq, len(idx), " ".join("%.1f" % v for v in waypoint))
+            )
+            if not self._movej(
+                waypoint,
+                vel=_SW_STAGED_MOVEJ_VEL_DEG_S,
+                acc=_SW_STAGED_MOVEJ_ACC_DEG_S2,
+            ):
+                self._pub_status("%s staged MoveJoint %d service failed" % (cell_id, seq))
+                return False
+            if not self._wait_for_joints(np.deg2rad(waypoint).tolist(), 3.0, 45.0):
+                joints_now = self._current_joints or []
+                joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+                self._pub_status(
+                    "%s staged MoveJoint %d no arrival; current=[%s]"
+                    % (cell_id, seq, joints_now_str)
+                )
+                return False
+        return self._wait_for_joints(endpoint_rad, 3.0, 10.0)
+
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
             self._current_joints, _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
@@ -486,16 +530,11 @@ class ScanExecutorNode(Node):
 
             traj, motion_time, endpoint_rad = ret
             if cell_id == "root/sw" and _SW_USE_DIRECT_MOVEJ:
-                endpoint_deg = np.rad2deg(endpoint_rad).tolist()
                 self._pub_status(
-                    "root/sw uses direct MoveJoint endpoint test; skipping spline probe"
+                    "root/sw uses staged MoveJoint diagnostic; skipping spline probe"
                 )
-                if not self._movej(
-                    endpoint_deg,
-                    vel=_SW_FALLBACK_MOVEJ_VEL_DEG_S,
-                    acc=_SW_FALLBACK_MOVEJ_ACC_DEG_S2,
-                ):
-                    self._pub_status("EXEC_FAIL root/sw direct MoveJoint failed")
+                if not self._exec_movej_staged(cell_id, traj, endpoint_rad):
+                    self._pub_status("EXEC_FAIL root/sw staged MoveJoint failed")
                     self._pub_state(cell_id, "PLANNING_FAIL")
                     self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                     return
