@@ -65,8 +65,8 @@ _CANDIDATES_FNAME = "scan_pose_candidates_refit_candidate.yaml"
 _COLLISION_WORLD_FNAME = "scan_collision_world.yaml"
 _JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 
-# Single-cell initial validation gate
-_INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne"]
+# Single-cell test gate — all 4 cells validated (RUN-20260527-012)
+_INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne", "root/se", "root/sw"]
 # Full traversal Z-order (nw→ne top row, sw→se bottom row)
 _ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
 
@@ -310,14 +310,15 @@ class ScanExecutorNode(Node):
             return None
         endpoint_rad = traj[-1].tolist()
         endpoint_deg = [round(float(np.rad2deg(j)), 1) for j in endpoint_rad]
+        motion_time = float(result.motion_time.item())
         self.get_logger().info(
-            "%s plan endpoint_deg=[%s]"
-            % (label, " ".join("%.1f" % d for d in endpoint_deg))
+            "%s plan endpoint_deg=[%s]  curobo_time=%.2fs"
+            % (label, " ".join("%.1f" % d for d in endpoint_deg), motion_time)
         )
-        return traj, float(result.motion_time.item()), endpoint_rad
+        return traj, motion_time, endpoint_rad
 
     def _exec_spline(
-        self, traj_rad: np.ndarray, motion_time: float, vel: float = 120.0
+        self, traj_rad: np.ndarray, vel: float = 120.0
     ) -> bool:
         if not self._cli_spline.wait_for_service(timeout_sec=3.0):
             self.get_logger().error("MoveSplineJoint service not available")
@@ -328,6 +329,13 @@ class ScanExecutorNode(Node):
             idx = np.linspace(0, n - 1, _MAX_SPLINE_PTS, dtype=int)
             deg = deg[idx]
             n = _MAX_SPLINE_PTS
+        # Skip the first waypoint (current/start position).
+        # MoveSplineJoint moves from the robot's current position through the
+        # given via-points. Including the start as waypoint[0] causes a
+        # near-zero first segment that Doosan silently rejects when the robot's
+        # actual joints don't perfectly match the planned start.
+        deg = deg[1:]
+        n = len(deg)
         req = MoveSplineJoint.Request()
         req.pos_cnt = n
         for row in deg:
@@ -336,17 +344,31 @@ class ScanExecutorNode(Node):
             req.pos.append(pt)
         req.vel = [float(vel)] * 6
         req.acc = [float(vel) * 1.5] * 6
-        req.time = max(motion_time * _SPLINE_TIME_SCALE, _SPLINE_MIN_TIME)
+        # Compute minimum feasible time from actual trajectory arc length.
+        # cuRobo plans aggressively (often < 1 s) but Doosan rejects if
+        # req.time < max_joint_arc / vel.  Use 1.5x safety margin, 3 s min.
+        path_lengths = np.sum(np.abs(np.diff(np.rad2deg(traj_rad), axis=0)), axis=0)
+        req.time = float(max(np.max(path_lengths) / vel * 1.5, 3.0))
         req.mode = 0
         req.sync_type = 0
         future = self._cli_spline.call_async(req)
         t0 = time.time()
         while not future.done() and (time.time() - t0) < 60.0:
             time.sleep(0.05)
-        ok = future.done() and future.result() and future.result().success
-        if not ok:
-            self.get_logger().error("Spline execution failed/timeout")
-        return bool(ok)
+        if not future.done():
+            self.get_logger().error("Spline future timed out after 60s")
+            return False
+        resp = future.result()
+        if resp is None:
+            self.get_logger().error("Spline future result is None")
+            return False
+        self.get_logger().info(
+            "Spline response: success=%s  msg=%r  pos_cnt=%d  req_time=%.2fs"
+            % (resp.success, getattr(resp, "msg", "N/A"), n, req.time)
+        )
+        if not resp.success:
+            self.get_logger().error("MoveSplineJoint returned success=False")
+        return bool(resp.success)
 
     def _movej(self, joints_deg: List[float], vel: float = 40.0, acc: float = 40.0) -> bool:
         if not self._cli_movej.wait_for_service(timeout_sec=3.0):
@@ -441,7 +463,7 @@ class ScanExecutorNode(Node):
                     "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
                     % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
                 )
-            if not self._exec_spline(traj, motion_time, vel=spline_vel):
+            if not self._exec_spline(traj, vel=spline_vel):
                 self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._pub_status("RETURNING_TO_OVERVIEW after failure")
@@ -450,8 +472,10 @@ class ScanExecutorNode(Node):
 
             # Wait until joint state confirms arrival at planned endpoint.
             # Needed because MoveSplineJoint sync_type=0 may return before
-            # the robot physically arrives.
-            deadline = time.time() + 30.0
+            # the robot physically arrives. T1 mode can be 10-20x slower than
+            # cuRobo's planned time, so give generous headroom.
+            arrival_timeout = max(motion_time * 20.0, 90.0)
+            deadline = time.time() + arrival_timeout
             arrived = False
             while time.time() < deadline:
                 if self._current_joints and joints_within_tolerance_deg(
@@ -462,8 +486,8 @@ class ScanExecutorNode(Node):
                 time.sleep(0.1)
             if not arrived:
                 self._pub_status(
-                    "EXEC_TIMEOUT %s — robot did not arrive at endpoint within 30s; aborting"
-                    % cell_id
+                    "EXEC_TIMEOUT %s — robot did not arrive at endpoint within %.0fs; aborting"
+                    % (cell_id, arrival_timeout)
                 )
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
