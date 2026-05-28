@@ -39,6 +39,11 @@ def parse_args(args=None):
     )
     parser.add_argument("--output", required=True)
     parser.add_argument("--patch-radius-px", type=int, default=3)
+    parser.add_argument("--fast-display", action="store_true",
+                        help="Show color frames without per-frame depth alignment; align depth only on click.")
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--fps", type=int, default=30)
     return parser.parse_args(args)
 
 
@@ -68,8 +73,8 @@ def main(args=None):
 
     pipeline = rs.pipeline()
     config = rs.config()
-    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, options.width, options.height, rs.format.bgr8, options.fps)
+    config.enable_stream(rs.stream.depth, options.width, options.height, rs.format.z16, options.fps)
     pipeline.start(config)
     align = rs.align(rs.stream.color)
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
@@ -80,10 +85,10 @@ def main(args=None):
 
     try:
         while True:
-            frames = align.process(pipeline.wait_for_frames())
+            raw_frames = pipeline.wait_for_frames()
+            frames = raw_frames if options.fast_display else align.process(raw_frames)
             color = frames.get_color_frame()
-            depth = frames.get_depth_frame()
-            if not color or not depth:
+            if not color:
                 continue
             image = draw_alignment_overlay(np.asanyarray(color.get_data()), CrosshairStyle())
             next_id = ORDER[len(observations)] if len(observations) < len(ORDER) else "complete"
@@ -105,6 +110,11 @@ def main(args=None):
             if pending_click[0] is not None and len(observations) < len(ORDER):
                 u, v = pending_click.pop()
                 pending_click.append(None)
+                click_frames = align.process(raw_frames if options.fast_display else frames)
+                depth = click_frames.get_depth_frame()
+                if not depth:
+                    print("Depth frame unavailable at clicked point; click the same landmark again.")
+                    continue
                 intrinsics = depth.profile.as_video_stream_profile().intrinsics
                 point = depth_pixel_to_base(
                     rs, depth, intrinsics, t_base_camera, u, v, options.patch_radius_px
