@@ -1,36 +1,41 @@
 # Physically observed reference poses. These are records, not autonomous motion commands.
 overview_alignment:
-  recorded_date: "2026-05-27"
-  purpose: align_camera_center_crosshair_to_cultivation_panel_tape_intersection
+  recorded_date: "2026-05-28"
+  purpose: workspace_reset_overview_alignment_to_panel_center_crossing
   acquisition:
     robot_control: doosan_dart_manual_joint_control
-    image_viewer: realsense_alignment_viewer_display_only
-    evidence_image: docs/assets/exploration/RUN-20260527-002_overview_alignment_operational_limit.png
+    image_viewer: panel_landmark_capture_fast_display
+    evidence_image: /home/user/Pictures/Screenshot from 2026-05-28 21-22-01.png
   joint_position_deg:
-    j1: 97.84
-    j2: -94.40
-    j3: 65.95
-    j4: -10.93
-    j5: 95.49
-    j6: -94.79
+    j1: 87.98
+    j2: -94.92
+    j3: 129.89
+    j4: 175.94
+    j5: -31.34
+    j6: 93.42
   tcp_pose_base_mm_deg:
-    x: 85.91
-    y: -385.37
-    z: 569.66
-    rx: 86.05
-    ry: 67.57
-    rz: -89.18
+    x: 6.35
+    y: -0.25
+    z: 547.58
+    rx: 85.67
+    ry: 66.27
+    rz: -89.12
   result: aligned
   observed_display_fps: 30.0
   use_for_automated_motion: false
   note: >-
-    This DART-recorded TCP pose reproduces the overview camera alignment
-    posture. It does not by itself define the cultivation_panel-to-base
-    transform or authorize automated robot motion. This pose is inside the
-    current cuRobo operational joint range, but remains a read-only
-    registration reference until motion safety validation is completed.
+    Workspace was physically reset on 2026-05-28 so the panel center is closer
+    to the robot base centerline and within a more reachable region. This
+    DART-recorded TCP pose reproduces the new overview camera alignment
+    posture. It is a read-only registration/reference pose and does not
+    authorize automated scan motion by itself.
 
 superseded_overview_alignments:
+  - recorded_date: "2026-05-27"
+    superseded_reason: workspace_physically_reset_on_2026_05_28
+    joint_position_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
+    tcp_pose_base_mm_deg: [85.91, -385.37, 569.66, 86.05, 67.57, -89.18]
+    use_for_automated_motion: false
   - recorded_date: "2026-05-26"
     superseded_reason: j2_exceeded_current_curobo_operational_range
     joint_position_deg: [102.79, -109.75, 120.08, -18.36, 54.45, -85.46]

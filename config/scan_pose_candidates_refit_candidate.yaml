@@ -2,14 +2,14 @@ scan_pose_candidates:
   version: v9_workspace_reset_pending_manual_teach
   status: workspace_reset_registration_ready_scan_poses_require_manual_teach
   capture_date: '2026-05-28'
-  curobo_start_state: overview_pose_operational_limit
+  curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
-  - 97.84
-  - -94.4
-  - 65.95
-  - -10.93
-  - 95.49
-  - -94.79
+  - 87.98
+  - -94.92
+  - 129.89
+  - 175.94
+  - -31.34
+  - 93.42
   source_registration: config/panel_registration.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   camera_centered_search_record: docs/runs/RUN-20260528-005_camera_centered_search.yaml
@@ -26,9 +26,12 @@ scan_pose_candidates:
   - cell_id: root/nw
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: SUPERSEDED_BY_WORKSPACE_RESET
-    note: Superseded after physical workspace reset; re-teach this cell with DART
-      before use.
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
+    note: 2026-05-28 manually adjusted with Doosan DART after workspace reset.
+      Camera view fills root/nw with the cell centered enough for scan validation.
+      DART task pose x=-245.34mm y=373.90mm z=741.39mm rx=86.46 ry=66.60 rz=-88.80.
+      Global automated motion remains disabled until all four cells are retaught
+      and verified from the new overview pose.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -47,31 +50,31 @@ scan_pose_candidates:
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 131.71
-    - -17.04
-    - 87.7
-    - -101.98
-    - 41.12
-    - -4.21
+    - 139.76
+    - 75.04
+    - -79.09
+    - 128.0
+    - -69.04
+    - 87.75
     joint_range_deg:
       J1:
-      - 97.8
-      - 131.71
+      - 87.98
+      - 139.76
       J2:
-      - -94.4
-      - -17.04
+      - -94.92
+      - 75.04
       J3:
-      - 65.9
-      - 87.7
+      - -79.09
+      - 129.89
       J4:
-      - -101.98
-      - -10.9
+      - 128.0
+      - 175.94
       J5:
-      - 41.12
-      - 95.5
+      - -69.04
+      - -31.34
       J6:
-      - -94.8
-      - -4.21
+      - 87.75
+      - 93.42
     use_for_automated_motion: false
   - cell_id: root/ne
     approach: manual_teach_dart
