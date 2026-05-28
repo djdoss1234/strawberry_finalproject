@@ -60,19 +60,14 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
 | `MoveSplineJoint` slow probe `vel=20`, `time=15s` | `success=True`, 실제 motion 없음 | spline silent no-motion |
 | spline no-motion 후 MoveJoint fallback | endpoint 도착 실패 | queue/busy 또는 endpoint 한방 문제 분리 필요 |
 | direct MoveJoint endpoint | `success=True`, endpoint 도착 실패 | endpoint 한방 silent reject 의심 |
-| staged MoveJoint diagnostic | 구현 완료, 실기 결과 대기 | 다음 실험 |
+| staged MoveJoint diagnostic | stage4 도달, stage5 no-arrival | stage4 임시 scan pose 채택 |
 
 ## 최종 해결 또는 다음 조치
 
 - 다음 조치:
-  - cuRobo trajectory를 6개 이하 coarse waypoint로 샘플링해 `MoveJoint`를
-    순차 실행한다.
-  - 각 stage마다 target, service response, current joint를 기록해 어느
-    구간에서 controller가 멈추는지 식별한다.
-  - 첫 stage부터 움직이지 않으면 SW 접근 정책 자체를 더 보수적으로
-    재설계한다.
-  - 중간 stage에서 멈추면 해당 구간의 joint delta, singularity, limit
-    proximity를 분석한다.
+  - stage4 `[133.5, -26.6, 117.8, -88.0, 94.6, 10.2]`를 임시 SW scan pose로 사용한다.
+  - stage4 이후 구간의 joint delta, singularity, limit proximity를 분석한다.
+  - SW final endpoint는 별도 접근 정책으로 재설계한다.
 - 남은 위험:
   - staged `MoveJoint`는 cuRobo spline path를 완전히 그대로 실행하는 것이
     아니므로 collision 검증의 의미가 약해진다.
@@ -87,6 +82,7 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
     endpoint 도착 실패.
   - terminal log `2026-05-28 12:02`: direct MoveJoint endpoint `success=True`,
     endpoint 도착 실패.
+  - terminal log `2026-05-28 12:11`: staged MoveJoint stage4 도달, stage5 no-arrival.
 - 관련 run/config:
   - `docs/runs/RUN-20260528-001_sw_candidate_search_v2.yaml`
   - `config/scan_pose_candidates_refit_candidate.yaml`
@@ -94,6 +90,7 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   - `3219f31 fix: add SW spline no-motion fallback`
   - `35767bb debug: test SW direct MoveJoint endpoint`
   - `98367cb debug: stage SW MoveJoint execution`
+  - `TBD fix: use stage4 as temporary SW scan pose`
 
 ## 수정 전후 시각자료
 

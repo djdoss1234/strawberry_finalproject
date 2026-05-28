@@ -84,6 +84,7 @@ _SW_FALLBACK_MOVEJ_VEL_DEG_S = 15.0
 _SW_FALLBACK_MOVEJ_ACC_DEG_S2 = 20.0
 _SW_USE_DIRECT_MOVEJ = True
 _SW_STAGED_MOVEJ_POINTS = 6
+_SW_ACCEPT_STAGE_INDEX = 4
 _SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
 _SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
@@ -425,7 +426,7 @@ class ScanExecutorNode(Node):
 
     def _exec_movej_staged(
         self, cell_id: str, traj_rad: np.ndarray, endpoint_rad: List[float]
-    ) -> bool:
+    ) -> Optional[List[float]]:
         """Execute a problematic scan target through coarse MoveJoint waypoints.
 
         This is a diagnostic fallback for SW only. The waypoints are sampled
@@ -461,8 +462,16 @@ class ScanExecutorNode(Node):
                     "%s staged MoveJoint %d no arrival; current=[%s]"
                     % (cell_id, seq, joints_now_str)
                 )
-                return False
-        return self._wait_for_joints(endpoint_rad, 3.0, 10.0)
+                return None
+            if cell_id == "root/sw" and seq == _SW_ACCEPT_STAGE_INDEX:
+                self._pub_status(
+                    "%s staged MoveJoint accepted stage %d as temporary scan pose"
+                    % (cell_id, seq)
+                )
+                return np.deg2rad(waypoint).tolist()
+        if self._wait_for_joints(endpoint_rad, 3.0, 10.0):
+            return endpoint_rad
+        return None
 
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
@@ -531,13 +540,15 @@ class ScanExecutorNode(Node):
             traj, motion_time, endpoint_rad = ret
             if cell_id == "root/sw" and _SW_USE_DIRECT_MOVEJ:
                 self._pub_status(
-                    "root/sw uses staged MoveJoint diagnostic; skipping spline probe"
+                    "root/sw uses staged MoveJoint temporary scan pose; skipping final endpoint"
                 )
-                if not self._exec_movej_staged(cell_id, traj, endpoint_rad):
+                staged_endpoint = self._exec_movej_staged(cell_id, traj, endpoint_rad)
+                if staged_endpoint is None:
                     self._pub_status("EXEC_FAIL root/sw staged MoveJoint failed")
                     self._pub_state(cell_id, "PLANNING_FAIL")
                     self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                     return
+                endpoint_rad = staged_endpoint
                 motion_time = max(motion_time, 6.0)
             else:
                 spline_vel = self._spline_vel_for_j1_swing(traj)

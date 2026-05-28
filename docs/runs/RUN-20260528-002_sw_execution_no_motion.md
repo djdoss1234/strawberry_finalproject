@@ -66,8 +66,13 @@ root/sw endpoint_deg = [149.6, 1.1, 142.6, -124.0, 93.6, 58.7]
   - `MoveJoint response: success=True`
   - endpoint 도착 실패
 - 다음 실험:
-  - staged MoveJoint diagnostic.
-  - cuRobo trajectory에서 최대 6개 waypoint를 샘플링해 저속 순차 실행.
+  - staged MoveJoint diagnostic 결과 stage4까지 도달하고 stage5에서 no-arrival.
+  - stage4를 임시 SW scan pose로 채택.
+
+```text
+stage4 accepted = [133.5, -26.6, 117.8, -88.0, 94.6, 10.2]
+stage5 failed   = [145.8, -5.4, 136.6, -115.5, 93.8, 47.9]
+```
 
 ## 시각자료 계획 및 확보 상태
 
@@ -89,13 +94,14 @@ status: NOT_CAPTURED
 ## 판정
 
 ```text
-PARTIAL
+PARTIAL_STAGE4_ACCEPTED
 ```
 
 판정 근거:
 
 - `root/sw` planning validity는 확보됐지만, controller execution validity는
-  아직 확보되지 않았다.
+  최종 endpoint에서는 확보되지 않았다.
+- staged diagnostic에서 stage4까지는 실기 도달 가능함을 확인했다.
 - service response `success=True`만으로는 execution success를 보장하지
   않는다는 중요한 통합 이슈를 확인했다.
 
