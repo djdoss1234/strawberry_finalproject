@@ -43,6 +43,9 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   - `MoveSplineJoint.srv` response에는 `msg` 필드가 없다. 로그의 `msg='N/A'`
     는 내부 rejection reason이 아니라 코드에서 찍은 fallback 문자열이다.
   - direct `MoveJoint` endpoint도 `success=True` 이후 endpoint 도착 실패.
+  - staged MoveJoint에서 stage4까지는 실제 도달했고, stage5에서 no-arrival.
+  - stage4 임시 pose를 사용하면 scan dwell, `SCANNED_EMPTY`, overview 복귀,
+    `SCAN_COMPLETE`까지 정상 수행.
 - 현재 가설:
   1. SW endpoint 또는 큰 joint delta가 Doosan controller 내부 조건에서
      silent reject/hold된다.
@@ -64,8 +67,11 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
 
 ## 최종 해결 또는 다음 조치
 
+- 현재 조치:
+  - stage4 `[133.5, -26.6, 117.8, -88.1, 94.6, 10.3]`를 임시 SW scan pose로 사용한다.
+  - 2026-05-28 12:23 run에서 stage4 도달, dwell, `SCANNED_EMPTY`, overview 복귀,
+    `SCAN_COMPLETE`를 확인했다.
 - 다음 조치:
-  - stage4 `[133.5, -26.6, 117.8, -88.0, 94.6, 10.2]`를 임시 SW scan pose로 사용한다.
   - stage4 이후 구간의 joint delta, singularity, limit proximity를 분석한다.
   - SW final endpoint는 별도 접근 정책으로 재설계한다.
 - 남은 위험:
@@ -83,6 +89,8 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   - terminal log `2026-05-28 12:02`: direct MoveJoint endpoint `success=True`,
     endpoint 도착 실패.
   - terminal log `2026-05-28 12:11`: staged MoveJoint stage4 도달, stage5 no-arrival.
+  - terminal log `2026-05-28 12:23`: stage4 임시 scan pose 도달,
+    `SCANNED_EMPTY`, overview 복귀, `SCAN_COMPLETE`.
 - 관련 run/config:
   - `docs/runs/RUN-20260528-001_sw_candidate_search_v2.yaml`
   - `config/scan_pose_candidates_refit_candidate.yaml`
@@ -90,7 +98,8 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   - `3219f31 fix: add SW spline no-motion fallback`
   - `35767bb debug: test SW direct MoveJoint endpoint`
   - `98367cb debug: stage SW MoveJoint execution`
-  - `TBD fix: use stage4 as temporary SW scan pose`
+  - `0ada952 fix: accept SW stage4 as temporary scan pose`
+  - `TBD docs: record SW stage4 scan success`
 
 ## 수정 전후 시각자료
 

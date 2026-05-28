@@ -68,10 +68,22 @@ root/sw endpoint_deg = [149.6, 1.1, 142.6, -124.0, 93.6, 58.7]
 - 다음 실험:
   - staged MoveJoint diagnostic 결과 stage4까지 도달하고 stage5에서 no-arrival.
   - stage4를 임시 SW scan pose로 채택.
+  - 2026-05-28 12:23 재실행에서 stage4 임시 scan pose 도달 후 scan sequence
+    완료를 확인.
 
 ```text
 stage4 accepted = [133.5, -26.6, 117.8, -88.0, 94.6, 10.2]
 stage5 failed   = [145.8, -5.4, 136.6, -115.5, 93.8, 47.9]
+```
+
+성공 run:
+
+```text
+AT_SCAN_POSE root/sw joints_deg=[133.5 -26.6 117.8 -88.1 94.6 10.3]
+SCANNED_EMPTY root/sw no detection in dwell window
+RETURNING_TO_OVERVIEW
+AT_OVERVIEW joints_deg=[97.8 -94.4 65.9 -10.9 95.5 -94.8]
+SCAN_COMPLETE
 ```
 
 ## 시각자료 계획 및 확보 상태
@@ -112,9 +124,9 @@ PARTIAL_STAGE4_ACCEPTED
     않을 수 있다.
   - ROS service 성공 응답과 실제 robot arrival은 반드시 분리해서 검증해야 한다.
 - 다음 작업:
-  - staged MoveJoint log를 수집한다.
-  - 실패 stage가 확인되면 해당 stage의 joint delta와 singularity/limit
-    proximity를 분석한다.
+  - stage4 이후 stage5/final endpoint로 향하는 구간의 joint delta와
+    singularity/limit proximity를 분석한다.
+  - stage4 pose에서 실제 camera FOV가 SW cell 관측에 충분한지 확인한다.
 
 ## 포트폴리오/자소서 후보 문장
 
