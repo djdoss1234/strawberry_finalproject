@@ -1,9 +1,8 @@
-# Active visualization/offline-validation registration. This does not authorize robot motion.
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: refit_rviz_display_confirmed_offline_validation_only
-  capture_date: "2026-05-27"
+  status: workspace_reset_measured_pending_manual_scan_teach
+  capture_date: '2026-05-27'
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   reference_pose: overview_alignment
@@ -13,7 +12,7 @@ panel_registration:
     result: MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
     rms_error_mm: 120.874
     max_error_mm: 139.001
-    max_abs_plane_offset_mm: 136.540
+    max_abs_plane_offset_mm: 136.54
     cause_under_review: outer_landmark_depth_invalid_on_black_tape
     next_action: review_refit_candidate_in_rviz_before_replacing_active_transform
     retry_capture: docs/runs/RUN-20260527-008_panel_landmark_observations_retry.yaml
@@ -25,29 +24,45 @@ panel_registration:
     board_shift_capture: docs/runs/RUN-20260528-003_panel_landmark_after_board_shift.yaml
     board_shift_result: MEASURED_PASS_PENDING_MOTION_MARGIN
     board_shift_rms_error_mm: 8.997
-    board_shift_max_error_mm: 11.280
+    board_shift_max_error_mm: 11.28
     board_shift_max_abs_plane_offset_mm: 6.536
     active_transform_replacement: promoted_for_visualization_and_offline_collision_only
+    workspace_reset_capture: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset.yaml
+    workspace_reset_corrected_capture: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml
+    workspace_reset_result: MEASURED_PASS_PENDING_MOTION_MARGIN
+    workspace_reset_rms_error_mm: 8.689
+    workspace_reset_max_error_mm: 12.608
+    workspace_reset_max_abs_plane_offset_mm: 3.627
   refit_rviz_review:
     evidence_image_local: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
     result: RVIZ_DISPLAY_CONFIRMED
-    note: >-
-      The refit candidate panel and four quadtree cells were visibly rendered
-      in RViz. This confirms display orientation only and is not physical
-      motion authorization.
+    note: The refit candidate panel and four quadtree cells were visibly rendered
+      in RViz. This confirms display orientation only and is not physical motion authorization.
   transform:
     translation_m:
-      x: 0.111012688
-      y: 0.763543821
-      z: 0.645441722
+      x: 0.105750565
+      y: 0.403502889
+      z: 0.651442725
     rotation_xyzw:
-      x: 0.707820420
-      y: -0.013656794
-      z: -0.005010994
-      w: 0.706242617
+      x: 0.698067885
+      y: -0.010926819
+      z: -0.005658325
+      w: 0.715925845
     matrix:
-      - [0.999576764, -0.012255160, -0.026383788, 0.111012688]
-      - [-0.026411070, -0.002069715, -0.999649024, 0.763543821]
-      - [0.012196252, 0.999922761, -0.002392511, 0.645441722]
-      - [0.0, 0.0, 0.0, 1.0]
+    - - 0.999697176
+      - -0.007153441
+      - -0.023545375
+      - 0.105750565
+    - - -0.023357206
+      - 0.025338422
+      - -0.999406026
+      - 0.403502889
+    - - 0.007745795
+      - 0.999653336
+      - 0.025163664
+      - 0.651442725
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
   use_for_automated_motion: false

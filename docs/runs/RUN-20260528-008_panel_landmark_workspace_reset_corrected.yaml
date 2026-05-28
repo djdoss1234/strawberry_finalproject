@@ -1,0 +1,152 @@
+panel_registration_validation:
+  capture_method: read_only_realsense_landmark_clicks_at_overview_pose
+  panel_registration_source: /home/user/doosan_ws/src/strawberry_finalproject/config/panel_registration.yaml
+  landmark_definition: tape_crossing_and_white_paper_inner_corners_approx_20mm_inset
+  observations:
+    origin_crossing:
+      point_panel_m:
+      - 0.0
+      - 0.0
+      - 0.0
+      pixel_uv:
+      - 320
+      - 241
+      observed_base_m:
+      - 0.1104661960960284
+      - 0.39964458141725173
+      - 0.6467535855354177
+    paper_inner_nw:
+      point_panel_m:
+      - -0.525
+      - 0.375
+      - 0.0
+      pixel_uv:
+      - 50
+      - 48
+      observed_base_m:
+      - -0.42139436137623965
+      - 0.4261372402889663
+      - 1.0177556839053103
+    paper_inner_ne:
+      point_panel_m:
+      - 0.535
+      - 0.375
+      - 0.0
+      pixel_uv:
+      - 586
+      - 56
+      observed_base_m:
+      - 0.6353677476266577
+      - 0.40121622912704574
+      - 1.0225605086128735
+    paper_inner_sw:
+      point_panel_m:
+      - -0.525
+      - -0.385
+      - 0.0
+      pixel_uv:
+      - 55
+      - 428
+      observed_base_m:
+      - -0.4116814483385942
+      - 0.4069121283069911
+      - 0.269335686155745
+    paper_inner_se:
+      point_panel_m:
+      - 0.535
+      - -0.385
+      - 0.0
+      pixel_uv:
+      - 578
+      - 425
+      observed_base_m:
+      - 0.6361317051896813
+      - 0.38263035336884904
+      - 0.2809700090582483
+  evaluation:
+    landmark_count: 5
+    rms_error_mm: 8.689
+    max_error_mm: 12.608
+    max_abs_plane_offset_mm: 3.627
+    status: MEASURED_PASS_PENDING_MOTION_MARGIN
+    use_for_automated_motion: false
+    landmarks:
+      origin_crossing:
+        expected_base_m:
+        - 0.105751
+        - 0.403503
+        - 0.651443
+        observed_base_m:
+        - 0.110466
+        - 0.399645
+        - 0.646754
+        error_vector_mm:
+        - 4.716
+        - -3.858
+        - -4.689
+        error_norm_mm: 7.688
+        plane_offset_mm: 3.627
+      paper_inner_nw:
+        expected_base_m:
+        - -0.421773
+        - 0.425267
+        - 1.022246
+        observed_base_m:
+        - -0.421394
+        - 0.426137
+        - 1.017756
+        error_vector_mm:
+        - 0.379
+        - 0.87
+        - -4.49
+        error_norm_mm: 4.59
+        plane_offset_mm: -0.991
+      paper_inner_ne:
+        expected_base_m:
+        - 0.637906
+        - 0.400509
+        - 1.030457
+        observed_base_m:
+        - 0.635368
+        - 0.401216
+        - 1.022561
+        error_vector_mm:
+        - -2.538
+        - 0.708
+        - -7.896
+        error_norm_mm: 8.324
+        plane_offset_mm: -0.846
+      paper_inner_sw:
+        expected_base_m:
+        - -0.416336
+        - 0.40601
+        - 0.26251
+        observed_base_m:
+        - -0.411681
+        - 0.406912
+        - 0.269336
+        error_vector_mm:
+        - 4.655
+        - 0.902
+        - 6.826
+        error_norm_mm: 8.311
+        plane_offset_mm: -0.839
+      paper_inner_se:
+        expected_base_m:
+        - 0.643343
+        - 0.381251
+        - 0.27072
+        observed_base_m:
+        - 0.636132
+        - 0.38263
+        - 0.28097
+        error_vector_mm:
+        - -7.211
+        - 1.379
+        - 10.25
+        error_norm_mm: 12.608
+        plane_offset_mm: -0.95
+  use_for_automated_motion: false
+  correction_note: 'Corrected after capture: bottom-left/bottom-right clicks were
+    labeled in reverse order; swapped observed pixel/base values for paper_inner_sw
+    and paper_inner_se.'

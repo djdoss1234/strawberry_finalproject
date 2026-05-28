@@ -1,8 +1,6 @@
-# Collision world for offline validation of workspace scan poses.
-# This config is evidence for planning review only; it does not authorize robot motion.
 scan_collision_world:
   version: v2_refit_rviz_confirmed_whiteboard
-  status: offline_revalidated_v7_partial_plan_valid_not_authorized
+  status: workspace_reset_pending_manual_scan_teach
   frame_id: base_link
   source_registration: config/panel_registration.yaml
   robot_geometry_source_local: ~/doosan_ws/src/e0509_gripper_description/config/curobo
@@ -10,26 +8,39 @@ scan_collision_world:
   self_collision_check_enabled: false
   use_for_automated_motion: false
   latest_offline_validation: docs/runs/RUN-20260527-010_refit_panel_collision_dryrun.yaml
-  validation_scope: >-
-    Robot/tool collision spheres reused from the mini-project baseline and a
-    whiteboard cuboid derived from the RViz-reviewed white-paper landmark refit
-    registration. This world is for cuRobo offline revalidation only. Table,
-    tray, fruit, cable and human obstacles are not included. Self-collision
-    remains disabled because the baseline coarse sphere model previously
-    produced false positives.
+  validation_scope: Robot/tool collision spheres reused from the mini-project baseline
+    and a whiteboard cuboid derived from the RViz-reviewed white-paper landmark refit
+    registration. This world is for cuRobo offline revalidation only. Table, tray,
+    fruit, cable and human obstacles are not included. Self-collision remains disabled
+    because the baseline coarse sphere model previously produced false positives.
   geometry_derivation:
-    whiteboard_dimensions_m: [1.500, 0.900, 0.020]
+    whiteboard_dimensions_m:
+    - 1.5
+    - 0.9
+    - 0.02
     panel_origin_definition: tape_intersection_on_paper_workspace
-    whiteboard_center_in_cultivation_panel_m: [0.023, 0.025, -0.010]
-    note: >-
-      x offset = board_width/2 - (paper_left_offset + west_split);
-      y offset = (paper_top_offset + north_split) - board_height/2 because
-      cultivation_panel +Y points upward; z=-thickness/2 places the cuboid
-      behind the registered front plane.
+    whiteboard_center_in_cultivation_panel_m:
+    - 0.023
+    - 0.025
+    - -0.01
+    note: x offset = board_width/2 - (paper_left_offset + west_split); y offset =
+      (paper_top_offset + north_split) - board_height/2 because cultivation_panel
+      +Y points upward; z=-thickness/2 places the cuboid behind the registered front
+      plane.
   objects:
-    - name: registered_whiteboard
-      type: cuboid
-      enabled: true
-      pose_wxyz: [0.133960413, 0.772881114, 0.670744230,
-                  0.706242617, 0.707820420, -0.013656794, -0.005010994]
-      dims_m: [1.500, 0.900, 0.020]
+  - name: registered_whiteboard
+    type: cuboid
+    enabled: true
+    pose_wxyz:
+    - 0.128800218
+    - 0.413593194
+    - 0.676360575
+    - 0.715925845
+    - 0.698067885
+    - -0.010926819
+    - -0.005658325
+    dims_m:
+    - 1.5
+    - 0.9
+    - 0.02
+  latest_registration_evidence: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml
