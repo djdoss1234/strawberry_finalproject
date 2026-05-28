@@ -116,7 +116,8 @@ class ScanExecutorNode(Node):
         self._current_joints: Optional[List[float]] = None
         self._started = False
         self._mg: Optional[MotionGen] = None
-        self._detection_event = threading.Event()
+        self._detection_count: int = 0
+        self._detection_lock = threading.Lock()
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
@@ -220,7 +221,8 @@ class ScanExecutorNode(Node):
             self._current_joints = joints
 
     def _pick_cb(self, _msg: PoseStamped) -> None:
-        self._detection_event.set()
+        with self._detection_lock:
+            self._detection_count += 1
 
     def _start_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         del request
@@ -306,9 +308,17 @@ class ScanExecutorNode(Node):
         traj = result.get_interpolated_plan().position.cpu().numpy()
         if not self._traj_ok(traj, label):
             return None
-        return traj, float(result.motion_time.item())
+        endpoint_rad = traj[-1].tolist()
+        endpoint_deg = [round(float(np.rad2deg(j)), 1) for j in endpoint_rad]
+        self.get_logger().info(
+            "%s plan endpoint_deg=[%s]"
+            % (label, " ".join("%.1f" % d for d in endpoint_deg))
+        )
+        return traj, float(result.motion_time.item()), endpoint_rad
 
-    def _exec_spline(self, traj_rad: np.ndarray, motion_time: float) -> bool:
+    def _exec_spline(
+        self, traj_rad: np.ndarray, motion_time: float, vel: float = 120.0
+    ) -> bool:
         if not self._cli_spline.wait_for_service(timeout_sec=3.0):
             self.get_logger().error("MoveSplineJoint service not available")
             return False
@@ -324,8 +334,8 @@ class ScanExecutorNode(Node):
             pt = Float64MultiArray()
             pt.data = row.tolist()
             req.pos.append(pt)
-        req.vel = [120.0] * 6
-        req.acc = [180.0] * 6
+        req.vel = [float(vel)] * 6
+        req.acc = [float(vel) * 1.5] * 6
         req.time = max(motion_time * _SPLINE_TIME_SCALE, _SPLINE_MIN_TIME)
         req.mode = 0
         req.sync_type = 0
@@ -373,6 +383,22 @@ class ScanExecutorNode(Node):
             time.sleep(0.05)
         return False
 
+    @staticmethod
+    def _spline_vel_for_j1_swing(traj_rad: np.ndarray) -> float:
+        """Return spline velocity (deg/s) scaled down for large J1 arcs.
+
+        SE requires a 114° J1 swing (geometrically unavoidable at 0.50 m).
+        Running at 120°/s through that arc looks violent. Cap at 60°/s when
+        swing >= 90°, 80°/s when >= 60°, otherwise 120°/s.
+        """
+        j1 = np.rad2deg(traj_rad[:, 0])
+        swing = float(np.max(j1) - np.min(j1))
+        if swing >= 90.0:
+            return 60.0
+        if swing >= 60.0:
+            return 80.0
+        return 120.0
+
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
@@ -385,6 +411,8 @@ class ScanExecutorNode(Node):
         else:
             scan_order = [self._target_cell]
             self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
+
+        cell_detections: Dict[str, int] = {}
 
         for cell_id in scan_order:
             if cell_id not in self._targets:
@@ -406,16 +434,45 @@ class ScanExecutorNode(Node):
                 self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                 return
 
-            if not self._exec_spline(*ret):
+            traj, motion_time, endpoint_rad = ret
+            spline_vel = self._spline_vel_for_j1_swing(traj)
+            if spline_vel < 120.0:
+                self._pub_status(
+                    "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
+                    % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
+                )
+            if not self._exec_spline(traj, motion_time, vel=spline_vel):
                 self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._pub_status("RETURNING_TO_OVERVIEW after failure")
                 self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                 return
 
-            # Reset detection flag just before dwell so only picks arriving
-            # while at this scan pose are counted.
-            self._detection_event.clear()
+            # Wait until joint state confirms arrival at planned endpoint.
+            # Needed because MoveSplineJoint sync_type=0 may return before
+            # the robot physically arrives.
+            deadline = time.time() + 30.0
+            arrived = False
+            while time.time() < deadline:
+                if self._current_joints and joints_within_tolerance_deg(
+                    self._current_joints, np.rad2deg(endpoint_rad).tolist(), 3.0
+                ):
+                    arrived = True
+                    break
+                time.sleep(0.1)
+            if not arrived:
+                self._pub_status(
+                    "EXEC_TIMEOUT %s — robot did not arrive at endpoint within 30s; aborting"
+                    % cell_id
+                )
+                self._pub_state(cell_id, "PLANNING_FAIL")
+                self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                return
+
+            # Reset per-cell detection counter just before dwell so only
+            # picks arriving while at this scan pose are counted.
+            with self._detection_lock:
+                self._detection_count = 0
             joints_now = self._current_joints or []
             joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
             self._pub_status(
@@ -424,9 +481,15 @@ class ScanExecutorNode(Node):
             )
             time.sleep(_SCAN_DWELL_SEC)
 
-            if self._detection_event.is_set():
+            with self._detection_lock:
+                count = self._detection_count
+            cell_detections[cell_id] = count
+
+            if count > 0:
                 self._pub_state(cell_id, "TARGET_FOUND")
-                self._pub_status("TARGET_FOUND %s pick candidate detected" % cell_id)
+                self._pub_status(
+                    "TARGET_FOUND %s %d pick candidate(s) detected" % (cell_id, count)
+                )
             else:
                 self._pub_state(cell_id, "SCANNED_EMPTY")
                 self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
@@ -454,6 +517,17 @@ class ScanExecutorNode(Node):
         joints_ov = self._current_joints or []
         joints_ov_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_ov)
         self._pub_status("AT_OVERVIEW joints_deg=[%s]" % joints_ov_str)
+
+        # Publish harvest priority order (most detections first).
+        if cell_detections:
+            harvest_order = sorted(
+                cell_detections.items(), key=lambda x: x[1], reverse=True
+            )
+            order_str = "  ".join(
+                "%s:%d" % (cid, cnt) for cid, cnt in harvest_order
+            )
+            self._pub_status("HARVEST_PRIORITY_ORDER %s" % order_str)
+
         self._pub_status("SCAN_COMPLETE")
 
 

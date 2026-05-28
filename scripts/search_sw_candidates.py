@@ -193,10 +193,17 @@ def _try_candidate(mg, tensor_args, mat4):
         raw = "SUCCESS"
 
     j_ranges = None
+    endpoint_deg = None
+    is_trivial = False
     ok_lim = True
     if success:
         traj = result.get_interpolated_plan().position.cpu().numpy()
         deg = np.rad2deg(traj)
+        # endpoint joints (last frame of interpolated trajectory)
+        endpoint_deg = [round(float(d), 1) for d in deg[-1]]
+        # flag if endpoint ≈ overview → robot wouldn't actually move
+        delta = np.abs(np.array(endpoint_deg) - np.array(OVERVIEW_JOINTS_DEG))
+        is_trivial = bool(np.max(delta) < 5.0)
         j_ranges = {}
         for j, (lo, hi) in enumerate(OP_LIMITS_DEG):
             vmin, vmax = float(np.min(deg[:, j])), float(np.max(deg[:, j]))
@@ -207,17 +214,18 @@ def _try_candidate(mg, tensor_args, mat4):
             success = False
             raw = "JOINT_LIMIT_REJECT"
 
-    return success, raw, round(elapsed, 2), j_ranges
+    return success, raw, round(elapsed, 2), j_ranges, endpoint_deg, is_trivial
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
 CANDIDATES = [
-    ("panel_normal", 0.55),
+    ("panel_normal", 0.55),  # 기존 채택값 (실행 시 overview와 동일 판명)
     ("panel_normal", 0.50),
     ("panel_normal", 0.45),
     ("panel_normal", 0.40),
     ("panel_normal", 0.35),
+    ("panel_normal", 0.30),
     ("base_neg_y",   0.40),
     ("base_neg_y",   0.35),
     ("base_neg_y",   0.30),
@@ -250,41 +258,57 @@ def main():
     rows = []
     for approach, standoff in CANDIDATES:
         mat4, tcp = _build_tcp_mat4(approach, standoff, T_panel, R_tcp, t_cam_in_rh)
-        ok, raw, elapsed, j_ranges = _try_candidate(mg, tensor_args, mat4)
+        ok, raw, elapsed, j_ranges, endpoint_deg, is_trivial = _try_candidate(
+            mg, tensor_args, mat4
+        )
         label = "PLAN_VALID" if ok else ("IK_FAIL" if "IK_FAIL" in raw else raw)
-        marker = "OK" if ok else "!!"
+        if ok and is_trivial:
+            label = "TRIVIAL(≈overview)"
+        marker = "OK" if (ok and not is_trivial) else ("~~" if is_trivial else "!!")
         print(f"[{marker}] {approach:14s} {standoff:.2f}m  "
               f"tcp=[{tcp[0]:+.3f},{tcp[1]:+.3f},{tcp[2]:+.3f}]  "
-              f"{label:22s}  {elapsed:.2f}s")
+              f"{label:24s}  {elapsed:.2f}s")
         if ok and j_ranges:
-            print(f"     J: " + "  ".join(
+            print(f"     range: " + "  ".join(
                 f"J{j}=[{v[0]:.0f},{v[1]:.0f}]" for j, v in j_ranges.items()
             ))
+        if endpoint_deg:
+            delta = [round(abs(e - o), 1)
+                     for e, o in zip(endpoint_deg, OVERVIEW_JOINTS_DEG)]
+            print(f"     end:   [{', '.join(f'{d:+.1f}' for d in endpoint_deg)}]")
+            print(f"     Δoverview: [{', '.join(f'{d:.1f}' for d in delta)}]  "
+                  f"maxΔ={max(delta):.1f}°  {'TRIVIAL' if is_trivial else 'DISTINCT'}")
         rows.append({
             "approach": approach, "standoff_m": standoff,
-            "label": label, "success": ok, "raw_status": raw,
+            "label": label, "success": ok and not is_trivial,
+            "is_trivial": is_trivial, "raw_status": raw,
             "plan_time_s": elapsed,
             "tcp_pos_m": [round(float(v), 6) for v in tcp],
             "tcp_transform_base": [list(row) for row in mat4[:3].tolist()],
+            "endpoint_joints_deg": endpoint_deg,
             "joint_range_deg": j_ranges,
         })
 
     print()
     print("=== Summary ===")
-    valid = [(r["approach"], r["standoff_m"]) for r in rows if r["success"]]
-    if valid:
-        print("VALID candidates:", valid)
-        best = next(r for r in rows if r["success"])
-        print(f"Best (first valid): {best['approach']} {best['standoff_m']}m")
+    non_trivial = [(r["approach"], r["standoff_m"]) for r in rows
+                   if r["success"] and not r["is_trivial"]]
+    trivial = [(r["approach"], r["standoff_m"]) for r in rows if r.get("is_trivial")]
+    if trivial:
+        print(f"TRIVIAL (≈overview, robot won't move): {trivial}")
+    if non_trivial:
+        print(f"DISTINCT VALID candidates: {non_trivial}")
+        best = next(r for r in rows if r["success"] and not r.get("is_trivial"))
+        print(f"Best (largest non-trivial standoff): {best['approach']} {best['standoff_m']}m")
     else:
-        print("NO valid candidate found — all IK_FAIL or JOINT_LIMIT_REJECT.")
+        print("NO distinct valid candidate — all IK_FAIL, JOINT_LIMIT_REJECT, or TRIVIAL.")
 
-    # Save raw results
-    out_path = PROJECT_ROOT / "docs" / "runs" / "RUN-20260527-011_sw_candidate_search.yaml"
+    # Save results
+    out_path = PROJECT_ROOT / "docs" / "runs" / "RUN-20260528-001_sw_candidate_search_v2.yaml"
     out = {
         "sw_candidate_search": {
-            "run_date": "2026-05-27",
-            "description": "root/sw standoff/approach grid search under refit panel collision world",
+            "run_date": "2026-05-28",
+            "description": "root/sw standoff/approach grid search v2 — added endpoint joints + trivial detection (endpoint≈overview)",
             "panel_registration": str(REG_PATH.relative_to(PROJECT_ROOT)),
             "collision_world": str(WORLD_PATH.relative_to(PROJECT_ROOT)),
             "start_joints_deg": OVERVIEW_JOINTS_DEG,
