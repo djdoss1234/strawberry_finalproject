@@ -77,8 +77,8 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-_SW_DIRECT_MOVEJ_VEL_DEG_S = 10.0
-_SW_DIRECT_MOVEJ_ACC_DEG_S2 = 15.0
+_SCAN_MOVEJ_VEL_DEG_S = 20.0
+_SCAN_MOVEJ_ACC_DEG_S2 = 30.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -457,9 +457,6 @@ class ScanExecutorNode(Node):
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
-        self._init_motion_gen()
-        current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
-
         if self._target_cell == "all":
             scan_order = [c for c in _ALL_CELLS_ZORDER if c in self._targets]
             self._pub_status("TRAVERSAL_SCAN_STARTED cells=%s" % scan_order)
@@ -475,53 +472,30 @@ class ScanExecutorNode(Node):
                 continue
 
             target = self._targets[cell_id]
-            mat4 = np.array(target["tcp_transform_base"])
-            pos, quat = _mat4_to_pos_quat_wxyz(mat4)
+            endpoint_deg = target.get("endpoint_joints_deg")
+            if endpoint_deg is None:
+                self._pub_status(
+                    "CONFIG_ERROR %s missing endpoint_joints_deg in YAML — aborting" % cell_id
+                )
+                self._pub_state(cell_id, "PLANNING_FAIL")
+                return
+
+            endpoint_rad = [float(np.deg2rad(d)) for d in endpoint_deg]
 
             self._pub_state(cell_id, "SCANNING")
-            self._pub_status("MOVING_TO %s  pos=[%.3f, %.3f, %.3f]" % (cell_id, *pos))
+            self._pub_status(
+                "MOVING_TO %s  endpoint_deg=[%s]  (direct MoveJoint, YAML pose)"
+                % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
+            )
 
-            ret = self._plan(current_joints, pos, quat, cell_id)
-            if ret is None:
-                self._pub_status("PLAN_FAIL %s — aborting scan sequence" % cell_id)
+            if not self._movej(endpoint_deg, vel=_SCAN_MOVEJ_VEL_DEG_S, acc=_SCAN_MOVEJ_ACC_DEG_S2):
+                self._pub_status("EXEC_FAIL %s MoveJoint failed — aborting scan sequence" % cell_id)
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._pub_status("RETURNING_TO_OVERVIEW after failure")
                 self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                 return
 
-            traj, motion_time, endpoint_rad = ret
-            if cell_id == "root/sw":
-                # MoveSplineJoint silently fails for SW on this robot; use direct MoveJoint.
-                # New endpoint has J1 swing 32.4° (97.8→130.2) so direct move is safe.
-                endpoint_deg = np.rad2deg(endpoint_rad).tolist()
-                self._pub_status(
-                    "root/sw direct MoveJoint vel=%.0f°/s endpoint=[%s]"
-                    % (_SW_DIRECT_MOVEJ_VEL_DEG_S, " ".join("%.1f" % v for v in endpoint_deg))
-                )
-                if not self._movej(endpoint_deg, vel=_SW_DIRECT_MOVEJ_VEL_DEG_S, acc=_SW_DIRECT_MOVEJ_ACC_DEG_S2):
-                    self._pub_status("EXEC_FAIL root/sw MoveJoint failed — aborting")
-                    self._pub_state(cell_id, "PLANNING_FAIL")
-                    self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
-                    return
-            else:
-                spline_vel = self._spline_vel_for_j1_swing(traj)
-                if spline_vel < 120.0:
-                    self._pub_status(
-                        "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
-                        % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
-                    )
-                if not self._exec_spline(traj, vel=spline_vel, min_time=3.0):
-                    self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
-                    self._pub_state(cell_id, "PLANNING_FAIL")
-                    self._pub_status("RETURNING_TO_OVERVIEW after failure")
-                    self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
-                    return
-
-            # Wait until joint state confirms arrival at planned endpoint.
-            # Needed because MoveSplineJoint sync_type=0 may return before
-            # the robot physically arrives. T1 mode can be 10-20x slower than
-            # cuRobo's planned time, so give generous headroom.
-            arrival_timeout = max(motion_time * 20.0, 90.0)
+            arrival_timeout = 90.0
             arrived = self._wait_for_joints(endpoint_rad, 3.0, arrival_timeout)
             if not arrived:
                 self._pub_status(
@@ -567,7 +541,6 @@ class ScanExecutorNode(Node):
                 if not self._wait_at_overview(timeout_sec=15.0):
                     self._pub_status("ABORT overview not confirmed between cells")
                     return
-                current_joints = np.deg2rad(_OVERVIEW_JOINTS_DEG).tolist()
 
         # Return to overview at the end of the full scan sequence.
         self._pub_status("RETURNING_TO_OVERVIEW")
