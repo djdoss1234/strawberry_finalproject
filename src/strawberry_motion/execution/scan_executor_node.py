@@ -87,6 +87,9 @@ _SW_STAGED_MOVEJ_POINTS = 20
 _SW_ACCEPT_STAGE_INDEX = 20
 _SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
 _SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
+_SW_J1_POST_PROBE_DEG = [2.0, 4.0, 6.0, 8.0]
+_SW_J1_POST_PROBE_VEL_DEG_S = 5.0
+_SW_J1_POST_PROBE_ACC_DEG_S2 = 10.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -456,7 +459,7 @@ class ScanExecutorNode(Node):
                 acc=_SW_STAGED_MOVEJ_ACC_DEG_S2,
             ):
                 self._pub_status("%s staged MoveJoint %d service failed" % (cell_id, seq))
-                return False
+                return None
             if not self._wait_for_joints(np.deg2rad(waypoint).tolist(), 3.0, 45.0):
                 joints_now = self._current_joints or []
                 joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
@@ -465,11 +468,7 @@ class ScanExecutorNode(Node):
                     % (cell_id, seq, joints_now_str)
                 )
                 if cell_id == "root/sw" and last_reached is not None:
-                    self._pub_status(
-                        "%s staged MoveJoint accepting last reached stage %d as nearest temporary scan pose"
-                        % (cell_id, last_reached_seq)
-                    )
-                    return last_reached
+                    return self._exec_sw_j1_post_probe(last_reached, last_reached_seq)
                 return None
             last_reached = np.deg2rad(waypoint).tolist()
             last_reached_seq = seq
@@ -482,6 +481,52 @@ class ScanExecutorNode(Node):
         if self._wait_for_joints(endpoint_rad, 3.0, 10.0):
             return endpoint_rad
         return None
+
+    def _exec_sw_j1_post_probe(
+        self, last_reached_rad: List[float], last_reached_seq: Optional[int]
+    ) -> List[float]:
+        base_deg = np.rad2deg(last_reached_rad).tolist()
+        accepted_deg = base_deg
+        self._pub_status(
+            "root/sw staged MoveJoint reached stage %s; probing J1+ offsets from [%.1f %.1f %.1f %.1f %.1f %.1f]"
+            % (
+                str(last_reached_seq),
+                base_deg[0],
+                base_deg[1],
+                base_deg[2],
+                base_deg[3],
+                base_deg[4],
+                base_deg[5],
+            )
+        )
+        for offset in _SW_J1_POST_PROBE_DEG:
+            target = base_deg.copy()
+            target[0] = min(target[0] + offset, _OP_LIMITS_DEG[0][1])
+            self._pub_status(
+                "root/sw J1+ probe offset=%.1f target=[%s]"
+                % (offset, " ".join("%.1f" % v for v in target))
+            )
+            if not self._movej(
+                target,
+                vel=_SW_J1_POST_PROBE_VEL_DEG_S,
+                acc=_SW_J1_POST_PROBE_ACC_DEG_S2,
+            ):
+                self._pub_status("root/sw J1+ probe service failed; using last reached pose")
+                break
+            if not self._wait_for_joints(np.deg2rad(target).tolist(), 3.0, 20.0):
+                joints_now = self._current_joints or []
+                joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+                self._pub_status(
+                    "root/sw J1+ probe no arrival; current=[%s]; using previous reached pose"
+                    % joints_now_str
+                )
+                break
+            accepted_deg = target
+        self._pub_status(
+            "root/sw accepting J1+ probed temporary scan pose [%s]"
+            % " ".join("%.1f" % v for v in accepted_deg)
+        )
+        return np.deg2rad(accepted_deg).tolist()
 
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
