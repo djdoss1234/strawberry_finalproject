@@ -49,31 +49,26 @@ scan_pose_candidates:
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
       approach: panel_normal
-      standoff_m: 0.30
+      standoff_m: 0.35
       curobo_status: PLAN_VALID
       note: >-
-        0.55m -> 0.40m -> 0.30m: standoff 축소마다 J1 스윙 감소.
-        0.30m (RUN-20260528-001): J1 swing 51.7deg (97.8->149.6), J5 max 95.5deg.
-        카메라가 패널에 30cm 접근해 SW 셀 전용 FOV 확보.
-        executor arrival check (30s)로 비결정적 실행 감지.
-        2026-05-28 실기 staged MoveJoint에서 coarse stage4까지 도달, stage5 no-arrival 확인.
-        이후 executor는 SW 경로를 10개 waypoint로 더 잘게 나눠 카메라가 더 가까운
-        포즈를 시도하고, no-arrival 발생 시 마지막 실제 도달 stage를 임시 scan pose로 사용한다.
+        2026-05-28 패널 board-shift 후 fresh search (RUN-20260528-001 new panel reg).
+        0.35m: J1 swing 32.4deg (97.8->130.2), J5 max 83.9deg.
+        staged MoveJoint 20단계 성공 확인 후 direct MoveJoint로 단순화.
+        tcp_y=0.389m (0.30m 대비 SW 셀 중심 커버리지 개선).
       tcp_transform_base:
-        - [0.011749445, -0.998001744, 0.062084382, -0.181999552]
-        - [0.375791127, 0.061944310, 0.924631781,  0.438654359]
-        - [-0.926629903, 0.012466850, 0.375768012,  0.341971804]
+        - [0.011981230, -0.997907330, 0.063540625, -0.183398008]
+        - [0.381526086,  0.063300028, 0.922188133,  0.389296971]
+        - [-0.924280420,  0.013193458, 0.381486090,  0.341656583]
         - [0.0, 0.0, 0.0, 1.0]
-      endpoint_joints_deg: superseded_by_board_shift_live_plan_required
-      temporary_scan_joints_deg: [133.5, -26.6, 117.8, -88.0, 94.6, 10.2]
-      temporary_scan_reason: nearest_reached_stage_after_fine_staged_movej_probe
+      endpoint_joints_deg: [130.2, 11.2, 131.0, -139.7, 83.9, 65.4]
       joint_range_deg:
-        J1: [97.8, 149.6]
-        J2: [-94.4, 1.1]
-        J3: [65.9, 142.6]
-        J4: [-124.0, -10.9]
-        J5: [93.6, 95.5]
-        J6: [-94.8, 58.7]
+        J1: [97.8, 130.2]
+        J2: [-94.4, 11.2]
+        J3: [65.9, 131.0]
+        J4: [-139.7, -10.9]
+        J5: [83.9, 95.5]
+        J6: [-94.8, 65.4]
     - cell_id: root/se
       approach: panel_normal
       standoff_m: 0.50

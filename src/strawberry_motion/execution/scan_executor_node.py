@@ -77,20 +77,8 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-_SW_SPLINE_VEL_DEG_S = 20.0
-_SW_SPLINE_MIN_TIME_SEC = 15.0
-_SW_NO_MOTION_CHECK_SEC = 5.0
-_SW_FALLBACK_MOVEJ_VEL_DEG_S = 15.0
-_SW_FALLBACK_MOVEJ_ACC_DEG_S2 = 20.0
-_SW_USE_DIRECT_MOVEJ = True
-_SW_STAGED_MOVEJ_POINTS = 20
-_SW_ACCEPT_STAGE_INDEX = 20
-_SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
-_SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
-_SW_J1_POST_PROBE_DEG = [5.0, 10.0, 15.0, 20.0]
-_SW_J1_POST_PROBE_VEL_DEG_S = 5.0
-_SW_J1_POST_PROBE_ACC_DEG_S2 = 10.0
-_SW_J1_POST_PROBE_TOLERANCE_DEG = 0.5
+_SW_DIRECT_MOVEJ_VEL_DEG_S = 10.0
+_SW_DIRECT_MOVEJ_ACC_DEG_S2 = 15.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -428,114 +416,6 @@ class ScanExecutorNode(Node):
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
 
-    def _exec_movej_staged(
-        self, cell_id: str, traj_rad: np.ndarray, endpoint_rad: List[float]
-    ) -> Optional[List[float]]:
-        """Execute a problematic scan target through coarse MoveJoint waypoints.
-
-        This is a diagnostic fallback for SW only. The waypoints are sampled
-        from the cuRobo trajectory instead of interpolating joints manually.
-        """
-        deg = np.rad2deg(traj_rad)
-        n = deg.shape[0]
-        count = min(_SW_STAGED_MOVEJ_POINTS, max(n - 1, 1))
-        idx = np.linspace(1, n - 1, count, dtype=int)
-        # Remove duplicates while preserving order.
-        idx = list(dict.fromkeys(int(i) for i in idx))
-        self._pub_status(
-            "%s staged MoveJoint diagnostic: %d waypoint(s), vel=%.0f acc=%.0f"
-            % (cell_id, len(idx), _SW_STAGED_MOVEJ_VEL_DEG_S, _SW_STAGED_MOVEJ_ACC_DEG_S2)
-        )
-        last_reached: Optional[List[float]] = None
-        last_reached_seq: Optional[int] = None
-        for seq, i in enumerate(idx, start=1):
-            waypoint = deg[i].tolist()
-            self._pub_status(
-                "%s staged MoveJoint %d/%d target=[%s]"
-                % (cell_id, seq, len(idx), " ".join("%.1f" % v for v in waypoint))
-            )
-            if not self._movej(
-                waypoint,
-                vel=_SW_STAGED_MOVEJ_VEL_DEG_S,
-                acc=_SW_STAGED_MOVEJ_ACC_DEG_S2,
-            ):
-                self._pub_status("%s staged MoveJoint %d service failed" % (cell_id, seq))
-                return None
-            if not self._wait_for_joints(np.deg2rad(waypoint).tolist(), 3.0, 45.0):
-                joints_now = self._current_joints or []
-                joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
-                self._pub_status(
-                    "%s staged MoveJoint %d no arrival; current=[%s]"
-                    % (cell_id, seq, joints_now_str)
-                )
-                if cell_id == "root/sw" and last_reached is not None:
-                    return self._exec_sw_j1_post_probe(last_reached, last_reached_seq)
-                return None
-            last_reached = np.deg2rad(waypoint).tolist()
-            last_reached_seq = seq
-            if cell_id == "root/sw" and seq == _SW_ACCEPT_STAGE_INDEX:
-                self._pub_status(
-                    "%s staged MoveJoint accepted stage %d as temporary scan pose"
-                    % (cell_id, seq)
-                )
-                return last_reached
-        if self._wait_for_joints(endpoint_rad, 3.0, 10.0):
-            return endpoint_rad
-        return None
-
-    def _exec_sw_j1_post_probe(
-        self, last_reached_rad: List[float], last_reached_seq: Optional[int]
-    ) -> List[float]:
-        base_deg = np.rad2deg(last_reached_rad).tolist()
-        accepted_deg = base_deg
-        self._pub_status(
-            "root/sw staged MoveJoint reached stage %s; probing J1+ offsets from [%.1f %.1f %.1f %.1f %.1f %.1f]"
-            % (
-                str(last_reached_seq),
-                base_deg[0],
-                base_deg[1],
-                base_deg[2],
-                base_deg[3],
-                base_deg[4],
-                base_deg[5],
-            )
-        )
-        for offset in _SW_J1_POST_PROBE_DEG:
-            target = base_deg.copy()
-            target[0] = min(target[0] + offset, _OP_LIMITS_DEG[0][1])
-            self._pub_status(
-                "root/sw J1+ probe offset=%.1f target=[%s]"
-                % (offset, " ".join("%.1f" % v for v in target))
-            )
-            if not self._movej(
-                target,
-                vel=_SW_J1_POST_PROBE_VEL_DEG_S,
-                acc=_SW_J1_POST_PROBE_ACC_DEG_S2,
-            ):
-                self._pub_status("root/sw J1+ probe service failed; using last reached pose")
-                break
-            if not self._wait_for_joints(
-                np.deg2rad(target).tolist(),
-                _SW_J1_POST_PROBE_TOLERANCE_DEG,
-                20.0,
-            ):
-                joints_now = self._current_joints or []
-                joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
-                self._pub_status(
-                    "root/sw J1+ probe no arrival; current=[%s]; using previous reached pose"
-                    % joints_now_str
-                )
-                break
-            accepted_deg = target
-            joints_now = self._current_joints or []
-            joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
-            self._pub_status("root/sw J1+ probe reached; current=[%s]" % joints_now_str)
-        self._pub_status(
-            "root/sw accepting J1+ probed temporary scan pose [%s]"
-            % " ".join("%.1f" % v for v in accepted_deg)
-        )
-        return np.deg2rad(accepted_deg).tolist()
-
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
             self._current_joints, _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
@@ -601,59 +481,32 @@ class ScanExecutorNode(Node):
                 return
 
             traj, motion_time, endpoint_rad = ret
-            if cell_id == "root/sw" and _SW_USE_DIRECT_MOVEJ:
+            if cell_id == "root/sw":
+                # MoveSplineJoint silently fails for SW on this robot; use direct MoveJoint.
+                # New endpoint has J1 swing 32.4° (97.8→130.2) so direct move is safe.
+                endpoint_deg = np.rad2deg(endpoint_rad).tolist()
                 self._pub_status(
-                    "root/sw uses staged MoveJoint temporary scan pose; skipping final endpoint"
+                    "root/sw direct MoveJoint vel=%.0f°/s endpoint=[%s]"
+                    % (_SW_DIRECT_MOVEJ_VEL_DEG_S, " ".join("%.1f" % v for v in endpoint_deg))
                 )
-                staged_endpoint = self._exec_movej_staged(cell_id, traj, endpoint_rad)
-                if staged_endpoint is None:
-                    self._pub_status("EXEC_FAIL root/sw staged MoveJoint failed")
+                if not self._movej(endpoint_deg, vel=_SW_DIRECT_MOVEJ_VEL_DEG_S, acc=_SW_DIRECT_MOVEJ_ACC_DEG_S2):
+                    self._pub_status("EXEC_FAIL root/sw MoveJoint failed — aborting")
                     self._pub_state(cell_id, "PLANNING_FAIL")
                     self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                     return
-                endpoint_rad = staged_endpoint
-                motion_time = max(motion_time, 6.0)
             else:
                 spline_vel = self._spline_vel_for_j1_swing(traj)
-                spline_min_time = 3.0
-                if cell_id == "root/sw":
-                    spline_vel = _SW_SPLINE_VEL_DEG_S
-                    spline_min_time = _SW_SPLINE_MIN_TIME_SEC
-                    self._pub_status(
-                        "root/sw uses slow spline probe vel=%.0f°/s min_time=%.0fs before MoveJoint fallback"
-                        % (spline_vel, spline_min_time)
-                    )
                 if spline_vel < 120.0:
                     self._pub_status(
                         "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
                         % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
                     )
-                if not self._exec_spline(traj, vel=spline_vel, min_time=spline_min_time):
+                if not self._exec_spline(traj, vel=spline_vel, min_time=3.0):
                     self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
                     self._pub_state(cell_id, "PLANNING_FAIL")
                     self._pub_status("RETURNING_TO_OVERVIEW after failure")
                     self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
                     return
-
-                if cell_id == "root/sw":
-                    time.sleep(_SW_NO_MOTION_CHECK_SEC)
-                    if self._current_joints and joints_within_tolerance_deg(
-                        self._current_joints, np.rad2deg(current_joints).tolist(), 2.0
-                    ):
-                        endpoint_deg = np.rad2deg(endpoint_rad).tolist()
-                        self._pub_status(
-                            "SW_SPLINE_NO_MOTION detected after %.0fs — using MoveJoint fallback to endpoint"
-                            % _SW_NO_MOTION_CHECK_SEC
-                        )
-                        if not self._movej(
-                            endpoint_deg,
-                            vel=_SW_FALLBACK_MOVEJ_VEL_DEG_S,
-                            acc=_SW_FALLBACK_MOVEJ_ACC_DEG_S2,
-                        ):
-                            self._pub_status("EXEC_FAIL root/sw MoveJoint fallback failed")
-                            self._pub_state(cell_id, "PLANNING_FAIL")
-                            self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
-                            return
 
             # Wait until joint state confirms arrival at planned endpoint.
             # Needed because MoveSplineJoint sync_type=0 may return before
