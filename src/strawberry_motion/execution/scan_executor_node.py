@@ -87,9 +87,10 @@ _SW_STAGED_MOVEJ_POINTS = 20
 _SW_ACCEPT_STAGE_INDEX = 20
 _SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
 _SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
-_SW_J1_POST_PROBE_DEG = [2.0, 4.0, 6.0, 8.0]
+_SW_J1_POST_PROBE_DEG = [5.0, 10.0, 15.0, 20.0]
 _SW_J1_POST_PROBE_VEL_DEG_S = 5.0
 _SW_J1_POST_PROBE_ACC_DEG_S2 = 10.0
+_SW_J1_POST_PROBE_TOLERANCE_DEG = 0.5
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -513,7 +514,11 @@ class ScanExecutorNode(Node):
             ):
                 self._pub_status("root/sw J1+ probe service failed; using last reached pose")
                 break
-            if not self._wait_for_joints(np.deg2rad(target).tolist(), 3.0, 20.0):
+            if not self._wait_for_joints(
+                np.deg2rad(target).tolist(),
+                _SW_J1_POST_PROBE_TOLERANCE_DEG,
+                20.0,
+            ):
                 joints_now = self._current_joints or []
                 joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
                 self._pub_status(
@@ -522,6 +527,9 @@ class ScanExecutorNode(Node):
                 )
                 break
             accepted_deg = target
+            joints_now = self._current_joints or []
+            joints_now_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+            self._pub_status("root/sw J1+ probe reached; current=[%s]" % joints_now_str)
         self._pub_status(
             "root/sw accepting J1+ probed temporary scan pose [%s]"
             % " ".join("%.1f" % v for v in accepted_deg)
