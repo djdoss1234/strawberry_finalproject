@@ -284,7 +284,8 @@ class ScanExecutorNode(Node):
         return True
 
     def _plan(
-        self, start_joints: List[float], pos: List[float], quat_wxyz: List[float], label: str
+        self, start_joints: List[float], pos: List[float], quat_wxyz: List[float], label: str,
+        max_retries: int = 5,
     ) -> Optional[Tuple[np.ndarray, float]]:
         start = CuroboJointState.from_position(
             position=torch.tensor(
@@ -299,25 +300,33 @@ class ScanExecutorNode(Node):
         if self._mg is None:
             self.get_logger().error("MotionGen unavailable")
             return None
-        result = self._mg.plan_single(
-            start, goal, MotionGenPlanConfig(enable_graph=True, max_attempts=4)
-        )
-        if not result.success.item():
-            self.get_logger().error(
-                "%s plan failed: %s" % (label, getattr(result, "status", "?"))
+        for attempt in range(max_retries):
+            result = self._mg.plan_single(
+                start, goal, MotionGenPlanConfig(enable_graph=True, max_attempts=4)
             )
-            return None
-        traj = result.get_interpolated_plan().position.cpu().numpy()
-        if not self._traj_ok(traj, label):
-            return None
-        endpoint_rad = traj[-1].tolist()
-        endpoint_deg = [round(float(np.rad2deg(j)), 1) for j in endpoint_rad]
-        motion_time = float(result.motion_time.item())
-        self.get_logger().info(
-            "%s plan endpoint_deg=[%s]  curobo_time=%.2fs"
-            % (label, " ".join("%.1f" % d for d in endpoint_deg), motion_time)
-        )
-        return traj, motion_time, endpoint_rad
+            if not result.success.item():
+                self.get_logger().warn(
+                    "%s plan attempt %d/%d failed: %s"
+                    % (label, attempt + 1, max_retries, getattr(result, "status", "?"))
+                )
+                continue
+            traj = result.get_interpolated_plan().position.cpu().numpy()
+            if not self._traj_ok(traj, label):
+                self.get_logger().warn(
+                    "%s traj limits violated on attempt %d/%d — retrying"
+                    % (label, attempt + 1, max_retries)
+                )
+                continue
+            endpoint_rad = traj[-1].tolist()
+            endpoint_deg = [round(float(np.rad2deg(j)), 1) for j in endpoint_rad]
+            motion_time = float(result.motion_time.item())
+            self.get_logger().info(
+                "%s plan endpoint_deg=[%s]  curobo_time=%.2fs  attempt=%d"
+                % (label, " ".join("%.1f" % d for d in endpoint_deg), motion_time, attempt + 1)
+            )
+            return traj, motion_time, endpoint_rad
+        self.get_logger().error("%s plan failed after %d attempts" % (label, max_retries))
+        return None
 
     def _exec_spline(
         self, traj_rad: np.ndarray, vel: float = 120.0, min_time: float = 3.0
