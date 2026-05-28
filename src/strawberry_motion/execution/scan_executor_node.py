@@ -83,8 +83,8 @@ _SW_NO_MOTION_CHECK_SEC = 5.0
 _SW_FALLBACK_MOVEJ_VEL_DEG_S = 15.0
 _SW_FALLBACK_MOVEJ_ACC_DEG_S2 = 20.0
 _SW_USE_DIRECT_MOVEJ = True
-_SW_STAGED_MOVEJ_POINTS = 6
-_SW_ACCEPT_STAGE_INDEX = 4
+_SW_STAGED_MOVEJ_POINTS = 10
+_SW_ACCEPT_STAGE_INDEX = 7
 _SW_STAGED_MOVEJ_VEL_DEG_S = 10.0
 _SW_STAGED_MOVEJ_ACC_DEG_S2 = 15.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
@@ -442,6 +442,8 @@ class ScanExecutorNode(Node):
             "%s staged MoveJoint diagnostic: %d waypoint(s), vel=%.0f acc=%.0f"
             % (cell_id, len(idx), _SW_STAGED_MOVEJ_VEL_DEG_S, _SW_STAGED_MOVEJ_ACC_DEG_S2)
         )
+        last_reached: Optional[List[float]] = None
+        last_reached_seq: Optional[int] = None
         for seq, i in enumerate(idx, start=1):
             waypoint = deg[i].tolist()
             self._pub_status(
@@ -462,13 +464,21 @@ class ScanExecutorNode(Node):
                     "%s staged MoveJoint %d no arrival; current=[%s]"
                     % (cell_id, seq, joints_now_str)
                 )
+                if cell_id == "root/sw" and last_reached is not None:
+                    self._pub_status(
+                        "%s staged MoveJoint accepting last reached stage %d as nearest temporary scan pose"
+                        % (cell_id, last_reached_seq)
+                    )
+                    return last_reached
                 return None
+            last_reached = np.deg2rad(waypoint).tolist()
+            last_reached_seq = seq
             if cell_id == "root/sw" and seq == _SW_ACCEPT_STAGE_INDEX:
                 self._pub_status(
                     "%s staged MoveJoint accepted stage %d as temporary scan pose"
                     % (cell_id, seq)
                 )
-                return np.deg2rad(waypoint).tolist()
+                return last_reached
         if self._wait_for_joints(endpoint_rad, 3.0, 10.0):
             return endpoint_rad
         return None

@@ -64,6 +64,7 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
 | spline no-motion 후 MoveJoint fallback | endpoint 도착 실패 | queue/busy 또는 endpoint 한방 문제 분리 필요 |
 | direct MoveJoint endpoint | `success=True`, endpoint 도착 실패 | endpoint 한방 silent reject 의심 |
 | staged MoveJoint diagnostic | stage4 도달, stage5 no-arrival | stage4 임시 scan pose 채택 |
+| fine staged MoveJoint probe | 10개 waypoint 중 stage7까지 더 가까운 pose 시도 | no-arrival 시 마지막 도달 stage 사용 |
 
 ## 최종 해결 또는 다음 조치
 
@@ -72,6 +73,8 @@ start overview_deg   = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   - 2026-05-28 12:23 run에서 stage4 도달, dwell, `SCANNED_EMPTY`, overview 복귀,
     `SCAN_COMPLETE`를 확인했다.
 - 다음 조치:
+  - stage4와 stage5 사이를 더 촘촘히 나눠 카메라가 더 가까워지는 마지막
+    도달 가능 stage를 찾는다.
   - stage4 이후 구간의 joint delta, singularity, limit proximity를 분석한다.
   - SW final endpoint는 별도 접근 정책으로 재설계한다.
 - 남은 위험:
