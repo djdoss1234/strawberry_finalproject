@@ -24,22 +24,26 @@ scan_pose_candidates:
     J6 within +-225deg op limits for all cells.
   targets:
     - cell_id: root/nw
-      approach: camera_centered
-      standoff_m: 0.35
-      curobo_status: PLAN_VALID
+      approach: manual_teach_dart
+      standoff_m: taught
+      curobo_status: PHYSICAL_VIEW_CONFIRMED
+      note: >-
+        2026-05-28 manually adjusted with Doosan DART. Camera view fills root/nw
+        with the cell centered enough for scan validation. DART task pose:
+        x=-155.04mm y=340.70mm z=749.89mm rx=87.69 ry=67.77 rz=-89.86.
       tcp_transform_base:
         - [0.011981230, -0.997907330, 0.063540625, -0.201366241]
         - [0.381526086,  0.063300028, 0.922188133,  0.415570048]
         - [-0.924280420,  0.013193458, 0.381486090,  0.613942548]
         - [0.0, 0.0, 0.0, 1.0]
-      endpoint_joints_deg: [129.6, -6.0, 100.2, 56.0, -50.2, -152.6]
+      endpoint_joints_deg: [131.71, -17.04, 87.70, -101.98, 41.12, -4.21]
       joint_range_deg:
-        J1: [97.8, 129.6]
-        J2: [-94.4, -6.0]
-        J3: [65.9, 100.2]
-        J4: [-10.9, 56.0]
-        J5: [-50.2, 95.5]
-        J6: [-152.6, -94.8]
+        J1: [97.8, 131.71]
+        J2: [-94.4, -17.04]
+        J3: [65.9, 87.70]
+        J4: [-101.98, -10.9]
+        J5: [41.12, 95.5]
+        J6: [-94.8, -4.21]
     - cell_id: root/ne
       approach: camera_centered
       standoff_m: 0.35
