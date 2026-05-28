@@ -71,21 +71,23 @@ scan_pose_candidates:
         J6: [-94.8, 65.4]
     - cell_id: root/se
       approach: panel_normal
-      standoff_m: 0.50
+      standoff_m: 0.40
       curobo_status: PLAN_VALID
       note: >-
-        Reduced from 0.65 m to 0.50 m to eliminate J6 wrap-around (-219 deg).
-        At 0.50 m J6 stays in [-95, 136] deg (no large rotation from overview).
-        Validated self_collision=True in SE search (RUN-20260527-012 search run).
+        2026-05-28 board-shift 후 fresh search (RUN-20260528-004).
+        0.50m: J6 consistently -229° (JOINT_LIMIT_REJECT 5/5).
+        0.40m: J6=[-95,-53] clean, J1 swing=72.4°, plan 1.0s consistent.
+        executor uses cuRobo spline + endpoint_joints_deg for arrival check.
       tcp_transform_base:
-        - [0.011749445, -0.998001744, 0.062084382,  0.357493027]
-        - [0.375791127,  0.061944310, 0.924631781,  0.224330521]
-        - [-0.926629903,  0.012466850, 0.375768012,  0.348140259]
+        - [0.011981230, -0.997907330, 0.063540625,  0.360052139]
+        - [0.381526086,  0.063300028, 0.922188133,  0.324920486]
+        - [-0.924280420,  0.013193458, 0.381486090,  0.348183915]
         - [0.0, 0.0, 0.0, 1.0]
+      endpoint_joints_deg: [25.4, 20.5, 116.2, -53.7, -88.1, -52.5]
       joint_range_deg:
-        J1: [-16.0, 98.0]
-        J2: [-94.0, 17.0]
-        J3: [66.0, 119.0]
-        J4: [-11.0, 97.0]
-        J5: [96.0, 115.0]
-        J6: [-95.0, 136.0]
+        J1: [25.4, 97.8]
+        J2: [-94.4, 20.5]
+        J3: [65.9, 116.2]
+        J4: [-53.7, -10.9]
+        J5: [-88.1, 95.5]
+        J6: [-94.8, -52.5]
