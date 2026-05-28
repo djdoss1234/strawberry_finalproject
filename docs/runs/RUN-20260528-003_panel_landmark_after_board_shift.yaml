@@ -1,0 +1,149 @@
+panel_registration_validation:
+  capture_method: read_only_realsense_landmark_clicks_at_overview_pose
+  panel_registration_source: /home/user/doosan_ws/src/strawberry_finalproject/config/panel_registration.yaml
+  landmark_definition: tape_crossing_and_white_paper_inner_corners_approx_20mm_inset
+  observations:
+    origin_crossing:
+      point_panel_m:
+      - 0.0
+      - 0.0
+      - 0.0
+      pixel_uv:
+      - 320
+      - 239
+      observed_base_m:
+      - 0.11476904772483373
+      - 0.7569120888042615
+      - 0.6430250053729862
+    paper_inner_nw:
+      point_panel_m:
+      - -0.525
+      - 0.375
+      - 0.0
+      pixel_uv:
+      - 137
+      - 110
+      observed_base_m:
+      - -0.41472559572474815
+      - 0.774011779660652
+      - 1.0073123668903265
+    paper_inner_ne:
+      point_panel_m:
+      - 0.535
+      - 0.375
+      - 0.0
+      pixel_uv:
+      - 502
+      - 112
+      observed_base_m:
+      - 0.6403767246062039
+      - 0.7545282163801873
+      - 1.020677345307683
+    paper_inner_sw:
+      point_panel_m:
+      - -0.525
+      - -0.385
+      - 0.0
+      pixel_uv:
+      - 141
+      - 366
+      observed_base_m:
+      - -0.41316812881670306
+      - 0.7841458907452454
+      - 0.2587390441664909
+    paper_inner_se:
+      point_panel_m:
+      - 0.535
+      - -0.385
+      - 0.0
+      pixel_uv:
+      - 498
+      - 364
+      observed_base_m:
+      - 0.6480480330283453
+      - 0.7476343014427482
+      - 0.2777003202868781
+  evaluation:
+    landmark_count: 5
+    rms_error_mm: 166.547
+    max_error_mm: 175.509
+    max_abs_plane_offset_mm: 175.192
+    status: MEASUREMENT_INSUFFICIENT_OR_REQUIRES_RECAPTURE
+    use_for_automated_motion: false
+    landmarks:
+      origin_crossing:
+        expected_base_m:
+        - 0.107827
+        - 0.597289
+        - 0.648168
+        observed_base_m:
+        - 0.114769
+        - 0.756912
+        - 0.643025
+        error_vector_mm:
+        - 6.942
+        - 159.623
+        - -5.143
+        error_norm_mm: 159.857
+        plane_offset_mm: -159.705
+      paper_inner_nw:
+        expected_base_m:
+        - -0.421404
+        - 0.608848
+        - 1.016991
+        observed_base_m:
+        - -0.414726
+        - 0.774012
+        - 1.007312
+        error_vector_mm:
+        - 6.679
+        - 165.164
+        - -9.679
+        error_norm_mm: 165.582
+        plane_offset_mm: -165.196
+      paper_inner_ne:
+        expected_base_m:
+        - 0.63811
+        - 0.57925
+        - 1.029382
+        observed_base_m:
+        - 0.640377
+        - 0.754528
+        - 1.020677
+        error_vector_mm:
+        - 2.267
+        - 175.279
+        - -8.705
+        error_norm_mm: 175.509
+        plane_offset_mm: -175.192
+      paper_inner_sw:
+        expected_base_m:
+        - -0.412341
+        - 0.615131
+        - 0.257071
+        observed_base_m:
+        - -0.413168
+        - 0.784146
+        - 0.258739
+        error_vector_mm:
+        - -0.827
+        - 169.015
+        - 1.668
+        error_norm_mm: 169.025
+        plane_offset_mm: -168.934
+      paper_inner_se:
+        expected_base_m:
+        - 0.647173
+        - 0.585533
+        - 0.269462
+        observed_base_m:
+        - 0.648048
+        - 0.747634
+        - 0.2777
+        error_vector_mm:
+        - 0.875
+        - 162.102
+        - 8.238
+        error_norm_mm: 162.313
+        plane_offset_mm: -162.128
+  use_for_automated_motion: false

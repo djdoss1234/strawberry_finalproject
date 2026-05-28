@@ -8,6 +8,7 @@ scan_pose_candidates:
   curobo_start_joints_deg: [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
   source_registration: config/panel_registration.yaml
   source_registration_evidence: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
+  board_shift_registration_evidence: docs/runs/RUN-20260528-003_panel_landmark_after_board_shift.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   collision_dry_run_record: docs/runs/RUN-20260527-010_refit_panel_collision_dryrun.yaml
   sw_candidate_search_record: docs/runs/RUN-20260527-011_sw_candidate_search.yaml
@@ -25,24 +26,26 @@ scan_pose_candidates:
     J6 non-determinism (J6 min -219 deg, 6 deg margin).
     Table, tray, fruit, cable, and human obstacles are not validated.
     Actual robot scan execution remains fail-closed.
+    2026-05-28 board-shift targets were rigidly updated from the measured
+    panel transform and require fresh live SW validation.
   targets:
     - cell_id: root/nw
       approach: panel_normal
       standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625, -0.200261895]
-        - [0.381526086, 0.063300028, 0.922188133, -0.078445149]
-        - [-0.924280420, 0.013193458, 0.381486090, 0.739734036]
+        - [0.011749445, -0.998001744, 0.062084382, -0.196135942]
+        - [0.375791127, 0.061944310, 0.924631781, 0.087949315]
+        - [-0.926629903, 0.012466850, 0.375768012, 0.741103530]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/ne
       approach: panel_normal
       standoff_m: 0.65
       curobo_status: PLAN_VALID
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625, 0.349486054]
-        - [0.381526086, 0.063300028, 0.922188133, -0.093802838]
-        - [-0.924280420, 0.013193458, 0.381486090, 0.746163243]
+        - [0.011749445, -0.998001744, 0.062084382, 0.353631279]
+        - [0.375791127, 0.061944310, 0.924631781, 0.073423226]
+        - [-0.926629903, 0.012466850, 0.375768012, 0.747811469]
         - [0.0, 0.0, 0.0, 1.0]
     - cell_id: root/sw
       approach: panel_normal
@@ -57,11 +60,11 @@ scan_pose_candidates:
         이후 executor는 SW 경로를 10개 waypoint로 더 잘게 나눠 카메라가 더 가까운
         포즈를 시도하고, no-arrival 발생 시 마지막 실제 도달 stage를 임시 scan pose로 사용한다.
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625, -0.185753855]
-        - [0.381526086, 0.063300028, 0.922188133,  0.274713254]
-        - [-0.924280420, 0.013193458, 0.381486090,  0.342784846]
+        - [0.011749445, -0.998001744, 0.062084382, -0.181999552]
+        - [0.375791127, 0.061944310, 0.924631781,  0.438654359]
+        - [-0.926629903, 0.012466850, 0.375768012,  0.341971804]
         - [0.0, 0.0, 0.0, 1.0]
-      endpoint_joints_deg: [149.6, 1.1, 142.6, -124.0, 93.6, 58.7]
+      endpoint_joints_deg: superseded_by_board_shift_live_plan_required
       temporary_scan_joints_deg: [133.5, -26.6, 117.8, -88.0, 94.6, 10.2]
       temporary_scan_reason: nearest_reached_stage_after_fine_staged_movej_probe
       joint_range_deg:
@@ -80,9 +83,9 @@ scan_pose_candidates:
         At 0.50 m J6 stays in [-95, 136] deg (no large rotation from overview).
         Validated self_collision=True in SE search (RUN-20260527-012 search run).
       tcp_transform_base:
-        - [0.011981230, -0.997907330, 0.063540625,  0.353431686]
-        - [0.381526086,  0.063300028, 0.922188133,  0.059580003]
-        - [-0.924280420,  0.013193458, 0.381486090,  0.347436348]
+        - [0.011749445, -0.998001744, 0.062084382,  0.357493027]
+        - [0.375791127,  0.061944310, 0.924631781,  0.224330521]
+        - [-0.926629903,  0.012466850, 0.375768012,  0.348140259]
         - [0.0, 0.0, 0.0, 1.0]
       joint_range_deg:
         J1: [-16.0, 98.0]

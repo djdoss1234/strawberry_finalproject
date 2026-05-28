@@ -22,6 +22,11 @@ panel_registration:
     corrected_refit_result: MEASURED_PASS_PENDING_MOTION_MARGIN
     corrected_rms_error_mm: 9.229
     corrected_max_error_mm: 10.981
+    board_shift_capture: docs/runs/RUN-20260528-003_panel_landmark_after_board_shift.yaml
+    board_shift_result: MEASURED_PASS_PENDING_MOTION_MARGIN
+    board_shift_rms_error_mm: 8.997
+    board_shift_max_error_mm: 11.280
+    board_shift_max_abs_plane_offset_mm: 6.536
     active_transform_replacement: promoted_for_visualization_and_offline_collision_only
   refit_rviz_review:
     evidence_image_local: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
@@ -32,17 +37,17 @@ panel_registration:
       motion authorization.
   transform:
     translation_m:
-      x: 0.107826964
-      y: 0.597288721
-      z: 0.648167716
+      x: 0.111012688
+      y: 0.763543821
+      z: 0.645441722
     rotation_xyzw:
-      x: 0.710000901
-      y: -0.014030832
-      z: -0.005680988
-      w: 0.704038055
+      x: 0.707820420
+      y: -0.013656794
+      z: -0.005010994
+      w: 0.706242617
     matrix:
-      - [0.999541724, -0.011924544, -0.027823492, 0.107826964]
-      - [-0.027923070, -0.008267105, -0.999575889, 0.597288721]
-      - [0.011689467, 0.999894725, -0.008596286, 0.648167716]
+      - [0.999576764, -0.012255160, -0.026383788, 0.111012688]
+      - [-0.026411070, -0.002069715, -0.999649024, 0.763543821]
+      - [0.012196252, 0.999922761, -0.002392511, 0.645441722]
       - [0.0, 0.0, 0.0, 1.0]
   use_for_automated_motion: false
