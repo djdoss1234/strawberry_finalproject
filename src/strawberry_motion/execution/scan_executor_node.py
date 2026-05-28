@@ -82,6 +82,7 @@ _SW_SPLINE_MIN_TIME_SEC = 15.0
 _SW_NO_MOTION_CHECK_SEC = 5.0
 _SW_FALLBACK_MOVEJ_VEL_DEG_S = 15.0
 _SW_FALLBACK_MOVEJ_ACC_DEG_S2 = 20.0
+_SW_USE_DIRECT_MOVEJ = True
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -406,6 +407,15 @@ class ScanExecutorNode(Node):
         while not future.done() and (time.time() - t0) < 60.0:
             time.sleep(0.05)
         ok = future.done() and future.result() and future.result().success
+        self.get_logger().info(
+            "MoveJoint response: success=%s  target=[%s]  vel=%.1f  acc=%.1f"
+            % (
+                ok,
+                " ".join("%.1f" % v for v in joints_deg),
+                vel,
+                acc,
+            )
+        )
         if not ok:
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
@@ -475,46 +485,62 @@ class ScanExecutorNode(Node):
                 return
 
             traj, motion_time, endpoint_rad = ret
-            spline_vel = self._spline_vel_for_j1_swing(traj)
-            spline_min_time = 3.0
-            if cell_id == "root/sw":
-                spline_vel = _SW_SPLINE_VEL_DEG_S
-                spline_min_time = _SW_SPLINE_MIN_TIME_SEC
+            if cell_id == "root/sw" and _SW_USE_DIRECT_MOVEJ:
+                endpoint_deg = np.rad2deg(endpoint_rad).tolist()
                 self._pub_status(
-                    "root/sw uses slow spline probe vel=%.0f°/s min_time=%.0fs before MoveJoint fallback"
-                    % (spline_vel, spline_min_time)
+                    "root/sw uses direct MoveJoint endpoint test; skipping spline probe"
                 )
-            if spline_vel < 120.0:
-                self._pub_status(
-                    "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
-                    % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
-                )
-            if not self._exec_spline(traj, vel=spline_vel, min_time=spline_min_time):
-                self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
-                self._pub_state(cell_id, "PLANNING_FAIL")
-                self._pub_status("RETURNING_TO_OVERVIEW after failure")
-                self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
-                return
-
-            if cell_id == "root/sw":
-                time.sleep(_SW_NO_MOTION_CHECK_SEC)
-                if self._current_joints and joints_within_tolerance_deg(
-                    self._current_joints, np.rad2deg(current_joints).tolist(), 2.0
+                if not self._movej(
+                    endpoint_deg,
+                    vel=_SW_FALLBACK_MOVEJ_VEL_DEG_S,
+                    acc=_SW_FALLBACK_MOVEJ_ACC_DEG_S2,
                 ):
-                    endpoint_deg = np.rad2deg(endpoint_rad).tolist()
+                    self._pub_status("EXEC_FAIL root/sw direct MoveJoint failed")
+                    self._pub_state(cell_id, "PLANNING_FAIL")
+                    self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                    return
+                motion_time = max(motion_time, 6.0)
+            else:
+                spline_vel = self._spline_vel_for_j1_swing(traj)
+                spline_min_time = 3.0
+                if cell_id == "root/sw":
+                    spline_vel = _SW_SPLINE_VEL_DEG_S
+                    spline_min_time = _SW_SPLINE_MIN_TIME_SEC
                     self._pub_status(
-                        "SW_SPLINE_NO_MOTION detected after %.0fs — using MoveJoint fallback to endpoint"
-                        % _SW_NO_MOTION_CHECK_SEC
+                        "root/sw uses slow spline probe vel=%.0f°/s min_time=%.0fs before MoveJoint fallback"
+                        % (spline_vel, spline_min_time)
                     )
-                    if not self._movej(
-                        endpoint_deg,
-                        vel=_SW_FALLBACK_MOVEJ_VEL_DEG_S,
-                        acc=_SW_FALLBACK_MOVEJ_ACC_DEG_S2,
+                if spline_vel < 120.0:
+                    self._pub_status(
+                        "%s J1 swing %.0f° — using reduced spline vel %.0f°/s"
+                        % (cell_id, np.max(np.rad2deg(traj[:, 0])) - np.min(np.rad2deg(traj[:, 0])), spline_vel)
+                    )
+                if not self._exec_spline(traj, vel=spline_vel, min_time=spline_min_time):
+                    self._pub_status("EXEC_FAIL %s — aborting scan sequence" % cell_id)
+                    self._pub_state(cell_id, "PLANNING_FAIL")
+                    self._pub_status("RETURNING_TO_OVERVIEW after failure")
+                    self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                    return
+
+                if cell_id == "root/sw":
+                    time.sleep(_SW_NO_MOTION_CHECK_SEC)
+                    if self._current_joints and joints_within_tolerance_deg(
+                        self._current_joints, np.rad2deg(current_joints).tolist(), 2.0
                     ):
-                        self._pub_status("EXEC_FAIL root/sw MoveJoint fallback failed")
-                        self._pub_state(cell_id, "PLANNING_FAIL")
-                        self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
-                        return
+                        endpoint_deg = np.rad2deg(endpoint_rad).tolist()
+                        self._pub_status(
+                            "SW_SPLINE_NO_MOTION detected after %.0fs — using MoveJoint fallback to endpoint"
+                            % _SW_NO_MOTION_CHECK_SEC
+                        )
+                        if not self._movej(
+                            endpoint_deg,
+                            vel=_SW_FALLBACK_MOVEJ_VEL_DEG_S,
+                            acc=_SW_FALLBACK_MOVEJ_ACC_DEG_S2,
+                        ):
+                            self._pub_status("EXEC_FAIL root/sw MoveJoint fallback failed")
+                            self._pub_state(cell_id, "PLANNING_FAIL")
+                            self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                            return
 
             # Wait until joint state confirms arrival at planned endpoint.
             # Needed because MoveSplineJoint sync_type=0 may return before
