@@ -1,6 +1,6 @@
 scan_pose_candidates:
-  version: v10_workspace_reset_manual_teach_all_cells
-  status: workspace_reset_all_scan_poses_single_cell_validated_camera_view_ok_motion_quality_pending
+  version: v11_se_sw_ik_branch_optimized
+  status: se_sw_ik_branch_updated_physical_verification_required_nw_ne_validated
   capture_date: '2026-05-29'
   curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
@@ -136,16 +136,17 @@ scan_pose_candidates:
   - cell_id: root/sw
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
+    curobo_status: IK_VALID_PHYSICAL_VERIFICATION_REQUIRED
     note: >-
       2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/sw with the cell centered enough for scan validation.
       DART task pose x=-248.59mm y=366.73mm z=348.70mm rx=86.47 ry=64.81 rz=-88.15.
-      This pose validates the workspace reset hypothesis: SW became teachable
-      after aligning the paper center closer to the base_link centerline.
-      Single-cell ROS validation completed on 2026-05-29; camera angle is good,
-      but joint motion is still excessive and should be optimized before full
-      traversal.
+      tcp_transform_base is unchanged (camera angle verified).
+      endpoint_joints_deg updated 2026-05-29: cuRobo IK branch search found
+      J1=+141.3° solution (same J1 direction as NW), reducing J1 swing from
+      127° to 53° and J3 swing from 255° to 4°. Awaits physical single-cell
+      verification. cuRobo MotionGen dry-run blocked: new overview pose
+      J3=129.89°/J4=175.94° triggers false self-collision in sphere model.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -164,42 +165,46 @@ scan_pose_candidates:
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - -39.25
-    - -15.2
-    - -125.63
-    - 227.28
-    - -89.79
-    - -119.01
+    - 141.3
+    - 14.0
+    - 125.5
+    - -130.5
+    - 87.0
+    - 58.5
     joint_range_deg:
       J1:
-      - -39.25
       - 87.98
+      - 141.3
       J2:
       - -94.92
-      - -15.2
+      - 14.0
       J3:
-      - -125.63
+      - 125.5
       - 129.89
       J4:
+      - -130.5
       - 175.94
-      - 227.28
       J5:
-      - -89.79
       - -31.34
+      - 87.0
       J6:
-      - -119.01
+      - 58.5
       - 93.42
     use_for_automated_motion: false
   - cell_id: root/se
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
+    curobo_status: IK_VALID_PHYSICAL_VERIFICATION_REQUIRED
+    note: >-
+      2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/se with the cell centered enough for scan validation.
       DART task pose x=284.91mm y=346.35mm z=342.92mm rx=86.37 ry=64.04 rz=-89.22.
-      Single-cell ROS validation completed on 2026-05-29; camera angle is good,
-      but joint motion is still excessive and should be optimized before full
-      traversal.
+      tcp_transform_base is unchanged (camera angle verified).
+      endpoint_joints_deg updated 2026-05-29: cuRobo IK branch search found
+      J1=+34.4° solution (same J1 direction as NE), reducing J1 swing from
+      233° to 54° and J3 swing from 255° to 4°. Awaits physical single-cell
+      verification. cuRobo MotionGen dry-run blocked: new overview pose
+      J3=129.89°/J4=175.94° triggers false self-collision in sphere model.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -218,30 +223,30 @@ scan_pose_candidates:
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - -145.15
-    - -16.58
-    - -125.59
-    - 135.27
-    - -90.14
-    - -60.53
+    - 34.4
+    - 14.7
+    - 125.8
+    - 133.3
+    - 86.0
+    - 120.8
     joint_range_deg:
       J1:
-      - -145.15
+      - 34.4
       - 87.98
       J2:
       - -94.92
-      - -16.58
+      - 14.7
       J3:
-      - -125.59
+      - 125.8
       - 129.89
       J4:
-      - 135.27
+      - 133.3
       - 175.94
       J5:
-      - -90.14
       - -31.34
+      - 86.0
       J6:
-      - -60.53
       - 93.42
+      - 120.8
     use_for_automated_motion: false
   workspace_reset_registration_evidence: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml
