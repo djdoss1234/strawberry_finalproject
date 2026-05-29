@@ -1,7 +1,7 @@
 scan_pose_candidates:
-  version: v9_workspace_reset_pending_manual_teach
-  status: workspace_reset_registration_ready_scan_poses_require_manual_teach
-  capture_date: '2026-05-28'
+  version: v10_workspace_reset_manual_teach_all_cells
+  status: workspace_reset_all_scan_poses_manually_taught_pending_execution_validation
+  capture_date: '2026-05-29'
   curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
   - 87.98
@@ -13,15 +13,17 @@ scan_pose_candidates:
   source_registration: config/panel_registration.yaml
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   camera_centered_search_record: docs/runs/RUN-20260528-005_camera_centered_search.yaml
+  manual_teach_record: docs/runs/RUN-20260529-002_manual_scan_pose_teaching.md
   derivation: 'v8: all cells use cam_pos = cell_center - 0.35m * cam_dir so the camera
     center ray passes through the cell center (eliminates the 60-173mm upward offset
     that v7 had due to panel_normal vs cam_dir mismatch). cam_dir = R_tcp[:,2] = [0.064,
     0.922, 0.381] (22.4 deg upward tilt).'
   use_for_automated_motion: false
   collision_world_validated_for_motion: false
-  validation_scope: Workspace was physically reset on 2026-05-28. Previous v8 and
-    manual NW/NE endpoint_joints_deg are retained as superseded evidence only. Manual
-    scan poses must be re-taught before automated motion.
+  validation_scope: Workspace was physically reset on 2026-05-28. All four scan
+    poses were manually taught with Doosan DART on 2026-05-28/29. Automated motion
+    remains locked until low-speed single-cell execution validates joint arrival
+    and camera view for each pose.
   targets:
   - cell_id: root/nw
     approach: manual_teach_dart
@@ -36,15 +38,15 @@ scan_pose_candidates:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - -0.201366241
+      - -0.24534
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.415570048
+      - 0.3739
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.613942548
+      - 0.74139
     - - 0.0
       - 0.0
       - 0.0
@@ -79,151 +81,161 @@ scan_pose_candidates:
   - cell_id: root/ne
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: SUPERSEDED_BY_WORKSPACE_RESET
-    note: Superseded after physical workspace reset; re-teach this cell with DART
-      before use.
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
+    note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
+      Camera view fills root/ne with the cell centered enough for scan validation.
+      DART task pose x=285.75mm y=347.14mm z=730.58mm rx=85.94 ry=65.09 rz=-88.59.
+      Global automated motion remains disabled until low-speed single-cell
+      execution validates arrival and camera view.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - 0.343403096
+      - 0.28575
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.401176015
+      - 0.34714
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.620589506
+      - 0.73058
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 201.01
-    - -9.46
-    - -61.84
-    - -253.81
-    - -62.96
-    - 10.21
+    - 34.82
+    - 77.37
+    - -81.88
+    - 229.61
+    - -67.97
+    - 95.2
     joint_range_deg:
       J1:
-      - 97.8
-      - 201.01
+      - 34.82
+      - 87.98
       J2:
-      - -94.4
-      - -9.46
+      - -94.92
+      - 77.37
       J3:
-      - -61.84
-      - 65.9
+      - -81.88
+      - 129.89
       J4:
-      - -253.81
-      - -10.9
+      - 175.94
+      - 229.61
       J5:
-      - -62.96
-      - 95.5
+      - -67.97
+      - -31.34
       J6:
-      - -94.8
-      - 10.21
+      - 93.42
+      - 95.2
     use_for_automated_motion: false
   - cell_id: root/sw
-    approach: camera_centered
-    standoff_m: 0.35
-    curobo_status: SUPERSEDED_BY_WORKSPACE_RESET
-    note: Superseded after physical workspace reset; re-teach this cell with DART
-      before use.
+    approach: manual_teach_dart
+    standoff_m: taught
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
+    note: >-
+      2026-05-29 manually adjusted with Doosan DART after workspace reset.
+      Camera view fills root/sw with the cell centered enough for scan validation.
+      DART task pose x=-248.59mm y=366.73mm z=348.70mm rx=86.47 ry=64.81 rz=-88.15.
+      This pose validates the workspace reset hypothesis: SW became teachable
+      after aligning the paper center closer to the base_link centerline.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - -0.196402901
+      - -0.24859
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.416408283
+      - 0.36673
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.20897383
+      - 0.3487
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 128.9
-    - 37.3
-    - 126.4
-    - -140.4
-    - 100.1
-    - 79.7
+    - -39.25
+    - -15.2
+    - -125.63
+    - 227.28
+    - -89.79
+    - -119.01
     joint_range_deg:
       J1:
-      - 97.8
-      - 128.9
+      - -39.25
+      - 87.98
       J2:
-      - -94.4
-      - 37.3
+      - -94.92
+      - -15.2
       J3:
-      - 65.9
-      - 126.4
+      - -125.63
+      - 129.89
       J4:
-      - -140.4
-      - -10.9
+      - 175.94
+      - 227.28
       J5:
-      - 95.5
-      - 100.1
+      - -89.79
+      - -31.34
       J6:
-      - -94.8
-      - 79.7
+      - -119.01
+      - 93.42
     use_for_automated_motion: false
   - cell_id: root/se
-    approach: camera_centered
-    standoff_m: 0.35
-    curobo_status: SUPERSEDED_BY_WORKSPACE_RESET
+    approach: manual_teach_dart
+    standoff_m: taught
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
+    note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
+      Camera view fills root/se with the cell centered enough for scan validation.
+      DART task pose x=284.91mm y=346.35mm z=342.92mm rx=86.37 ry=64.04 rz=-89.22.
+      Global automated motion remains disabled until low-speed single-cell
+      execution validates arrival and camera view.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - 0.348366436
+      - 0.28491
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.40201425
+      - 0.34635
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.215620788
+      - 0.34292
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 35.8
-    - 41.7
-    - 111.6
-    - -45.5
-    - -94.3
-    - -68.9
+    - -145.15
+    - -16.58
+    - -125.59
+    - 135.27
+    - -90.14
+    - -60.53
     joint_range_deg:
       J1:
-      - 35.8
-      - 97.8
+      - -145.15
+      - 87.98
       J2:
-      - -94.4
-      - 41.7
+      - -94.92
+      - -16.58
       J3:
-      - 65.9
-      - 111.6
+      - -125.59
+      - 129.89
       J4:
-      - -45.5
-      - -10.9
+      - 135.27
+      - 175.94
       J5:
-      - -94.3
-      - 95.5
+      - -90.14
+      - -31.34
       J6:
-      - -94.8
-      - -68.9
+      - -60.53
+      - 93.42
     use_for_automated_motion: false
-    note: Superseded after physical workspace reset; re-teach this cell with DART
-      before use.
   workspace_reset_registration_evidence: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml
