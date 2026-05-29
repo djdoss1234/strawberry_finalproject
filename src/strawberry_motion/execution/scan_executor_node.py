@@ -7,10 +7,11 @@ Cell state published to /strawberry/exploration/set_cell_state:
 
 This node never starts from joint-state arrival. Motion requires all of:
   - launch/parameter opt-in: execute_motion:=true
-  - YAML flags: use_for_automated_motion=true AND collision_world_validated_for_motion=true
+  - YAML flags: use_for_automated_motion=true AND collision_world_validated_for_motion=true,
+    or manual_validation_mode:=true for one explicitly selected single cell
   - an explicit /strawberry/scan/start Trigger request
   - a live joint state matching the manually verified overview pose
-  - one explicitly selected initial-validation cell (root/nw or root/ne)
+  - one explicitly selected initial-validation cell (root/nw/root/ne/root/se/root/sw)
 
 The collision backend uses the validated scene (RUN-20260527-012):
   robot/tool collision spheres + registered whiteboard cuboid + self_collision.
@@ -70,8 +71,6 @@ _INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne", "root/se", "root/sw"]
 # Full traversal Z-order (nw→ne top row, sw→se bottom row)
 _ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
 
-_OVERVIEW_JOINTS_DEG = [97.84, -94.40, 65.95, -10.93, 95.49, -94.79]
-
 _MAX_SPLINE_PTS = 12
 _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
@@ -122,14 +121,25 @@ class ScanExecutorNode(Node):
         self._detection_lock = threading.Lock()
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
+        self.declare_parameter("manual_validation_mode", False)
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
         self._target_cell = str(self.get_parameter("target_cell").value)
+        self._manual_validation_mode = bool(
+            self.get_parameter("manual_validation_mode").value
+        )
 
         pkg = get_package_share_directory("strawberry_motion")
         candidates_path = Path(pkg) / "config" / _CANDIDATES_FNAME
         with candidates_path.open() as fh:
             data = yaml.safe_load(fh)
         candidate_cfg = data["scan_pose_candidates"]
+        self._overview_joints_deg = [
+            float(v) for v in candidate_cfg.get("curobo_start_joints_deg", [])
+        ]
+        if len(self._overview_joints_deg) != 6:
+            raise RuntimeError(
+                "%s missing valid curobo_start_joints_deg" % _CANDIDATES_FNAME
+            )
         self._candidate_authorized = bool(
             candidate_cfg.get("use_for_automated_motion", False)
             and candidate_cfg.get("collision_world_validated_for_motion", False)
@@ -148,6 +158,11 @@ class ScanExecutorNode(Node):
             self.get_logger().warn(
                 "Motion locked: set use_for_automated_motion=true in %s "
                 "after physical E-stop verification." % _CANDIDATES_FNAME
+            )
+        if self._manual_validation_mode:
+            self.get_logger().warn(
+                "manual_validation_mode=true: single-cell MoveJoint validation is "
+                "allowed, but target_cell=all remains blocked unless YAML is authorized."
             )
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
@@ -232,6 +247,9 @@ class ScanExecutorNode(Node):
             execute_motion=self._execute_motion,
             candidate_authorized=self._candidate_authorized,
             has_joint_state=self._current_joints is not None,
+            manual_validation_mode=(
+                self._manual_validation_mode and self._target_cell != "all"
+            ),
         )
         if self._started:
             allowed, reason = False, "scan already started"
@@ -244,7 +262,7 @@ class ScanExecutorNode(Node):
                     self._target_cell, _INITIAL_SINGLE_CELL_CANDIDATES
                 )
         if allowed and not joints_within_tolerance_deg(
-            self._current_joints or [], _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
+            self._current_joints or [], self._overview_joints_deg, _OVERVIEW_TOLERANCE_DEG
         ):
             allowed = False
             reason = "current joints do not match verified overview pose within 1.0 deg"
@@ -427,7 +445,7 @@ class ScanExecutorNode(Node):
 
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
-            self._current_joints, _OVERVIEW_JOINTS_DEG, _OVERVIEW_TOLERANCE_DEG
+            self._current_joints, self._overview_joints_deg, _OVERVIEW_TOLERANCE_DEG
         )
 
     def _wait_at_overview(self, timeout_sec: float = 10.0) -> bool:
@@ -492,7 +510,7 @@ class ScanExecutorNode(Node):
                 self._pub_status("EXEC_FAIL %s MoveJoint failed — aborting scan sequence" % cell_id)
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._pub_status("RETURNING_TO_OVERVIEW after failure")
-                self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                self._movej(self._overview_joints_deg, vel=40.0, acc=40.0)
                 return
 
             arrival_timeout = 90.0
@@ -503,7 +521,7 @@ class ScanExecutorNode(Node):
                     % (cell_id, arrival_timeout)
                 )
                 self._pub_state(cell_id, "PLANNING_FAIL")
-                self._movej(_OVERVIEW_JOINTS_DEG, vel=40.0, acc=40.0)
+                self._movej(self._overview_joints_deg, vel=40.0, acc=40.0)
                 return
 
             # Reset per-cell detection counter just before dwell so only
@@ -535,7 +553,7 @@ class ScanExecutorNode(Node):
             # from the validated overview state (prevents J6 wind-up).
             if cell_id != scan_order[-1]:
                 self._pub_status("INTER_CELL_OVERVIEW_RESET")
-                if not self._movej(_OVERVIEW_JOINTS_DEG, vel=60.0, acc=60.0):
+                if not self._movej(self._overview_joints_deg, vel=60.0, acc=60.0):
                     self._pub_status("ABORT inter-cell overview return failed")
                     return
                 if not self._wait_at_overview(timeout_sec=15.0):
@@ -544,7 +562,7 @@ class ScanExecutorNode(Node):
 
         # Return to overview at the end of the full scan sequence.
         self._pub_status("RETURNING_TO_OVERVIEW")
-        if not self._movej(_OVERVIEW_JOINTS_DEG, vel=20.0, acc=20.0):
+        if not self._movej(self._overview_joints_deg, vel=20.0, acc=20.0):
             self._pub_status("ABORT overview return failed after scan sequence")
             return
         if not self._wait_at_overview():

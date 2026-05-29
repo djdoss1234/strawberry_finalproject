@@ -10,14 +10,17 @@ def motion_start_allowed(
     execute_motion: bool,
     candidate_authorized: bool,
     has_joint_state: bool,
+    manual_validation_mode: bool = False,
 ) -> Tuple[bool, str]:
     """Return whether an explicit scan request may reach motion code."""
     if not execute_motion:
         return False, "execute_motion parameter is false"
-    if not candidate_authorized:
+    if not candidate_authorized and not manual_validation_mode:
         return False, "scan candidates are not authorized for automated motion"
     if not has_joint_state:
         return False, "no current joint state received"
+    if manual_validation_mode and not candidate_authorized:
+        return True, "explicit single-cell manual validation request accepted"
     return True, "explicit scan request accepted"
 
 

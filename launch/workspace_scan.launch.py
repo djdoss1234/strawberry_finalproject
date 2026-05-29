@@ -2,7 +2,8 @@
 
 By default this launch starts TF, markers, scan-pose preview and RViz only.
 Even with enable_robot_execution:=true, the executor requires an explicit
-Trigger request and an authorized collision-aware candidate config.
+Trigger request. Full traversal requires an authorized collision-aware candidate
+config; single-cell validation can be enabled with manual_validation_mode:=true.
 Monitor progress:
   ros2 topic echo /strawberry/scan/status
 """
@@ -38,7 +39,12 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument(
                 "target_cell",
                 default_value="",
-                description="Initial physical validation permits one explicitly selected root/nw or root/ne cell only.",
+                description="Initial physical validation permits one explicitly selected root/nw/root/ne/root/se/root/sw cell only.",
+            ),
+            DeclareLaunchArgument(
+                "manual_validation_mode",
+                default_value="false",
+                description="Allow one explicit single-cell MoveJoint validation while automated traversal remains locked.",
             ),
             Node(
                 package="tf2_ros",
@@ -85,6 +91,7 @@ def generate_launch_description() -> LaunchDescription:
                     {
                         "execute_motion": True,
                         "target_cell": LaunchConfiguration("target_cell"),
+                        "manual_validation_mode": LaunchConfiguration("manual_validation_mode"),
                     }
                 ],
                 output="screen",

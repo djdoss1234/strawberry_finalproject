@@ -25,9 +25,23 @@ def test_unauthorized_candidates_block_motion():
     assert "not authorized" in reason
 
 
+def test_manual_validation_mode_allows_unauthorized_single_cell_motion_gate():
+    allowed, reason = motion_start_allowed(
+        execute_motion=True,
+        candidate_authorized=False,
+        has_joint_state=True,
+        manual_validation_mode=True,
+    )
+    assert allowed is True
+    assert "manual validation" in reason
+
+
 def test_joint_state_is_required_for_motion():
     allowed, reason = motion_start_allowed(
-        execute_motion=True, candidate_authorized=True, has_joint_state=False
+        execute_motion=True,
+        candidate_authorized=False,
+        has_joint_state=False,
+        manual_validation_mode=True,
     )
     assert allowed is False
     assert "joint state" in reason
