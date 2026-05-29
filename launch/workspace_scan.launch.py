@@ -46,6 +46,31 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="false",
                 description="Allow one explicit single-cell MoveJoint validation while automated traversal remains locked.",
             ),
+            DeclareLaunchArgument(
+                "scan_movej_vel_deg_s",
+                default_value="40.0",
+                description="MoveJoint velocity for scan pose validation in deg/s.",
+            ),
+            DeclareLaunchArgument(
+                "scan_movej_acc_deg_s2",
+                default_value="60.0",
+                description="MoveJoint acceleration for scan pose validation in deg/s^2.",
+            ),
+            DeclareLaunchArgument(
+                "overview_return_vel_deg_s",
+                default_value="40.0",
+                description="MoveJoint velocity for return-to-overview in deg/s.",
+            ),
+            DeclareLaunchArgument(
+                "overview_return_acc_deg_s2",
+                default_value="60.0",
+                description="MoveJoint acceleration for return-to-overview in deg/s^2.",
+            ),
+            DeclareLaunchArgument(
+                "movej_service_timeout_sec",
+                default_value="5.0",
+                description="Seconds to wait for MoveJoint service response before relying on joint-state arrival verification.",
+            ),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -92,6 +117,17 @@ def generate_launch_description() -> LaunchDescription:
                         "execute_motion": True,
                         "target_cell": LaunchConfiguration("target_cell"),
                         "manual_validation_mode": LaunchConfiguration("manual_validation_mode"),
+                        "scan_movej_vel_deg_s": LaunchConfiguration("scan_movej_vel_deg_s"),
+                        "scan_movej_acc_deg_s2": LaunchConfiguration("scan_movej_acc_deg_s2"),
+                        "overview_return_vel_deg_s": LaunchConfiguration(
+                            "overview_return_vel_deg_s"
+                        ),
+                        "overview_return_acc_deg_s2": LaunchConfiguration(
+                            "overview_return_acc_deg_s2"
+                        ),
+                        "movej_service_timeout_sec": LaunchConfiguration(
+                            "movej_service_timeout_sec"
+                        ),
                     }
                 ],
                 output="screen",

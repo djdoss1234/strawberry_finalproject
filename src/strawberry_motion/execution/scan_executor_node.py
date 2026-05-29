@@ -76,8 +76,11 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-_SCAN_MOVEJ_VEL_DEG_S = 20.0
-_SCAN_MOVEJ_ACC_DEG_S2 = 30.0
+_DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 40.0
+_DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 60.0
+_DEFAULT_OVERVIEW_RETURN_VEL_DEG_S = 40.0
+_DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2 = 60.0
+_DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC = 5.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -122,10 +125,32 @@ class ScanExecutorNode(Node):
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self.declare_parameter("manual_validation_mode", False)
+        self.declare_parameter("scan_movej_vel_deg_s", _DEFAULT_SCAN_MOVEJ_VEL_DEG_S)
+        self.declare_parameter("scan_movej_acc_deg_s2", _DEFAULT_SCAN_MOVEJ_ACC_DEG_S2)
+        self.declare_parameter(
+            "overview_return_vel_deg_s", _DEFAULT_OVERVIEW_RETURN_VEL_DEG_S
+        )
+        self.declare_parameter(
+            "overview_return_acc_deg_s2", _DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2
+        )
+        self.declare_parameter(
+            "movej_service_timeout_sec", _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC
+        )
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
         self._target_cell = str(self.get_parameter("target_cell").value)
         self._manual_validation_mode = bool(
             self.get_parameter("manual_validation_mode").value
+        )
+        self._scan_movej_vel = float(self.get_parameter("scan_movej_vel_deg_s").value)
+        self._scan_movej_acc = float(self.get_parameter("scan_movej_acc_deg_s2").value)
+        self._overview_return_vel = float(
+            self.get_parameter("overview_return_vel_deg_s").value
+        )
+        self._overview_return_acc = float(
+            self.get_parameter("overview_return_acc_deg_s2").value
+        )
+        self._movej_service_timeout_sec = float(
+            self.get_parameter("movej_service_timeout_sec").value
         )
 
         pkg = get_package_share_directory("strawberry_motion")
@@ -164,6 +189,19 @@ class ScanExecutorNode(Node):
                 "manual_validation_mode=true: single-cell MoveJoint validation is "
                 "allowed, but target_cell=all remains blocked unless YAML is authorized."
             )
+        self.get_logger().info(
+            "MoveJoint speeds: scan vel=%.1f acc=%.1f, overview return vel=%.1f acc=%.1f"
+            % (
+                self._scan_movej_vel,
+                self._scan_movej_acc,
+                self._overview_return_vel,
+                self._overview_return_acc,
+            )
+        )
+        self.get_logger().info(
+            "MoveJoint service dispatch timeout: %.1fs; arrival is verified from /joint_states"
+            % self._movej_service_timeout_sec
+        )
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
         self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
@@ -427,8 +465,14 @@ class ScanExecutorNode(Node):
         req.sync_type = 0
         future = self._cli_movej.call_async(req)
         t0 = time.time()
-        while not future.done() and (time.time() - t0) < 60.0:
+        while not future.done() and (time.time() - t0) < self._movej_service_timeout_sec:
             time.sleep(0.05)
+        if not future.done():
+            self.get_logger().warn(
+                "MoveJoint service response not returned within %.1fs; treating command as dispatched and verifying arrival from /joint_states"
+                % self._movej_service_timeout_sec
+            )
+            return True
         ok = future.done() and future.result() and future.result().success
         self.get_logger().info(
             "MoveJoint response: success=%s  target=[%s]  vel=%.1f  acc=%.1f"
@@ -506,11 +550,17 @@ class ScanExecutorNode(Node):
                 % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
             )
 
-            if not self._movej(endpoint_deg, vel=_SCAN_MOVEJ_VEL_DEG_S, acc=_SCAN_MOVEJ_ACC_DEG_S2):
+            if not self._movej(
+                endpoint_deg, vel=self._scan_movej_vel, acc=self._scan_movej_acc
+            ):
                 self._pub_status("EXEC_FAIL %s MoveJoint failed — aborting scan sequence" % cell_id)
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 self._pub_status("RETURNING_TO_OVERVIEW after failure")
-                self._movej(self._overview_joints_deg, vel=40.0, acc=40.0)
+                self._movej(
+                    self._overview_joints_deg,
+                    vel=self._overview_return_vel,
+                    acc=self._overview_return_acc,
+                )
                 return
 
             arrival_timeout = 90.0
@@ -521,7 +571,11 @@ class ScanExecutorNode(Node):
                     % (cell_id, arrival_timeout)
                 )
                 self._pub_state(cell_id, "PLANNING_FAIL")
-                self._movej(self._overview_joints_deg, vel=40.0, acc=40.0)
+                self._movej(
+                    self._overview_joints_deg,
+                    vel=self._overview_return_vel,
+                    acc=self._overview_return_acc,
+                )
                 return
 
             # Reset per-cell detection counter just before dwell so only
@@ -553,7 +607,11 @@ class ScanExecutorNode(Node):
             # from the validated overview state (prevents J6 wind-up).
             if cell_id != scan_order[-1]:
                 self._pub_status("INTER_CELL_OVERVIEW_RESET")
-                if not self._movej(self._overview_joints_deg, vel=60.0, acc=60.0):
+                if not self._movej(
+                    self._overview_joints_deg,
+                    vel=self._overview_return_vel,
+                    acc=self._overview_return_acc,
+                ):
                     self._pub_status("ABORT inter-cell overview return failed")
                     return
                 if not self._wait_at_overview(timeout_sec=15.0):
@@ -562,7 +620,11 @@ class ScanExecutorNode(Node):
 
         # Return to overview at the end of the full scan sequence.
         self._pub_status("RETURNING_TO_OVERVIEW")
-        if not self._movej(self._overview_joints_deg, vel=20.0, acc=20.0):
+        if not self._movej(
+            self._overview_joints_deg,
+            vel=self._overview_return_vel,
+            acc=self._overview_return_acc,
+        ):
             self._pub_status("ABORT overview return failed after scan sequence")
             return
         if not self._wait_at_overview():
