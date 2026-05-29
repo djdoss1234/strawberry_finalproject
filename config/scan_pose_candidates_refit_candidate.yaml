@@ -1,6 +1,6 @@
 scan_pose_candidates:
   version: v10_workspace_reset_manual_teach_all_cells
-  status: workspace_reset_all_scan_poses_manually_taught_pending_execution_validation
+  status: workspace_reset_all_scan_poses_single_cell_validated_camera_view_ok_motion_quality_pending
   capture_date: '2026-05-29'
   curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
@@ -21,9 +21,11 @@ scan_pose_candidates:
   use_for_automated_motion: false
   collision_world_validated_for_motion: false
   validation_scope: Workspace was physically reset on 2026-05-28. All four scan
-    poses were manually taught with Doosan DART on 2026-05-28/29. Automated motion
-    remains locked until low-speed single-cell execution validates joint arrival
-    and camera view for each pose.
+    poses were manually taught with Doosan DART on 2026-05-28/29 and individually
+    validated from the ROS manual single-cell executor on 2026-05-29. Camera view
+    is confirmed good for all four cells. Automated traversal remains locked
+    because root/se and root/sw still have excessive joint motion and should be
+    optimized before full traversal.
   targets:
   - cell_id: root/nw
     approach: manual_teach_dart
@@ -32,8 +34,8 @@ scan_pose_candidates:
     note: 2026-05-28 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/nw with the cell centered enough for scan validation.
       DART task pose x=-245.34mm y=373.90mm z=741.39mm rx=86.46 ry=66.60 rz=-88.80.
-      Global automated motion remains disabled until all four cells are retaught
-      and verified from the new overview pose.
+      Single-cell ROS validation completed on 2026-05-29; camera angle is good.
+      Global automated traversal remains disabled until motion quality is reviewed.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -85,8 +87,8 @@ scan_pose_candidates:
     note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/ne with the cell centered enough for scan validation.
       DART task pose x=285.75mm y=347.14mm z=730.58mm rx=85.94 ry=65.09 rz=-88.59.
-      Global automated motion remains disabled until low-speed single-cell
-      execution validates arrival and camera view.
+      Single-cell ROS validation completed on 2026-05-29; camera angle is good.
+      Global automated traversal remains disabled until motion quality is reviewed.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -141,6 +143,9 @@ scan_pose_candidates:
       DART task pose x=-248.59mm y=366.73mm z=348.70mm rx=86.47 ry=64.81 rz=-88.15.
       This pose validates the workspace reset hypothesis: SW became teachable
       after aligning the paper center closer to the base_link centerline.
+      Single-cell ROS validation completed on 2026-05-29; camera angle is good,
+      but joint motion is still excessive and should be optimized before full
+      traversal.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
@@ -192,8 +197,9 @@ scan_pose_candidates:
     note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/se with the cell centered enough for scan validation.
       DART task pose x=284.91mm y=346.35mm z=342.92mm rx=86.37 ry=64.04 rz=-89.22.
-      Global automated motion remains disabled until low-speed single-cell
-      execution validates arrival and camera view.
+      Single-cell ROS validation completed on 2026-05-29; camera angle is good,
+      but joint motion is still excessive and should be optimized before full
+      traversal.
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733

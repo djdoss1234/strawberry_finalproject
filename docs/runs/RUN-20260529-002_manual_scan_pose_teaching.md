@@ -7,9 +7,9 @@ robot `base_link` centerline, all four scan poses are being retaught manually
 with Doosan DART. This run records the remaining `root/ne`, `root/se`, and
 `root/sw` poses.
 
-Automated execution is still locked. These poses are configuration candidates
-until low-speed single-cell execution validates actual joint arrival and camera
-view.
+Automated traversal is still locked. These poses have now passed manual
+single-cell execution validation for camera view, but `root/se` and `root/sw`
+still need motion-quality improvement because their joint motion is excessive.
 
 ## Start Reference
 
@@ -72,13 +72,21 @@ Evidence:
 - Updated TCP translation entries to the DART task pose positions in meters.
 - Kept global `use_for_automated_motion=false`.
 
-## Remaining Validation
+## Single-Cell Validation Result
+
+2026-05-29 ROS manual validation completed for all four cells:
+
+- `root/nw`: camera angle OK
+- `root/ne`: camera angle OK
+- `root/se`: camera angle OK, but joint motion is excessive
+- `root/sw`: camera angle OK, but joint motion is excessive
+
+## Remaining Work
 
 Before enabling automated traversal:
 
-1. Run each cell as a low-speed single-cell execution.
-2. Confirm actual joint arrival from `/dsr01/joint_states`.
-3. Confirm camera view at the scan pose.
-4. Return to overview after each cell.
-5. Only then consider enabling automated traversal.
-
+1. Find smoother alternative joint branches for `root/se` and `root/sw`, while
+   preserving the confirmed camera view.
+2. Re-run single-cell validation for any revised `root/se` / `root/sw` pose.
+3. Only after motion quality is acceptable, consider enabling automated
+   traversal.
