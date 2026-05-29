@@ -1,0 +1,17 @@
+se_sw_branch_search:
+  run_date: '2026-05-29'
+  description: Find J1-aligned IK branch for SE/SW to reduce joint swing
+  overview_joints_deg:
+  - 87.98
+  - -94.92
+  - 129.89
+  - 175.94
+  - -31.34
+  - 93.42
+  results:
+    root/se:
+      found: false
+      candidates: []
+    root/sw:
+      found: false
+      candidates: []
