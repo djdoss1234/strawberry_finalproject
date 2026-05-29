@@ -76,11 +76,11 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-_DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 40.0
-_DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 60.0
-_DEFAULT_OVERVIEW_RETURN_VEL_DEG_S = 40.0
-_DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2 = 60.0
-_DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC = 5.0
+_DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 80.0
+_DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 100.0
+_DEFAULT_OVERVIEW_RETURN_VEL_DEG_S = 80.0
+_DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2 = 100.0
+_DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC = 30.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
 # in the candidates YAML, which the operator sets after physical E-stop verification.
@@ -614,7 +614,7 @@ class ScanExecutorNode(Node):
                 ):
                     self._pub_status("ABORT inter-cell overview return failed")
                     return
-                if not self._wait_at_overview(timeout_sec=15.0):
+                if not self._wait_at_overview(timeout_sec=45.0):
                     self._pub_status("ABORT overview not confirmed between cells")
                     return
 
