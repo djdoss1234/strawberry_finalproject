@@ -1,6 +1,6 @@
 scan_pose_candidates:
   version: v11_se_sw_ik_branch_optimized
-  status: se_sw_ik_branch_updated_physical_verification_required_nw_ne_validated
+  status: all_four_cells_physically_validated_automated_traversal_enabled
   capture_date: '2026-05-29'
   curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
@@ -18,8 +18,8 @@ scan_pose_candidates:
     center ray passes through the cell center (eliminates the 60-173mm upward offset
     that v7 had due to panel_normal vs cam_dir mismatch). cam_dir = R_tcp[:,2] = [0.064,
     0.922, 0.381] (22.4 deg upward tilt).'
-  use_for_automated_motion: false
-  collision_world_validated_for_motion: false
+  use_for_automated_motion: true
+  collision_world_validated_for_motion: true
   validation_scope: Workspace was physically reset on 2026-05-28. All four scan
     poses were manually taught with Doosan DART on 2026-05-28/29 and individually
     validated from the ROS manual single-cell executor on 2026-05-29. Camera view
@@ -79,7 +79,7 @@ scan_pose_candidates:
       J6:
       - 87.75
       - 93.42
-    use_for_automated_motion: false
+    use_for_automated_motion: true
   - cell_id: root/ne
     approach: manual_teach_dart
     standoff_m: taught
@@ -132,11 +132,11 @@ scan_pose_candidates:
       J6:
       - 93.42
       - 95.2
-    use_for_automated_motion: false
+    use_for_automated_motion: true
   - cell_id: root/sw
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: IK_VALID_PHYSICAL_VERIFICATION_REQUIRED
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
     note: >-
       2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/sw with the cell centered enough for scan validation.
@@ -191,11 +191,11 @@ scan_pose_candidates:
       J6:
       - 58.5
       - 93.42
-    use_for_automated_motion: false
+    use_for_automated_motion: true
   - cell_id: root/se
     approach: manual_teach_dart
     standoff_m: taught
-    curobo_status: IK_VALID_PHYSICAL_VERIFICATION_REQUIRED
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
     note: >-
       2026-05-29 manually adjusted with Doosan DART after workspace reset.
       Camera view fills root/se with the cell centered enough for scan validation.
@@ -249,5 +249,5 @@ scan_pose_candidates:
       J6:
       - 93.42
       - 120.8
-    use_for_automated_motion: false
+    use_for_automated_motion: true
   workspace_reset_registration_evidence: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml
