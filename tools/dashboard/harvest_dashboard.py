@@ -1674,13 +1674,14 @@ connectWS();
 const TELEOP_API = `http://${window.location.hostname}:8767`;
 
 async function teleopMove(cmd) {
-  // 회전 명령어이면 rot-speed 값을 속도로 전달
+  // Local djdoss1234 setup: ros2_bridge.py consumes /api/teleop state and
+  // sends /dsr01/motion/jog. Do not require the teammate teleop API on :8767.
   let body = {command:cmd};
   if(['rx_plus','rx_minus','ry_plus','ry_minus','rz_plus','rz_minus'].includes(cmd)) {
     const rotSpeed = parseFloat(document.getElementById('rot-speed')?.value || 5);
     body.angle_scale = rotSpeed / 5;  // 기본값(5°)대비 배율
   }
-  await fetch(TELEOP_API+'/move', {
+  await fetch('/api/teleop', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)
   }).catch(()=>{});
@@ -1810,7 +1811,6 @@ sendTeleop = async function(cmd) {
     ts.style.color=cmd==='stop'?'var(--t3)':'var(--blue)';}
   await fetch('/api/teleop', {method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({command:cmd, speed:sp})}).catch(()=>{});
-  if(cmd!=='stop') await teleopMove(cmd);
 };
 
 /* 듀얼 카메라 */

@@ -50,6 +50,8 @@ CAM1_TOPIC=/camera2/camera2/color/image_raw
 MJPEG_PORT=8766
 USB_FALLBACK=false
 DASHBOARD_SYNC_TELEOP_API=false
+DASHBOARD_ENABLE_JOG=true
+DASHBOARD_JOG_MAX_PERCENT=20.0
 HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 ```
 
@@ -59,6 +61,10 @@ HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 `DASHBOARD_SYNC_TELEOP_API=false`도 현재 환경에서는 중요합니다. 팀원 dashboard는 기본적으로
 별도 teleop API `http://localhost:8767/status`를 조회하도록 만들어져 있었지만,
 이 프로젝트에서는 `ros2_bridge.py`가 ROS2 토픽을 직접 읽어 state file을 갱신합니다.
+
+방향 버튼은 `ros2_bridge.py`가 `/dsr01/motion/jog`로 전달합니다. 버튼을 누르는 동안만
+jog 명령이 유지되고 입력이 끊기면 watchdog이 stop을 보냅니다. 속도는 UI 값과 별개로
+`DASHBOARD_JOG_MAX_PERCENT`에서 한 번 더 제한합니다.
 
 ## FastAPI 의존성
 

@@ -26,9 +26,10 @@ from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Empty, Float32, Float32MultiArray, String
 
 try:
-    from dsr_msgs2.srv import GetCurrentPose
+    from dsr_msgs2.srv import GetCurrentPose, Jog
     _DSR_AVAILABLE = True
 except ImportError:
+    Jog = None
     _DSR_AVAILABLE = False
     print("[Bridge] dsr_msgs2 없음 — TCP pose 폴링 비활성화")
 
@@ -50,6 +51,26 @@ YOLO_MODEL   = os.environ.get("YOLO_MODEL", "")
 YOLO_CONF    = float(os.environ.get("YOLO_CONF", "0.3"))
 UPDATE_HZ    = 10.0
 TCP_POLL_HZ  = 5.0
+DASHBOARD_ENABLE_JOG = os.environ.get("DASHBOARD_ENABLE_JOG", "true").lower() == "true"
+JOG_MAX_PERCENT = float(os.environ.get("DASHBOARD_JOG_MAX_PERCENT", "20.0"))
+JOG_WATCHDOG_S = float(os.environ.get("DASHBOARD_JOG_WATCHDOG_S", "0.35"))
+
+_TELEOP_TO_JOG = {
+    "forward": (6, 1.0),
+    "backward": (6, -1.0),
+    "left": (7, 1.0),
+    "right": (7, -1.0),
+    "up": (8, 1.0),
+    "down": (8, -1.0),
+    "rotate_ccw": (11, 1.0),
+    "rotate_cw": (11, -1.0),
+    "rx_plus": (9, 1.0),
+    "rx_minus": (9, -1.0),
+    "ry_plus": (10, 1.0),
+    "ry_minus": (10, -1.0),
+    "rz_plus": (11, 1.0),
+    "rz_minus": (11, -1.0),
+}
 
 # ROS2 토픽에 프레임이 없을 때 USB 폴백까지 기다리는 시간(초)
 _ROS2_WAIT_S = 8.0
@@ -211,6 +232,9 @@ class ROS2Bridge(Node):
         self._grip_ratio  = None   # teleop-api가 publish하는 그리퍼 위치 ratio(0~1)
         self._last_scan_status = ""
         self._pick_started = False
+        self._last_teleop_sent_at = ""
+        self._last_jog_time = 0.0
+        self._jog_active = False
 
         self.create_subscription(JointState, "/dsr01/joint_states",
                                  self._joint_cb, 10)
@@ -232,7 +256,17 @@ class ROS2Bridge(Node):
             self._pose_cli = self.create_client(
                 GetCurrentPose, "/dsr01/system/get_current_pose"
             )
+            self._jog_cli = self.create_client(Jog, "/dsr01/motion/jog")
             self.create_timer(1.0 / TCP_POLL_HZ, self._poll_tcp)
+            if DASHBOARD_ENABLE_JOG:
+                self.create_timer(0.05, self._poll_teleop_command)
+                self.create_timer(0.10, self._jog_watchdog)
+                self.get_logger().warn(
+                    "Dashboard jog enabled: /dsr01/motion/jog, BASE frame, max %.1f%%"
+                    % JOG_MAX_PERCENT
+                )
+        else:
+            self._jog_cli = None
 
         if _CV2_AVAILABLE:
             # 카메라 토픽은 BEST_EFFORT QoS (RealSense 기본값)
@@ -291,6 +325,52 @@ class ROS2Bridge(Node):
         """그리퍼 위치 ratio(0=열림 ~ 1=닫힘)."""
         with self._lock:
             self._grip_ratio = float(msg.data)
+
+    def _send_jog(self, axis: int, speed_percent: float) -> None:
+        if not self._jog_cli or not self._jog_cli.service_is_ready():
+            return
+        req = Jog.Request()
+        req.jog_axis = int(axis)
+        req.move_reference = 0
+        req.speed = float(speed_percent)
+        self._jog_cli.call_async(req)
+
+    def _stop_jog(self) -> None:
+        for axis in range(6, 12):
+            self._send_jog(axis, 0.0)
+        self._jog_active = False
+
+    def _poll_teleop_command(self) -> None:
+        try:
+            if not STATE_FILE.exists():
+                return
+            s = json.loads(STATE_FILE.read_text())
+            cmd = s.get("pending_teleop_command") or {}
+            sent_at = cmd.get("sent_at", "")
+            if not sent_at or sent_at == self._last_teleop_sent_at:
+                return
+            self._last_teleop_sent_at = sent_at
+
+            command = str(cmd.get("command", "stop"))
+            if command == "stop":
+                self._stop_jog()
+                return
+
+            axis_sign = _TELEOP_TO_JOG.get(command)
+            if not axis_sign:
+                return
+            axis, sign = axis_sign
+            requested = abs(float(cmd.get("speed", 0.2))) * 100.0
+            speed_percent = max(0.0, min(requested, JOG_MAX_PERCENT)) * sign
+            self._send_jog(axis, speed_percent)
+            self._last_jog_time = time.time()
+            self._jog_active = True
+        except Exception as e:
+            self.get_logger().warn(f"teleop jog 처리 실패: {e}")
+
+    def _jog_watchdog(self) -> None:
+        if self._jog_active and time.time() - self._last_jog_time > JOG_WATCHDOG_S:
+            self._stop_jog()
 
     def _push_message(self, state: dict, text: str, level: str = "info") -> None:
         msgs = state.setdefault("messages", [])
