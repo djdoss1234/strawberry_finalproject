@@ -2077,7 +2077,9 @@ def make_app(demo=False, camera_id=0, camera_id_1=-1, no_camera=False,
                 await asyncio.sleep(0.4)
         except Exception: pass
 
-    # 로봇 상태 주기적 업데이트
+    # 로봇 상태 주기적 업데이트.
+    # Local djdoss1234 setup uses ros2_bridge.py -> harvest_state.json directly,
+    # so the separate teammate teleop API on :8767 is optional.
     def _sync_robot_status_worker():
         import urllib.request
         while True:
@@ -2099,7 +2101,9 @@ def make_app(demo=False, camera_id=0, camera_id_1=-1, no_camera=False,
             except Exception as e:
                 print(f'[WARN] 로봇 상태 동기화 실패: {e}')
 
-    threading.Thread(target=_sync_robot_status_worker, daemon=True).start()
+    sync_teleop_api = os.environ.get("DASHBOARD_SYNC_TELEOP_API", "false").lower() == "true"
+    if sync_teleop_api:
+        threading.Thread(target=_sync_robot_status_worker, daemon=True).start()
 
     if not no_camera:
         threading.Thread(target=_camera_worker,

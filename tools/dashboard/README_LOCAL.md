@@ -49,11 +49,16 @@ CAM0_TOPIC=/camera/camera/color/image_raw
 CAM1_TOPIC=/camera2/camera2/color/image_raw
 MJPEG_PORT=8766
 USB_FALLBACK=false
+DASHBOARD_SYNC_TELEOP_API=false
 HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 ```
 
 `USB_FALLBACK=false`가 중요합니다. RealSense를 dashboard가 직접 열면 기존 YOLO/RealSense
 노드와 충돌해서 `Device or resource busy`가 날 수 있습니다.
+
+`DASHBOARD_SYNC_TELEOP_API=false`도 현재 환경에서는 중요합니다. 팀원 dashboard는 기본적으로
+별도 teleop API `http://localhost:8767/status`를 조회하도록 만들어져 있었지만,
+이 프로젝트에서는 `ros2_bridge.py`가 ROS2 토픽을 직접 읽어 state file을 갱신합니다.
 
 ## FastAPI 의존성
 

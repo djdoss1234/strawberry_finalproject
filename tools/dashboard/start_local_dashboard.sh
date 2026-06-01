@@ -18,6 +18,7 @@ export CAM1_TOPIC="${CAM1_TOPIC:-/camera2/camera2/color/image_raw}"
 export MJPEG_PORT="${MJPEG_PORT:-8766}"
 export USB_FALLBACK="${USB_FALLBACK:-false}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+export DASHBOARD_SYNC_TELEOP_API="${DASHBOARD_SYNC_TELEOP_API:-false}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 
@@ -52,6 +53,7 @@ echo "[dashboard] state:   $STATE_FILE"
 echo "[dashboard] cam0:    $CAM0_TOPIC"
 echo "[dashboard] cam1:    $CAM1_TOPIC"
 echo "[dashboard] usb fallback: $USB_FALLBACK"
+echo "[dashboard] teleop-api sync: $DASHBOARD_SYNC_TELEOP_API"
 
 python3 "$SCRIPT_DIR/ros2_bridge.py" &
 BRIDGE_PID=$!
@@ -74,12 +76,16 @@ else
   docker build -t strawberry-harvest-dashboard "$SCRIPT_DIR"
   DASHBOARD_DOCKER_STARTED=true
   docker rm -f strawberry-harvest-dashboard >/dev/null 2>&1 || true
+  echo "[dashboard] starting Docker dashboard on: http://localhost:8765"
+  echo "[dashboard] this command stays in the foreground; press Ctrl+C to stop."
+  echo "[dashboard] if the browser does not open, check: docker logs strawberry-harvest-dashboard"
   docker run --rm \
     --name strawberry-harvest-dashboard \
     --network host \
     -e HARVEST_STATE_FILE=/data/harvest_state.json \
     -e CAMERA_URL_0="http://localhost:${MJPEG_PORT}/cam0" \
     -e CAMERA_URL_1="http://localhost:${MJPEG_PORT}/cam1" \
+    -e DASHBOARD_SYNC_TELEOP_API="$DASHBOARD_SYNC_TELEOP_API" \
     -v "$SCRIPT_DIR/data:/data" \
     strawberry-harvest-dashboard
 fi
