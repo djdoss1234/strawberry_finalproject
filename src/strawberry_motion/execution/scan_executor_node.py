@@ -40,7 +40,7 @@ from rclpy.node import Node
 import rclpy.callback_groups
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray, String
+from std_msgs.msg import Empty, Float64MultiArray, String
 from std_srvs.srv import Trigger
 
 from ament_index_python.packages import get_package_share_directory
@@ -121,7 +121,9 @@ class ScanExecutorNode(Node):
         self._started = False
         self._mg: Optional[MotionGen] = None
         self._detection_count: int = 0
+        self._detection_poses: List[PoseStamped] = []
         self._detection_lock = threading.Lock()
+        self._pick_complete_event = threading.Event()
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self.declare_parameter("manual_validation_mode", False)
@@ -136,6 +138,7 @@ class ScanExecutorNode(Node):
         self.declare_parameter(
             "movej_service_timeout_sec", _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC
         )
+        self.declare_parameter("enable_pick_integration", True)
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
         self._target_cell = str(self.get_parameter("target_cell").value)
         self._manual_validation_mode = bool(
@@ -151,6 +154,9 @@ class ScanExecutorNode(Node):
         )
         self._movej_service_timeout_sec = float(
             self.get_parameter("movej_service_timeout_sec").value
+        )
+        self._enable_pick_integration = bool(
+            self.get_parameter("enable_pick_integration").value
         )
 
         pkg = get_package_share_directory("strawberry_motion")
@@ -205,8 +211,16 @@ class ScanExecutorNode(Node):
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
         self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
+        # YOLO detection input — publishers use /strawberry/detection/pick_pose
+        # scan_executor gates delivery to curobo_planner one pose at a time
         self.create_subscription(
-            PoseStamped, "/dsr01/curobo/pick_pose", self._pick_cb, 10
+            PoseStamped, "/strawberry/detection/pick_pose", self._pick_cb, 10
+        )
+        self.create_subscription(
+            Empty, "/dsr01/curobo/pick_complete", self._pick_complete_cb, 10
+        )
+        self._pick_trigger_pub = self.create_publisher(
+            PoseStamped, "/dsr01/curobo/pick_pose", 10
         )
         self._state_pub = self.create_publisher(
             String, "/strawberry/exploration/set_cell_state", 10
@@ -275,9 +289,13 @@ class ScanExecutorNode(Node):
         if None not in joints:
             self._current_joints = joints
 
-    def _pick_cb(self, _msg: PoseStamped) -> None:
+    def _pick_cb(self, msg: PoseStamped) -> None:
         with self._detection_lock:
             self._detection_count += 1
+            self._detection_poses.append(msg)
+
+    def _pick_complete_cb(self, _msg: Empty) -> None:
+        self._pick_complete_event.set()
 
     def _start_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         del request
@@ -487,6 +505,59 @@ class ScanExecutorNode(Node):
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
 
+    @staticmethod
+    def _deduplicate_poses(
+        poses: List[PoseStamped], min_dist_m: float = 0.030
+    ) -> List[PoseStamped]:
+        """Remove poses within min_dist_m of an already-kept pose (keep first occurrence)."""
+        kept: List[PoseStamped] = []
+        for p in poses:
+            pos = np.array([p.pose.position.x, p.pose.position.y, p.pose.position.z])
+            if all(
+                np.linalg.norm(
+                    pos - np.array([k.pose.position.x, k.pose.position.y, k.pose.position.z])
+                ) > min_dist_m
+                for k in kept
+            ):
+                kept.append(p)
+        return kept
+
+    def _trigger_picks_for_cell(
+        self, cell_id: str, poses: List[PoseStamped], pick_timeout_sec: float = 120.0
+    ) -> int:
+        """Publish each pose to curobo_planner one at a time; return success count."""
+        unique = self._deduplicate_poses(poses)
+        self._pub_status(
+            "PICK_SEQUENCE_START %s — %d unique targets (raw=%d)"
+            % (cell_id, len(unique), len(poses))
+        )
+        success = 0
+        for i, pose in enumerate(unique):
+            self._pick_complete_event.clear()
+            self._pub_status(
+                "PICK_TRIGGER %s %d/%d pos=(%.0f,%.0f,%.0f)mm"
+                % (
+                    cell_id, i + 1, len(unique),
+                    pose.pose.position.x * 1000,
+                    pose.pose.position.y * 1000,
+                    pose.pose.position.z * 1000,
+                )
+            )
+            self._pick_trigger_pub.publish(pose)
+            completed = self._pick_complete_event.wait(timeout=pick_timeout_sec)
+            if completed:
+                success += 1
+                self._pub_status("PICK_COMPLETE %s %d/%d" % (cell_id, i + 1, len(unique)))
+            else:
+                self._pub_status(
+                    "PICK_TIMEOUT %s %d/%d — %.0fs elapsed; continuing"
+                    % (cell_id, i + 1, len(unique), pick_timeout_sec)
+                )
+        self._pub_status(
+            "PICK_SEQUENCE_DONE %s — %d/%d completed" % (cell_id, success, len(unique))
+        )
+        return success
+
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and joints_within_tolerance_deg(
             self._current_joints, self._overview_joints_deg, _OVERVIEW_TOLERANCE_DEG
@@ -578,10 +649,10 @@ class ScanExecutorNode(Node):
                 )
                 return
 
-            # Reset per-cell detection counter just before dwell so only
-            # picks arriving while at this scan pose are counted.
+            # Reset per-cell detection counter and pose buffer just before dwell.
             with self._detection_lock:
                 self._detection_count = 0
+                self._detection_poses = []
             joints_now = self._current_joints or []
             joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
             self._pub_status(
@@ -592,6 +663,7 @@ class ScanExecutorNode(Node):
 
             with self._detection_lock:
                 count = self._detection_count
+                poses_snapshot = list(self._detection_poses)
             cell_detections[cell_id] = count
 
             if count > 0:
@@ -599,24 +671,18 @@ class ScanExecutorNode(Node):
                 self._pub_status(
                     "TARGET_FOUND %s %d pick candidate(s) detected" % (cell_id, count)
                 )
+                if self._enable_pick_integration:
+                    self._trigger_picks_for_cell(cell_id, poses_snapshot)
             else:
                 self._pub_state(cell_id, "SCANNED_EMPTY")
                 self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
 
-            # Return to overview between cells so every next-cell plan starts
-            # from the validated overview state (prevents J6 wind-up).
+            # After picks (or empty cell) go directly to next scan pose from current
+            # position (curobo_planner left robot at HOME after last pick).
+            # Overview reset is done only at sequence end to prevent J6 wind-up over
+            # the full traversal.
             if cell_id != scan_order[-1]:
-                self._pub_status("INTER_CELL_OVERVIEW_RESET")
-                if not self._movej(
-                    self._overview_joints_deg,
-                    vel=self._overview_return_vel,
-                    acc=self._overview_return_acc,
-                ):
-                    self._pub_status("ABORT inter-cell overview return failed")
-                    return
-                if not self._wait_at_overview(timeout_sec=45.0):
-                    self._pub_status("ABORT overview not confirmed between cells")
-                    return
+                self._pub_status("INTER_CELL_DIRECT — no overview reset; continuing to next cell")
 
         # Return to overview at the end of the full scan sequence.
         self._pub_status("RETURNING_TO_OVERVIEW")
