@@ -23,7 +23,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from sensor_msgs.msg import Image, JointState
-from std_msgs.msg import Empty, Float32, Float32MultiArray, String
+from std_msgs.msg import Empty, Float32, Float32MultiArray, Int32, String
+from std_srvs.srv import Trigger
 
 try:
     from dsr_msgs2.srv import GetCurrentPose, Jog, MoveJoint
@@ -54,6 +55,7 @@ UPDATE_HZ    = 10.0
 TCP_POLL_HZ  = 5.0
 DASHBOARD_ENABLE_JOG = os.environ.get("DASHBOARD_ENABLE_JOG", "true").lower() == "true"
 DASHBOARD_ENABLE_MOVEJ = os.environ.get("DASHBOARD_ENABLE_MOVEJ", "true").lower() == "true"
+DASHBOARD_ENABLE_GRIPPER = os.environ.get("DASHBOARD_ENABLE_GRIPPER", "true").lower() == "true"
 JOG_MAX_PERCENT = float(os.environ.get("DASHBOARD_JOG_MAX_PERCENT", "20.0"))
 MOVEJ_MAX_VEL = float(os.environ.get("DASHBOARD_MOVEJ_MAX_VEL", "30.0"))
 MOVEJ_MAX_ACC = float(os.environ.get("DASHBOARD_MOVEJ_MAX_ACC", "40.0"))
@@ -238,6 +240,7 @@ class ROS2Bridge(Node):
         self._pick_started = False
         self._last_teleop_sent_at = ""
         self._last_joint_sent_at = ""
+        self._last_gripper_sent_at = ""
         self._last_jog_time = 0.0
         self._jog_active = False
 
@@ -255,6 +258,13 @@ class ROS2Bridge(Node):
         # 그리퍼 위치 토픽 (ratio 0=열림 ~ 1=닫힘)
         self.create_subscription(Float32, "/gripper/position",
                                  self._gripper_cb, 10)
+        self.create_subscription(Int32, "/dsr01/gripper/stroke",
+                                 self._gripper_stroke_cb, 10)
+        self._gripper_pos_pub = self.create_publisher(
+            Int32, "/dsr01/gripper/position_cmd", 10
+        )
+        self._gripper_open_cli = self.create_client(Trigger, "/dsr01/gripper/open")
+        self._gripper_close_cli = self.create_client(Trigger, "/dsr01/gripper/close")
 
         # dsr_msgs2가 있으면 서비스 폴링도 병행 (정확한 TCP). 없으면 토픽만 사용.
         if _DSR_AVAILABLE:
@@ -276,6 +286,11 @@ class ROS2Bridge(Node):
                 self.get_logger().warn(
                     "Dashboard MoveJoint enabled: max vel %.1f acc %.1f"
                     % (MOVEJ_MAX_VEL, MOVEJ_MAX_ACC)
+                )
+            if DASHBOARD_ENABLE_GRIPPER:
+                self.create_timer(0.10, self._poll_gripper_command)
+                self.get_logger().warn(
+                    "Dashboard gripper enabled: /dsr01/gripper/position_cmd"
                 )
         else:
             self._jog_cli = None
@@ -338,6 +353,12 @@ class ROS2Bridge(Node):
         """그리퍼 위치 ratio(0=열림 ~ 1=닫힘)."""
         with self._lock:
             self._grip_ratio = float(msg.data)
+
+    def _gripper_stroke_cb(self, msg: Int32):
+        """실제 gripper service node stroke 값. 0=open, 740=closed 근사."""
+        raw = max(0, min(740, int(msg.data)))
+        with self._lock:
+            self._grip_ratio = raw / 740.0
 
     def _send_jog(self, axis: int, speed_percent: float) -> None:
         if not self._jog_cli or not self._jog_cli.service_is_ready():
@@ -421,6 +442,39 @@ class ROS2Bridge(Node):
             )
         except Exception as e:
             self.get_logger().warn(f"joint command 처리 실패: {e}")
+
+    def _poll_gripper_command(self) -> None:
+        try:
+            if not STATE_FILE.exists():
+                return
+            s = json.loads(STATE_FILE.read_text())
+            grip = s.get("gripper") or {}
+            sent_at = grip.get("sent_at", "")
+            if not sent_at or sent_at == self._last_gripper_sent_at:
+                return
+            self._last_gripper_sent_at = sent_at
+
+            if "raw_pos" in grip:
+                raw = int(grip.get("raw_pos", 0))
+            else:
+                position = max(0.0, min(100.0, float(grip.get("position", 100))))
+                raw = round((100.0 - position) / 100.0 * 740.0)
+            raw = max(0, min(740, raw))
+
+            msg = Int32()
+            msg.data = raw
+            self._gripper_pos_pub.publish(msg)
+            self.get_logger().warn(
+                "Dashboard gripper position_cmd dispatched: raw_pos=%d" % raw
+            )
+
+            # Fallback for deployments where only open/close services are active.
+            if raw <= 10 and self._gripper_open_cli.service_is_ready():
+                self._gripper_open_cli.call_async(Trigger.Request())
+            elif raw >= 730 and self._gripper_close_cli.service_is_ready():
+                self._gripper_close_cli.call_async(Trigger.Request())
+        except Exception as e:
+            self.get_logger().warn(f"gripper command 처리 실패: {e}")
 
     def _push_message(self, state: dict, text: str, level: str = "info") -> None:
         msgs = state.setdefault("messages", [])

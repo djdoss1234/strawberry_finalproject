@@ -1330,7 +1330,7 @@ async function sendTcpCmd(){
   const vel=parseFloat(document.getElementById('tvel').value)||10;
   const badge=document.getElementById('tg-badge');
   try{
-    const r=await fetch(TELEOP_API+'/move',{method:'POST',
+    const r=await fetch('/api/tcp-command',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'tcp',pose,velocity:vel})});
     if(r.ok){
       badge.textContent='TCP 전송';
@@ -1356,12 +1356,13 @@ async function sendTeleop(cmd){
 async function sendGripCmd(pos){
   const position=pos!==undefined?pos:parseFloat(document.getElementById('g-inp').value??100);
   const force=parseFloat(document.getElementById('g-force').value)||30;
+  const raw_pos=Math.round((100-Math.max(0,Math.min(100,position)))/100*740);
   let state='open';
   if(position<=5)state='closed';else if(position<95)state='grasping';
   const badge=document.getElementById('tg-badge');
   try{
-    const r=await fetch(TELEOP_API+'/gripper',{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({position,force,state})});
+    const r=await fetch('/api/gripper-command',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({position,raw_pos,force,state})});
     if(r.ok){
       badge.textContent='그리퍼 전송';
       badge.style.cssText='background:var(--cyan-bg);border-color:#a5f3fc;color:var(--cyan-tx)';
@@ -1669,8 +1670,7 @@ function connectWS(){
 }
 connectWS();
 
-/* ── 텔레오퍼레이션 API (포트 8767) ────────────────────────────────────────── */
-// 대시보드와 teleop-api 모두 host 네트워크를 사용하므로 localhost로 접근 가능
+/* ── 레거시 teleop API 주소: 로컬 모드에서는 직접 호출하지 않음 ───────────── */
 const TELEOP_API = `http://${window.location.hostname}:8767`;
 
 async function teleopMove(cmd) {
@@ -1688,17 +1688,21 @@ async function teleopMove(cmd) {
 }
 
 async function teleopGripper(pos) {
-  await fetch(TELEOP_API+'/gripper', {
+  const raw_pos=Math.max(0,Math.min(740,parseInt(pos)||0));
+  const position=Math.max(0,Math.min(100,100-(raw_pos/740*100)));
+  let state='open';
+  if(position<=5)state='closed';else if(position<95)state='grasping';
+  await fetch('/api/gripper-command', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({position:pos})
+    body:JSON.stringify({position, raw_pos, state})
   }).catch(()=>{});
 }
 
 async function moveHome() {
   const home = document.getElementById('rec-home')?.value || '';
-  await fetch(TELEOP_API+'/home', {
+  await fetch('/api/teleop', {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({home_pose:home})
+    body:JSON.stringify({command:'home', home_pose:home})
   }).catch(()=>{});
 }
 
@@ -1710,7 +1714,7 @@ async function startRecording() {
   const task = document.getElementById('rec-task')?.value.trim() || '';
   const cat  = document.getElementById('rec-cat')?.value.trim() || '';
   const raw  = document.getElementById('rec-rawdir')?.value.trim() || '';
-  const r    = await fetch(TELEOP_API+'/record/start', {
+  const r    = await fetch('/api/record/start', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body:JSON.stringify({episode:ep||undefined, task, category:cat, raw_dir:raw||undefined})
   }).catch(()=>null);
@@ -1726,13 +1730,13 @@ async function stopRecording() {
   const btn = document.getElementById('btn-rec-stop');
   btn.disabled = true;  // 중복 방지
 
-  await fetch(TELEOP_API+'/record/stop', {method:'POST'}).catch(()=>{
+  await fetch('/api/record/stop', {method:'POST'}).catch(()=>{
     btn.disabled = false;  // 실패 시 다시 활성화
   });
 }
 
 async function convertData() {
-  const r = await fetch(TELEOP_API+'/convert', {method:'POST'}).catch(()=>null);
+  const r = await fetch('/api/convert', {method:'POST'}).catch(()=>null);
   if(!r||!r.ok) {alert('변환 실패'); return;}
 
   // 진행률 바 표시
@@ -1741,7 +1745,7 @@ async function convertData() {
 
   // 진행률 폴링 (1초마다)
   const interval = setInterval(async ()=>{
-    const statusR = await fetch(TELEOP_API+'/status').catch(()=>null);
+    const statusR = await fetch('/api/state').catch(()=>null);
     if(!statusR||!statusR.ok) return;
     const d = await statusR.json();
 
@@ -1796,10 +1800,10 @@ function updateRecBadge(phase, robotReady, robotError) {
 }
 
 setInterval(async()=>{
-  const r = await fetch(TELEOP_API+'/status').catch(()=>null);
+  const r = await fetch('/api/state').catch(()=>null);
   if(!r||!r.ok){updateRecBadge('idle', false, 'API 서버 미응답');return;}
   const d = await r.json();
-  updateRecBadge(d.phase||'idle', d.robot_ready, d.robot_error);
+  updateRecBadge(d.phase||'idle', d.robot_ready !== false, d.robot_error || '');
 }, 1000);
 
 /* 기존 sendTeleop: D-pad 버튼 → 로봇 실제 이동도 호출 */
@@ -1956,6 +1960,10 @@ def make_app(demo=False, camera_id=0, camera_id_1=-1, no_camera=False,
     async def cam_info():
         return JSONResponse({"cams": _cam_infos, "fps": _cam_fps_v})
 
+    @app.get("/api/state")
+    async def api_state():
+        return JSONResponse(_load())
+
     @app.get("/camera")           # backward-compat alias for slot 0
     @app.get("/camera/0")
     async def cam_ep0():
@@ -1986,9 +1994,12 @@ def make_app(demo=False, camera_id=0, camera_id_1=-1, no_camera=False,
     @app.post("/api/gripper-command")
     async def grip_cmd(request: Request):
         b = await request.json()
+        position = max(0.0, min(100.0, float(b.get("position", 100))))
+        raw_pos = int(max(0, min(740, int(b.get("raw_pos", round((100.0 - position) / 100.0 * 740))))))
         s = _load()
-        s["gripper"] = {"position": max(0.0,min(100.0,float(b.get("position",100)))),
-          "state": b.get("state","open"), "force": float(b.get("force",30))}
+        s["gripper"] = {"position": position, "raw_pos": raw_pos,
+          "state": b.get("state","open"), "force": float(b.get("force",30)),
+          "sent_at": datetime.now().isoformat()}
         _save(s); return JSONResponse({"ok": True})
 
     @app.post("/api/set-target")
@@ -2013,6 +2024,34 @@ def make_app(demo=False, camera_id=0, camera_id_1=-1, no_camera=False,
             "sent_at": datetime.now().isoformat()
         }
         _save(s); return JSONResponse({"ok": True})
+
+    @app.post("/api/record/start")
+    async def record_start(request: Request):
+        b = await request.json()
+        s = _load()
+        episode = b.get("episode") or f"episode_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        s["phase"] = "recording"
+        s["recording_episode"] = episode
+        _push_msg(s, f"recording started: {episode}", "info")
+        _save(s)
+        return JSONResponse({"ok": True, "episode": episode})
+
+    @app.post("/api/record/stop")
+    async def record_stop():
+        s = _load()
+        s["phase"] = "idle"
+        _push_msg(s, "recording stopped", "info")
+        _save(s)
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/convert")
+    async def convert_data():
+        s = _load()
+        s["converting"] = False
+        s["convert_progress"] = 100
+        _push_msg(s, "convert skipped: local placeholder", "warning")
+        _save(s)
+        return JSONResponse({"ok": True})
 
     @app.get("/api/report")
     async def get_report():

@@ -52,6 +52,7 @@ USB_FALLBACK=false
 DASHBOARD_SYNC_TELEOP_API=false
 DASHBOARD_ENABLE_JOG=true
 DASHBOARD_ENABLE_MOVEJ=true
+DASHBOARD_ENABLE_GRIPPER=true
 DASHBOARD_JOG_MAX_PERCENT=20.0
 DASHBOARD_MOVEJ_MAX_VEL=30.0
 DASHBOARD_MOVEJ_MAX_ACC=40.0
@@ -71,6 +72,10 @@ jog 명령이 유지되고 입력이 끊기면 watchdog이 stop을 보냅니다.
 
 관절 입력창의 `이동` 버튼은 `/dsr01/motion/move_joint`로 전달됩니다. UI 속도값은
 `DASHBOARD_MOVEJ_MAX_VEL`, `DASHBOARD_MOVEJ_MAX_ACC`에서 한 번 더 제한됩니다.
+
+그리퍼 버튼은 `/dsr01/gripper/position_cmd`로 전달합니다. `raw_pos=0`은 open,
+`raw_pos=740`은 close에 가깝습니다. open/close service가 떠 있으면 양 끝 명령에서
+fallback으로 함께 호출합니다.
 
 ## FastAPI 의존성
 
