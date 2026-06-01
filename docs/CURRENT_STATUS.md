@@ -22,6 +22,7 @@
 
 > **스캔→픽 통합 시퀀스 구현 완료. YOLO .pt 파일 학습 재진행 중.**
 > 다음: YOLO `/strawberry/detection/pick_pose` 연결 + 줄기 파지 파라미터 티칭.
+> 팀원 dashboard는 `tools/dashboard/`에 로컬 실행 래퍼로 추가됨.
 
 ---
 
@@ -134,6 +135,8 @@ curobo_planner_node
 | `src/strawberry_motion/execution/scan_executor_node.py` | 스캔+픽 통합 실행기 |
 | `src/strawberry_motion/execution/scan_safety.py` | motion gate 조건 |
 | `scripts/harvest_session_logger.py` | KPI 로거 |
+| `tools/dashboard/start_local_dashboard.sh` | 로컬 모니터링 dashboard 실행 |
+| `tools/dashboard/ros2_bridge.py` | ROS2 상태/카메라 → dashboard state/MJPEG bridge |
 | `docs/harvest_logs/` | 세션별 수확 결과 YAML |
 | `docs/worklogs/2026-06-01.md` | 오늘 작업 상세 |
 
@@ -154,6 +157,10 @@ ros2 launch strawberry_motion workspace_scan.launch.py \
 
 # KPI 로거 (별도 터미널)
 python3 ~/doosan_ws/src/strawberry_finalproject/scripts/harvest_session_logger.py
+
+# 로컬 dashboard (별도 터미널)
+cd ~/doosan_ws/src/strawberry_finalproject
+bash tools/dashboard/start_local_dashboard.sh
 
 # 시작 트리거
 ros2 service call /strawberry/scan/start std_srvs/srv/Trigger {}
