@@ -51,7 +51,10 @@ MJPEG_PORT=8766
 USB_FALLBACK=false
 DASHBOARD_SYNC_TELEOP_API=false
 DASHBOARD_ENABLE_JOG=true
+DASHBOARD_ENABLE_MOVEJ=true
 DASHBOARD_JOG_MAX_PERCENT=20.0
+DASHBOARD_MOVEJ_MAX_VEL=30.0
+DASHBOARD_MOVEJ_MAX_ACC=40.0
 HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 ```
 
@@ -65,6 +68,9 @@ HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 방향 버튼은 `ros2_bridge.py`가 `/dsr01/motion/jog`로 전달합니다. 버튼을 누르는 동안만
 jog 명령이 유지되고 입력이 끊기면 watchdog이 stop을 보냅니다. 속도는 UI 값과 별개로
 `DASHBOARD_JOG_MAX_PERCENT`에서 한 번 더 제한합니다.
+
+관절 입력창의 `이동` 버튼은 `/dsr01/motion/move_joint`로 전달됩니다. UI 속도값은
+`DASHBOARD_MOVEJ_MAX_VEL`, `DASHBOARD_MOVEJ_MAX_ACC`에서 한 번 더 제한됩니다.
 
 ## FastAPI 의존성
 

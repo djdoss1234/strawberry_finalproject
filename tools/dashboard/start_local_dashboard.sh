@@ -20,7 +20,10 @@ export USB_FALLBACK="${USB_FALLBACK:-false}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export DASHBOARD_SYNC_TELEOP_API="${DASHBOARD_SYNC_TELEOP_API:-false}"
 export DASHBOARD_ENABLE_JOG="${DASHBOARD_ENABLE_JOG:-true}"
+export DASHBOARD_ENABLE_MOVEJ="${DASHBOARD_ENABLE_MOVEJ:-true}"
 export DASHBOARD_JOG_MAX_PERCENT="${DASHBOARD_JOG_MAX_PERCENT:-20.0}"
+export DASHBOARD_MOVEJ_MAX_VEL="${DASHBOARD_MOVEJ_MAX_VEL:-30.0}"
+export DASHBOARD_MOVEJ_MAX_ACC="${DASHBOARD_MOVEJ_MAX_ACC:-40.0}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 
@@ -57,6 +60,7 @@ echo "[dashboard] cam1:    $CAM1_TOPIC"
 echo "[dashboard] usb fallback: $USB_FALLBACK"
 echo "[dashboard] teleop-api sync: $DASHBOARD_SYNC_TELEOP_API"
 echo "[dashboard] jog enabled: $DASHBOARD_ENABLE_JOG max=${DASHBOARD_JOG_MAX_PERCENT}%"
+echo "[dashboard] movej enabled: $DASHBOARD_ENABLE_MOVEJ max_vel=${DASHBOARD_MOVEJ_MAX_VEL} max_acc=${DASHBOARD_MOVEJ_MAX_ACC}"
 
 python3 "$SCRIPT_DIR/ros2_bridge.py" &
 BRIDGE_PID=$!

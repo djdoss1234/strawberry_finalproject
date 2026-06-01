@@ -1306,7 +1306,7 @@ async function sendJointCmd(){
   const badge=document.getElementById('j-badge');
   const stat=document.getElementById('jstatus');
   try{
-    const r=await fetch(TELEOP_API+'/move',{method:'POST',
+    const r=await fetch('/api/joint-command',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({command:'joint',angles,velocity:vel})});
     if(r.ok){
       badge.textContent='전송됨';

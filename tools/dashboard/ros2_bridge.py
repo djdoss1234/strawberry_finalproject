@@ -26,10 +26,11 @@ from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Empty, Float32, Float32MultiArray, String
 
 try:
-    from dsr_msgs2.srv import GetCurrentPose, Jog
+    from dsr_msgs2.srv import GetCurrentPose, Jog, MoveJoint
     _DSR_AVAILABLE = True
 except ImportError:
     Jog = None
+    MoveJoint = None
     _DSR_AVAILABLE = False
     print("[Bridge] dsr_msgs2 없음 — TCP pose 폴링 비활성화")
 
@@ -52,7 +53,10 @@ YOLO_CONF    = float(os.environ.get("YOLO_CONF", "0.3"))
 UPDATE_HZ    = 10.0
 TCP_POLL_HZ  = 5.0
 DASHBOARD_ENABLE_JOG = os.environ.get("DASHBOARD_ENABLE_JOG", "true").lower() == "true"
+DASHBOARD_ENABLE_MOVEJ = os.environ.get("DASHBOARD_ENABLE_MOVEJ", "true").lower() == "true"
 JOG_MAX_PERCENT = float(os.environ.get("DASHBOARD_JOG_MAX_PERCENT", "20.0"))
+MOVEJ_MAX_VEL = float(os.environ.get("DASHBOARD_MOVEJ_MAX_VEL", "30.0"))
+MOVEJ_MAX_ACC = float(os.environ.get("DASHBOARD_MOVEJ_MAX_ACC", "40.0"))
 JOG_WATCHDOG_S = float(os.environ.get("DASHBOARD_JOG_WATCHDOG_S", "0.35"))
 
 _TELEOP_TO_JOG = {
@@ -233,6 +237,7 @@ class ROS2Bridge(Node):
         self._last_scan_status = ""
         self._pick_started = False
         self._last_teleop_sent_at = ""
+        self._last_joint_sent_at = ""
         self._last_jog_time = 0.0
         self._jog_active = False
 
@@ -257,6 +262,7 @@ class ROS2Bridge(Node):
                 GetCurrentPose, "/dsr01/system/get_current_pose"
             )
             self._jog_cli = self.create_client(Jog, "/dsr01/motion/jog")
+            self._movej_cli = self.create_client(MoveJoint, "/dsr01/motion/move_joint")
             self.create_timer(1.0 / TCP_POLL_HZ, self._poll_tcp)
             if DASHBOARD_ENABLE_JOG:
                 self.create_timer(0.05, self._poll_teleop_command)
@@ -265,8 +271,15 @@ class ROS2Bridge(Node):
                     "Dashboard jog enabled: /dsr01/motion/jog, BASE frame, max %.1f%%"
                     % JOG_MAX_PERCENT
                 )
+            if DASHBOARD_ENABLE_MOVEJ:
+                self.create_timer(0.10, self._poll_joint_command)
+                self.get_logger().warn(
+                    "Dashboard MoveJoint enabled: max vel %.1f acc %.1f"
+                    % (MOVEJ_MAX_VEL, MOVEJ_MAX_ACC)
+                )
         else:
             self._jog_cli = None
+            self._movej_cli = None
 
         if _CV2_AVAILABLE:
             # 카메라 토픽은 BEST_EFFORT QoS (RealSense 기본값)
@@ -371,6 +384,43 @@ class ROS2Bridge(Node):
     def _jog_watchdog(self) -> None:
         if self._jog_active and time.time() - self._last_jog_time > JOG_WATCHDOG_S:
             self._stop_jog()
+
+    def _poll_joint_command(self) -> None:
+        try:
+            if not self._movej_cli or not self._movej_cli.service_is_ready():
+                return
+            if not STATE_FILE.exists():
+                return
+            s = json.loads(STATE_FILE.read_text())
+            cmd = s.get("pending_joint_command") or {}
+            sent_at = cmd.get("sent_at", "")
+            if not sent_at or sent_at == self._last_joint_sent_at:
+                return
+            self._last_joint_sent_at = sent_at
+
+            angles = cmd.get("angles", [])
+            if len(angles) < 6:
+                self.get_logger().warn("MoveJoint ignored: need 6 joint angles")
+                return
+            vel = min(abs(float(cmd.get("velocity", 10.0))), MOVEJ_MAX_VEL)
+            acc = min(max(vel * 1.5, 10.0), MOVEJ_MAX_ACC)
+
+            req = MoveJoint.Request()
+            req.pos = [float(v) for v in angles[:6]]
+            req.vel = float(vel)
+            req.acc = float(acc)
+            req.time = 0.0
+            req.radius = 0.0
+            req.mode = 0
+            req.blend_type = 0
+            req.sync_type = 0
+            self._movej_cli.call_async(req)
+            self.get_logger().warn(
+                "Dashboard MoveJoint dispatched: target=[%s] vel=%.1f acc=%.1f"
+                % (" ".join("%.1f" % float(v) for v in angles[:6]), vel, acc)
+            )
+        except Exception as e:
+            self.get_logger().warn(f"joint command 처리 실패: {e}")
 
     def _push_message(self, state: dict, text: str, level: str = "info") -> None:
         msgs = state.setdefault("messages", [])
