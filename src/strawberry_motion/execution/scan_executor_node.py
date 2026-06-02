@@ -584,6 +584,24 @@ class ScanExecutorNode(Node):
                 kept.append(p)
         return kept
 
+    def _wait_for_planner(self, timeout_sec: float = 60.0) -> bool:
+        """Block until curobo_planner_node has subscribed to /dsr01/curobo/pick_pose."""
+        deadline = time.time() + timeout_sec
+        warned = False
+        while time.time() < deadline:
+            if self._pick_trigger_pub.get_subscription_count() > 0:
+                return True
+            if not warned:
+                self.get_logger().info(
+                    "Waiting for curobo_planner to subscribe to pick_pose topic …"
+                )
+                warned = True
+            time.sleep(0.5)
+        self.get_logger().error(
+            "curobo_planner did not subscribe within %.0fs — picks will be skipped" % timeout_sec
+        )
+        return False
+
     def _trigger_picks_for_cell(
         self, cell_id: str, poses: List[PoseStamped], pick_timeout_sec: float = 120.0
     ) -> int:
@@ -593,6 +611,8 @@ class ScanExecutorNode(Node):
             "PICK_SEQUENCE_START %s — %d unique targets (raw=%d)"
             % (cell_id, len(unique), len(poses))
         )
+        if not self._wait_for_planner():
+            return 0
         success = 0
         for i, pose in enumerate(unique):
             self._pick_complete_event.clear()
@@ -607,6 +627,14 @@ class ScanExecutorNode(Node):
             )
             self._pick_trigger_pub.publish(pose)
             completed = self._pick_complete_event.wait(timeout=pick_timeout_sec)
+            if not completed:
+                # One retry — guards against the first-publish race during DDS discovery
+                self.get_logger().warn(
+                    "PICK_TIMEOUT %s %d/%d — retrying once" % (cell_id, i + 1, len(unique))
+                )
+                self._pick_complete_event.clear()
+                self._pick_trigger_pub.publish(pose)
+                completed = self._pick_complete_event.wait(timeout=pick_timeout_sec)
             if completed:
                 success += 1
                 self._pub_status("PICK_COMPLETE %s %d/%d" % (cell_id, i + 1, len(unique)))
