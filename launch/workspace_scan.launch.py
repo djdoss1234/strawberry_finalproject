@@ -12,8 +12,9 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import yaml
@@ -21,8 +22,10 @@ import yaml
 
 def generate_launch_description() -> LaunchDescription:
     pkg = get_package_share_directory("strawberry_motion")
+    moveit_pkg = get_package_share_directory("e0509_gripper_moveit_config")
     rviz_config = Path(pkg) / "rviz" / "workspace_exploration.rviz"
     registration_file = Path(pkg) / "config" / "panel_registration.yaml"
+    moveit_launch = Path(moveit_pkg) / "launch" / "demo.launch.py"
 
     with registration_file.open("r", encoding="utf-8") as stream:
         registration = yaml.safe_load(stream)["panel_registration"]
@@ -86,6 +89,21 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="2",
                 description="cuRobo planning retries for runtime preview logging.",
             ),
+            DeclareLaunchArgument(
+                "enable_moveit",
+                default_value="false",
+                description="Also start MoveIt move_group for parallel planning-scene/trajectory checks.",
+            ),
+            DeclareLaunchArgument(
+                "moveit_rviz",
+                default_value="false",
+                description="Start MoveIt's own RViz. Usually false because workspace RViz is already launched.",
+            ),
+            DeclareLaunchArgument(
+                "moveit_environment",
+                default_value="false",
+                description="Start e0509_gripper_description environment_visualizer with MoveIt.",
+            ),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -121,6 +139,15 @@ def generate_launch_description() -> LaunchDescription:
                 name="workspace_rviz",
                 arguments=["-d", str(rviz_config)],
                 output="screen",
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(str(moveit_launch)),
+                condition=IfCondition(LaunchConfiguration("enable_moveit")),
+                launch_arguments={
+                    "rviz": LaunchConfiguration("moveit_rviz"),
+                    "environment": LaunchConfiguration("moveit_environment"),
+                    "fake_joint_gui": "false",
+                }.items(),
             ),
             Node(
                 package="strawberry_motion",

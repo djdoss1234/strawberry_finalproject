@@ -4,6 +4,10 @@ from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import yaml
 
@@ -13,6 +17,11 @@ def generate_launch_description() -> LaunchDescription:
         Path(get_package_share_directory("strawberry_motion"))
         / "rviz"
         / "workspace_exploration.rviz"
+    )
+    moveit_launch = (
+        Path(get_package_share_directory("e0509_gripper_moveit_config"))
+        / "launch"
+        / "demo.launch.py"
     )
     registration_file = (
         Path(get_package_share_directory("strawberry_motion"))
@@ -25,6 +34,21 @@ def generate_launch_description() -> LaunchDescription:
     rotation = registration["transform"]["rotation_xyzw"]
     return LaunchDescription(
         [
+            DeclareLaunchArgument(
+                "enable_moveit",
+                default_value="false",
+                description="Also start MoveIt move_group for parallel planning-scene/trajectory checks.",
+            ),
+            DeclareLaunchArgument(
+                "moveit_rviz",
+                default_value="false",
+                description="Start MoveIt's own RViz. Usually false because workspace RViz is already launched.",
+            ),
+            DeclareLaunchArgument(
+                "moveit_environment",
+                default_value="false",
+                description="Start e0509_gripper_description environment_visualizer with MoveIt.",
+            ),
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -69,6 +93,15 @@ def generate_launch_description() -> LaunchDescription:
                 name="workspace_rviz",
                 arguments=["-d", str(rviz_config)],
                 output="screen",
+            ),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(str(moveit_launch)),
+                condition=IfCondition(LaunchConfiguration("enable_moveit")),
+                launch_arguments={
+                    "rviz": LaunchConfiguration("moveit_rviz"),
+                    "environment": LaunchConfiguration("moveit_environment"),
+                    "fake_joint_gui": "false",
+                }.items(),
             ),
         ]
     )

@@ -66,6 +66,6 @@ scan_policy:
 scan_pose:
   standoff_m: null
   orientation_xyzw: null
-  preview_standoff_m: 0.921486
-  preview_source: measured_overview_camera_distance_along_panel_normal
+  preview_standoff_m: null
+  preview_source: disabled_after_v12_gripper_centered_scan_pose_reteach
   validated_for_motion: false

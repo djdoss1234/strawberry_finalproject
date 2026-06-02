@@ -20,8 +20,8 @@
 
 ## 2. 현재 상태 한 줄 요약
 
-> **스캔→픽 통합 시퀀스 구현 완료. v12 그리퍼 중심 scan pose 4셀 재티칭 및 전체 순회 검증 완료. YOLO seg+pose 두 모델 fusion 계약 기록 완료.**
-> 다음: 15.8cm 파지 파츠 기준 tool/collision model 재검증 + pose tolerance를 포함한 cuRobo branch/scan pose 최적화 + fusion node에서 `/strawberry/detection/pick_pose` 연결.
+> **스캔→픽 통합 시퀀스 구현 완료. v12 그리퍼 중심 scan pose 4셀 재티칭 및 전체 순회 검증 완료. RViz TCP/camera preview를 v12 기준으로 수정했고 MoveIt 병행 launch 옵션을 추가. YOLO seg+pose 두 모델 fusion 계약 기록 완료.**
+> 다음: 15.8cm 파지 파츠 기준 tool/collision model 재검증 + MoveIt planning scene/cuRobo collision world 정합 + pose tolerance를 포함한 cuRobo branch/scan pose 최적화 + fusion node에서 `/strawberry/detection/pick_pose` 연결.
 > 팀원 dashboard는 `tools/dashboard/`에 로컬 실행 래퍼로 추가됨.
 
 ---
@@ -88,6 +88,28 @@
 - preview는 진단용이며 로봇 실행은 여전히 검증된 YAML MoveJoint
 - preview가 셀 전환을 막지 않도록 비동기 thread로 변경
 
+### 3-K. RViz/MoveIt 기준 프레임 업데이트 (2026-06-02)
+
+**수정 이유:**
+- workspace를 물리적으로 다시 배치해 `base_link`와 종이 중앙 관계를 다시 맞췄다.
+- scan pose 기준도 카메라 optical center 평행이 아니라, 15.8cm 파지 파츠를 단 그리퍼가 셀 중심 작업 영역에 접근하기 쉬운 자세로 바뀌었다.
+- 따라서 RViz에 남아 있던 구식 camera-centered generated preview는 더 이상 현재 task geometry를 설명하지 못한다.
+
+**변경:**
+- `scan_pose_tcp_preview_node.py`
+  - 활성 파일을 `scan_pose_candidates_refit_candidate.yaml`로 변경
+  - v12 TCP/gripper frame axes 표시
+  - eye-in-hand calibration 기반 camera center + optical axis 표시
+  - TCP base 좌표 label 표시
+- `workspace.yaml`
+  - old generated `preview_standoff_m` 비활성화
+- `workspace_scan.launch.py`, `workspace_rviz.launch.py`
+  - `enable_moveit:=true` 옵션 추가
+  - MoveIt은 기본 off, 필요할 때 병행 실행
+
+기록:
+- `docs/runs/RUN-20260602-002_rviz_moveit_gripper_frame_update.md`
+
 ---
 
 ## 4. 현재 토픽 구조
@@ -131,6 +153,7 @@ curobo_planner_node
 | 줄기 파지 파라미터 | 미티칭 | .pt 완성 후 DART로 실제 줄기 접근 각도 측정 |
 | 스캔 포즈 그리퍼/카메라 각도 이슈 | v12 재티칭 + 전체 순회 검증 완료 | tool/collision model 재검증 후 pick 연동 |
 | cuRobo 최적화 | branch dry-run + runtime preview 구현 | pose tolerance sampling과 collision model 정합 |
+| RViz/MoveIt 시각화 | v12 TCP/camera preview + MoveIt 옵션 추가 | MoveIt planning scene과 cuRobo world 정합 |
 | griper feedback | 미구현 | FlangeSerialRead reg 281 구현 필요 |
 
 ---
@@ -211,6 +234,7 @@ Fusion 원칙:
 | `docs/worklogs/2026-06-01.md` | 오늘 작업 상세 |
 | `docs/worklogs/2026-06-02.md` | v12 검증, cuRobo branch 최적화 원리, 파지 파츠 기록 |
 | `docs/runs/RUN-20260602-001_curobo_scan_branch_optimization.yaml` | cuRobo branch optimization dry-run 결과 |
+| `docs/runs/RUN-20260602-002_rviz_moveit_gripper_frame_update.md` | RViz v12 TCP/camera preview 및 MoveIt 병행 설정 기록 |
 
 **e0509_gripper_description repo:**
 | 파일 | 역할 |
@@ -236,6 +260,15 @@ ros2 launch strawberry_motion workspace_scan.launch.py \
   runtime_curobo_preview_retries:=2 \
   scan_movej_vel_deg_s:=60.0 \
   scan_movej_acc_deg_s2:=90.0
+
+# MoveIt move_group을 병행 실행해 planning scene/trajectory 확인
+ros2 launch strawberry_motion workspace_scan.launch.py \
+  enable_robot_execution:=true \
+  target_cell:=all \
+  enable_pick_integration:=false \
+  enable_moveit:=true \
+  moveit_rviz:=false \
+  moveit_environment:=false
 
 # KPI 로거 (별도 터미널)
 python3 ~/doosan_ws/src/strawberry_finalproject/scripts/harvest_session_logger.py
