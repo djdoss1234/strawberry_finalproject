@@ -1,0 +1,77 @@
+detection_models:
+  version: v1_seg_pose_reference
+  status: draft_reference_models_not_final
+  updated: "2026-06-01"
+  use_for_automated_harvest: false
+  note: >-
+    Reference contract for the current two-model detector handoff. The .pt files
+    are local large assets and are intentionally not committed. Enable automated
+    harvest only after retrained weights are validated with live camera frames.
+
+  assets:
+    segmentation_model:
+      local_path: /home/user/Downloads/strawberry_seg_best.pt
+      task: segmentation
+      classes:
+        0: ripe
+        1: unripe
+        2: sick
+    pose_model:
+      local_path: /home/user/Downloads/strawberry_pose_best.pt
+      task: pose
+      keypoints:
+        0: stem_base
+        1: stem_mid
+        2: stem_tip
+
+  fusion_policy:
+    require_both_models: true
+    match_rule: pose_box_center_inside_segmentation_mask
+    publish_only_matched_objects: true
+    harvest_classes:
+      - ripe
+    reject_classes:
+      - unripe
+      - sick
+    stem_vector_primary: kp2_minus_kp0
+    stem_vector_fallback: kp2_minus_kp1
+    reject_if_keypoint_confidence_low: true
+    reject_if_mask_area_out_of_range: true
+    reject_if_seg_pose_match_missing: true
+    thresholds:
+      min_keypoint_confidence: TBD
+      min_mask_area_px: TBD
+      max_mask_area_px: TBD
+      min_seg_confidence: TBD
+      min_pose_confidence: TBD
+
+  intended_runtime_outputs:
+    pick_pose_topic:
+      name: /strawberry/detection/pick_pose
+      type: geometry_msgs/msg/PoseStamped
+      frame: base_link
+      meaning: >-
+        One validated ripe target pose at a time. The pose should already include
+        depth, eye-in-hand transform, and stem-direction-derived grasp orientation.
+    scene_positions_topic:
+      name: /strawberry/detection/scene_positions
+      type: std_msgs/msg/Float64MultiArray
+      frame: base_link
+      layout: flat_xyz_list
+      meaning: >-
+        All detected strawberry center positions for neighbor obstacle creation.
+
+  fusion_candidate_fields:
+    - candidate_id
+    - seg_class_id
+    - seg_class_name
+    - seg_confidence
+    - pose_confidence
+    - bbox_xyxy_px
+    - mask_area_px
+    - keypoints_xy_conf
+    - stem_vector_image_xy
+    - depth_m
+    - target_position_base_m
+    - grasp_quaternion_base_wxyz
+    - reject_reason

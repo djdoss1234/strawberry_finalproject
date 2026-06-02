@@ -48,28 +48,43 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "scan_movej_vel_deg_s",
-                default_value="80.0",
+                default_value="60.0",
                 description="MoveJoint velocity for scan pose validation in deg/s.",
             ),
             DeclareLaunchArgument(
                 "scan_movej_acc_deg_s2",
-                default_value="100.0",
+                default_value="90.0",
                 description="MoveJoint acceleration for scan pose validation in deg/s^2.",
             ),
             DeclareLaunchArgument(
                 "overview_return_vel_deg_s",
-                default_value="80.0",
+                default_value="60.0",
                 description="MoveJoint velocity for return-to-overview in deg/s.",
             ),
             DeclareLaunchArgument(
                 "overview_return_acc_deg_s2",
-                default_value="100.0",
+                default_value="90.0",
                 description="MoveJoint acceleration for return-to-overview in deg/s^2.",
             ),
             DeclareLaunchArgument(
                 "movej_service_timeout_sec",
                 default_value="30.0",
                 description="Seconds to wait for MoveJoint service response before relying on joint-state arrival verification.",
+            ),
+            DeclareLaunchArgument(
+                "enable_pick_integration",
+                default_value="true",
+                description="Forward detected pick poses to the pick executor after each scan dwell.",
+            ),
+            DeclareLaunchArgument(
+                "enable_runtime_curobo_preview",
+                default_value="false",
+                description="Compute and log a cuRobo runtime plan before each cell move; execution still uses YAML MoveJoint.",
+            ),
+            DeclareLaunchArgument(
+                "runtime_curobo_preview_retries",
+                default_value="2",
+                description="cuRobo planning retries for runtime preview logging.",
             ),
             Node(
                 package="tf2_ros",
@@ -127,6 +142,15 @@ def generate_launch_description() -> LaunchDescription:
                         ),
                         "movej_service_timeout_sec": LaunchConfiguration(
                             "movej_service_timeout_sec"
+                        ),
+                        "enable_pick_integration": LaunchConfiguration(
+                            "enable_pick_integration"
+                        ),
+                        "enable_runtime_curobo_preview": LaunchConfiguration(
+                            "enable_runtime_curobo_preview"
+                        ),
+                        "runtime_curobo_preview_retries": LaunchConfiguration(
+                            "runtime_curobo_preview_retries"
                         ),
                     }
                 ],

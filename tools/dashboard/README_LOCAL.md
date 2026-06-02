@@ -70,6 +70,25 @@ HARVEST_STATE_FILE=tools/dashboard/data/harvest_state.json
 jog 명령이 유지되고 입력이 끊기면 watchdog이 stop을 보냅니다. 속도는 UI 값과 별개로
 `DASHBOARD_JOG_MAX_PERCENT`에서 한 번 더 제한합니다.
 
+TCP jog는 DART 안전복구를 완전히 대체하지 않습니다. 대신 dashboard bridge가
+`/dsr01/joint_states`를 감시하다가 운용 관절한도 근처에 들어가면 jog를 즉시 stop하고
+상태 메시지에 경고를 띄웁니다. 기본값은 한계 8도 이내에서 잠금, 12도 이상 여유가 생기면
+자동 해제입니다.
+
+```bash
+DASHBOARD_JOINT_GUARD=true
+DASHBOARD_JOINT_GUARD_MARGIN_DEG=8.0
+DASHBOARD_JOINT_GUARD_CLEAR_MARGIN_DEG=12.0
+DASHBOARD_CLEAR_PENDING_ON_START=true
+```
+
+잠금 상태에서는 TCP 방향키가 막히며, DART 또는 dashboard의 joint command로 관절을 여유
+범위로 풀면 TCP jog가 다시 가능해집니다.
+
+`DASHBOARD_CLEAR_PENDING_ON_START=true`가 중요합니다. 이전 실행에서 state file에 남은
+`pending_joint_command`나 `pending_teleop_command`가 dashboard 재시작 직후 다시 실행되는
+것을 막습니다.
+
 관절 입력창의 `이동` 버튼은 `/dsr01/motion/move_joint`로 전달됩니다. UI 속도값은
 `DASHBOARD_MOVEJ_MAX_VEL`, `DASHBOARD_MOVEJ_MAX_ACC`에서 한 번 더 제한됩니다.
 

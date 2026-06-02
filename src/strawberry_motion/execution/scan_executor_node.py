@@ -76,10 +76,10 @@ _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.5
 _OVERVIEW_TOLERANCE_DEG = 1.0
-_DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 80.0
-_DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 100.0
-_DEFAULT_OVERVIEW_RETURN_VEL_DEG_S = 80.0
-_DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2 = 100.0
+_DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 60.0
+_DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 90.0
+_DEFAULT_OVERVIEW_RETURN_VEL_DEG_S = 60.0
+_DEFAULT_OVERVIEW_RETURN_ACC_DEG_S2 = 90.0
 _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC = 30.0
 # True: _init_motion_gen loads robot spheres + whiteboard cuboid + self-collision
 # (validated in RUN-20260527-012). Motion is still gated by use_for_automated_motion
@@ -103,6 +103,7 @@ _JOINT_LIMITS_RAD = [
     (-2.346194, 2.346194),
     (-6.273185, 6.273185),
 ]
+_WRAP_EQUIVALENT_JOINT_IDX = {0, 3, 5}  # J1/J4/J6: same physical angle every 360 deg
 
 
 def _mat4_to_pos_quat_wxyz(mat4: np.ndarray) -> Tuple[List[float], List[float]]:
@@ -124,6 +125,8 @@ class ScanExecutorNode(Node):
         self._detection_poses: List[PoseStamped] = []
         self._detection_lock = threading.Lock()
         self._pick_complete_event = threading.Event()
+        self._last_movej_command_deg: Optional[List[float]] = None
+        self._runtime_preview_lock = threading.Lock()
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self.declare_parameter("manual_validation_mode", False)
@@ -139,6 +142,8 @@ class ScanExecutorNode(Node):
             "movej_service_timeout_sec", _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC
         )
         self.declare_parameter("enable_pick_integration", True)
+        self.declare_parameter("enable_runtime_curobo_preview", False)
+        self.declare_parameter("runtime_curobo_preview_retries", 2)
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
         self._target_cell = str(self.get_parameter("target_cell").value)
         self._manual_validation_mode = bool(
@@ -157,6 +162,12 @@ class ScanExecutorNode(Node):
         )
         self._enable_pick_integration = bool(
             self.get_parameter("enable_pick_integration").value
+        )
+        self._runtime_curobo_preview_enabled = bool(
+            self.get_parameter("enable_runtime_curobo_preview").value
+        )
+        self._runtime_curobo_preview_retries = int(
+            self.get_parameter("runtime_curobo_preview_retries").value
         )
 
         pkg = get_package_share_directory("strawberry_motion")
@@ -208,6 +219,11 @@ class ScanExecutorNode(Node):
             "MoveJoint service dispatch timeout: %.1fs; arrival is verified from /joint_states"
             % self._movej_service_timeout_sec
         )
+        if self._runtime_curobo_preview_enabled:
+            self.get_logger().warn(
+                "Runtime cuRobo preview enabled: plans are logged only; "
+                "execution still uses verified YAML MoveJoint poses."
+            )
 
         cb = rclpy.callback_groups.ReentrantCallbackGroup()
         self.create_subscription(JointState, "/dsr01/joint_states", self._joint_cb, 10)
@@ -472,6 +488,8 @@ class ScanExecutorNode(Node):
         if not self._cli_movej.wait_for_service(timeout_sec=3.0):
             self.get_logger().error("MoveJoint service not available")
             return False
+        joints_deg = self._shortest_equivalent_joints(joints_deg)
+        self._last_movej_command_deg = list(joints_deg)
         req = MoveJoint.Request()
         req.pos = [float(v) for v in joints_deg]
         req.vel = vel
@@ -504,6 +522,50 @@ class ScanExecutorNode(Node):
         if not ok:
             self.get_logger().error("MoveJoint failed")
         return bool(ok)
+
+    def _shortest_equivalent_joints(
+        self,
+        target_deg: List[float],
+        reference_joints_rad: Optional[List[float]] = None,
+        log_rewrite: bool = True,
+    ) -> List[float]:
+        """Choose the nearest equivalent angle for wrap-capable joints.
+
+        DART may record a valid pose as e.g. J4=-238 deg while the same physical
+        wrist pose is J4=+121 deg. Sending the far representation to MoveJoint
+        makes the robot take a visually unnecessary long rotation. Keep the
+        taught pose, but rewrite J1/J4/J6 to the 360-deg equivalent closest to
+        the current measured joint state and inside the hard robot limits.
+        """
+        reference = reference_joints_rad if reference_joints_rad is not None else self._current_joints
+        if reference is None:
+            return [float(v) for v in target_deg]
+
+        adjusted = [float(v) for v in target_deg]
+        current_deg = np.rad2deg(reference).tolist()
+        for idx in _WRAP_EQUIVALENT_JOINT_IDX:
+            lo = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][0]))
+            hi = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][1]))
+            base = adjusted[idx]
+            candidates = [base + 360.0 * k for k in range(-2, 3)]
+            candidates = [c for c in candidates if lo <= c <= hi]
+            if not candidates:
+                continue
+            best = min(candidates, key=lambda c: abs(c - current_deg[idx]))
+            if log_rewrite and abs(best - base) > 1e-6:
+                self.get_logger().info(
+                    "Joint equivalent rewrite J%d %.1f -> %.1f deg "
+                    "(current %.1f, shorter by %.1f deg)"
+                    % (
+                        idx + 1,
+                        base,
+                        best,
+                        current_deg[idx],
+                        abs(base - current_deg[idx]) - abs(best - current_deg[idx]),
+                    )
+                )
+            adjusted[idx] = best
+        return adjusted
 
     @staticmethod
     def _deduplicate_poses(
@@ -571,6 +633,97 @@ class ScanExecutorNode(Node):
             time.sleep(0.05)
         return False
 
+    def _start_runtime_curobo_preview(self, cell_id: str, target: dict) -> None:
+        """Start a non-blocking runtime cuRobo preview.
+
+        Preview is diagnostics only. Never let GPU planning delay the verified
+        YAML MoveJoint scan sequence.
+        """
+        if self._current_joints is None:
+            self._pub_status("CUROBO_PREVIEW_SKIPPED %s no current joint state" % cell_id)
+            return
+        if not self._runtime_preview_lock.acquire(blocking=False):
+            self._pub_status(
+                "CUROBO_PREVIEW_SKIPPED %s previous preview still running" % cell_id
+            )
+            return
+
+        start_joints = list(self._current_joints)
+        target_snapshot = deepcopy(target)
+
+        def worker() -> None:
+            try:
+                self._preview_runtime_curobo_plan(cell_id, target_snapshot, start_joints)
+            finally:
+                self._runtime_preview_lock.release()
+
+        threading.Thread(
+            target=worker,
+            name="curobo_preview_%s" % cell_id.replace("/", "_"),
+            daemon=True,
+        ).start()
+
+    def _preview_runtime_curobo_plan(
+        self, cell_id: str, target: dict, start_joints: List[float]
+    ) -> None:
+        """Log a runtime cuRobo plan from a captured start state without executing it."""
+        mat_rows = target.get("tcp_transform_base")
+        if mat_rows is None:
+            self._pub_status("CUROBO_PREVIEW_SKIPPED %s missing tcp_transform_base" % cell_id)
+            return
+
+        try:
+            mat4 = np.array(mat_rows, dtype=float)
+            if mat4.shape == (3, 4):
+                mat4 = np.vstack([mat4, [0.0, 0.0, 0.0, 1.0]])
+            pos, quat_wxyz = _mat4_to_pos_quat_wxyz(mat4)
+            self._init_motion_gen()
+            result = self._plan(
+                start_joints,
+                pos,
+                quat_wxyz,
+                "runtime_preview/%s" % cell_id,
+                max_retries=max(1, self._runtime_curobo_preview_retries),
+            )
+        except Exception as exc:
+            self._pub_status("CUROBO_PREVIEW_FAIL %s exception=%r" % (cell_id, exc))
+            return
+
+        if result is None:
+            self._pub_status("CUROBO_PREVIEW_FAIL %s no valid runtime plan" % cell_id)
+            return
+
+        traj, motion_time, endpoint_rad = result
+        del traj
+        current_deg = np.rad2deg(start_joints).tolist()
+        endpoint_deg = np.rad2deg(endpoint_rad).tolist()
+        endpoint_deg = self._shortest_equivalent_joints(
+            endpoint_deg, reference_joints_rad=start_joints, log_rewrite=False
+        )
+        plan_delta = np.abs(np.asarray(endpoint_deg) - np.asarray(current_deg))
+
+        yaml_endpoint = target.get("endpoint_joints_deg") or []
+        yaml_endpoint = self._shortest_equivalent_joints(
+            yaml_endpoint, reference_joints_rad=start_joints, log_rewrite=False
+        )
+        yaml_delta = np.abs(np.asarray(yaml_endpoint) - np.asarray(current_deg))
+
+        self._pub_status(
+            "CUROBO_PREVIEW_VALID %s endpoint=[%s] max_delta=%.1f l1=%.1f "
+            "wrist=%.1f time=%.2fs | yaml max_delta=%.1f l1=%.1f wrist=%.1f"
+            % (
+                cell_id,
+                " ".join("%.1f" % d for d in endpoint_deg),
+                float(np.max(plan_delta)),
+                float(np.sum(plan_delta)),
+                float(plan_delta[3] + plan_delta[5]),
+                motion_time,
+                float(np.max(yaml_delta)),
+                float(np.sum(yaml_delta)),
+                float(yaml_delta[3] + yaml_delta[5]),
+            )
+        )
+
     @staticmethod
     def _spline_vel_for_j1_swing(traj_rad: np.ndarray) -> float:
         """Return spline velocity (deg/s) scaled down for large J1 arcs.
@@ -613,9 +766,9 @@ class ScanExecutorNode(Node):
                 self._pub_state(cell_id, "PLANNING_FAIL")
                 return
 
-            endpoint_rad = [float(np.deg2rad(d)) for d in endpoint_deg]
-
             self._pub_state(cell_id, "SCANNING")
+            if self._runtime_curobo_preview_enabled:
+                self._start_runtime_curobo_preview(cell_id, target)
             self._pub_status(
                 "MOVING_TO %s  endpoint_deg=[%s]  (direct MoveJoint, YAML pose)"
                 % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
@@ -634,6 +787,8 @@ class ScanExecutorNode(Node):
                 )
                 return
 
+            arrival_target_deg = self._last_movej_command_deg or endpoint_deg
+            endpoint_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
             arrival_timeout = 90.0
             arrived = self._wait_for_joints(endpoint_rad, 3.0, arrival_timeout)
             if not arrived:

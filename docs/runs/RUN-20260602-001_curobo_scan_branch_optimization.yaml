@@ -1,0 +1,286 @@
+curobo_scan_branch_optimization:
+  run_date: '2026-06-02'
+  source_candidates: config/scan_pose_candidates_refit_candidate.yaml
+  source_world: config/scan_collision_world.yaml
+  description: Offline cuRobo IK branch optimization with v12 TCP transforms fixed.
+    No robot motion is executed by this script.
+  operator_context:
+    gripper_centered_reteach_reason: >-
+      The previous camera-centered scan poses gave good image framing but did
+      not guarantee a convenient grasp approach. After mounting an approximately
+      15.8cm 3D-printed strawberry grasping attachment, the scan poses were
+      retaught so the gripper is horizontally aligned with each cell working
+      area, not merely so the optical center points at the cell center.
+    execution_policy_at_time_of_run: >-
+      This optimization was diagnostic/offline only. The runtime scan sequence
+      still executes verified YAML endpoint_joints_deg with Doosan MoveJoint.
+      J1/J4/J6 are rewritten at dispatch time to the nearest 360-degree
+      equivalent branch based on current joint state.
+    curobo_optimization_principle: >-
+      For each fixed taught TCP transform, cuRobo is used to sample feasible IK
+      branches. A dynamic-programming sequence search then chooses one candidate
+      per cell to minimize joint travel, maximum single-joint swing, wrist
+      rotation, joint-limit pressure, and deviation from the manually taught
+      pose. This is branch selection, not yet online trajectory execution.
+    current_limitation: >-
+      Exact TCP-pose branch optimization gives limited alternatives. The next
+      useful step is tolerance sampling around the taught pose (small xyz/rpy
+      offsets) plus updated collision spheres for the 15.8cm gripper attachment.
+      Until that is verified, do not apply these candidates directly to
+      unattended robot execution.
+  scan_order:
+  - root/nw
+  - root/ne
+  - root/se
+  - root/sw
+  overview_joints_deg:
+  - 87.98
+  - -94.92
+  - 129.89
+  - 175.94
+  - -31.34
+  - 93.42
+  weights:
+    l1_delta: 1.0
+    max_delta: 1.7
+    wrist_delta: 1.4
+    limit_pressure: 35.0
+    taught_deviation: 0.08
+  total_sequence_cost: 3829.07
+  selected_sequence:
+  - cell_id: root/nw
+    candidate_index: 0
+    source: taught_equivalent
+    joints_deg:
+    - 144.09
+    - 22.9
+    - -1.0
+    - 121.48
+    - -75.31
+    - 108.68
+    cumulative_cost: 767.431
+  - cell_id: root/ne
+    candidate_index: 0
+    source: curobo_ik
+    joints_deg:
+    - 21.677
+    - 6.744
+    - 42.669
+    - 272.04
+    - -56.515
+    - 35.629
+    cumulative_cost: 1804.846
+  - cell_id: root/se
+    candidate_index: 2
+    source: curobo_ik
+    joints_deg:
+    - 25.455
+    - -3.225
+    - 110.919
+    - 301.849
+    - -71.632
+    - -28.158
+    cumulative_cost: 2284.063
+  - cell_id: root/sw
+    candidate_index: 1
+    source: taught_equivalent
+    joints_deg:
+    - 150.27
+    - -11.92
+    - 109.11
+    - 262.19
+    - 63.33
+    - 10.46
+    cumulative_cost: 3000.444
+  transition_table:
+  - from: overview
+    to: root/nw
+    delta_deg:
+    - 56.11
+    - 117.82
+    - -130.89
+    - -54.46
+    - -43.97
+    - 15.26
+    l1_delta_deg: 418.51
+    max_abs_delta_deg: 130.89
+    wrist_abs_delta_deg: 69.72
+  - from: root/nw
+    to: root/ne
+    delta_deg:
+    - -122.41
+    - -16.16
+    - 43.67
+    - 150.56
+    - 18.8
+    - -73.05
+    l1_delta_deg: 424.64
+    max_abs_delta_deg: 150.56
+    wrist_abs_delta_deg: 223.61
+  - from: root/ne
+    to: root/se
+    delta_deg:
+    - 3.78
+    - -9.97
+    - 68.25
+    - 29.81
+    - -15.12
+    - -63.79
+    l1_delta_deg: 190.71
+    max_abs_delta_deg: 68.25
+    wrist_abs_delta_deg: 93.6
+  - from: root/se
+    to: root/sw
+    delta_deg:
+    - 124.82
+    - -8.7
+    - -1.81
+    - -39.66
+    - 134.96
+    - 38.62
+    l1_delta_deg: 348.56
+    max_abs_delta_deg: 134.96
+    wrist_abs_delta_deg: 78.28
+  - from: root/sw
+    to: overview
+    delta_deg:
+    - -62.29
+    - -83.0
+    - 20.78
+    - -86.25
+    - -94.67
+    - 82.96
+    l1_delta_deg: 429.95
+    max_abs_delta_deg: 94.67
+    wrist_abs_delta_deg: 169.21
+  candidate_counts:
+    root/nw: 1
+    root/ne: 3
+    root/se: 4
+    root/sw: 3
+  top_candidates_by_cell:
+    root/nw:
+    - source: taught_equivalent
+      joints_deg:
+      - 144.09
+      - 22.9
+      - -1.0
+      - 121.48
+      - -75.31
+      - 108.68
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 0.0
+      overview_l1_delta_deg: 418.51
+    root/ne:
+    - source: curobo_ik
+      joints_deg:
+      - 21.677
+      - 6.744
+      - 42.669
+      - 272.04
+      - -56.515
+      - 35.629
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 604.568
+      overview_l1_delta_deg: 434.254
+    - source: curobo_ik
+      joints_deg:
+      - 21.677
+      - 6.745
+      - 42.669
+      - 92.04
+      - 56.515
+      - 215.629
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 131.537
+      overview_l1_delta_deg: 549.153
+    - source: taught_equivalent
+      joints_deg:
+      - 18.91
+      - 25.97
+      - 1.0
+      - 74.58
+      - 78.17
+      - 244.39
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 0.0
+      overview_l1_delta_deg: 680.69
+    root/se:
+    - source: curobo_ik
+      joints_deg:
+      - 25.455
+      - -3.225
+      - 110.919
+      - 121.851
+      - 71.631
+      - 151.841
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 56.45
+      overview_l1_delta_deg: 388.672
+    - source: taught_equivalent
+      joints_deg:
+      - 22.71
+      - -4.6
+      - 103.56
+      - 97.69
+      - 68.16
+      - 169.18
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 0.0
+      overview_l1_delta_deg: 435.43
+    - source: curobo_ik
+      joints_deg:
+      - 25.455
+      - -3.225
+      - 110.919
+      - 301.849
+      - -71.632
+      - -28.158
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 552.768
+      overview_l1_delta_deg: 460.97
+    - source: curobo_ik
+      joints_deg:
+      - 25.455
+      - -3.225
+      - 110.919
+      - 301.85
+      - -71.632
+      - -28.159
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 552.77
+      overview_l1_delta_deg: 460.972
+    root/sw:
+    - source: curobo_ik
+      joints_deg:
+      - 148.54
+      - -8.416
+      - 114.83
+      - 239.307
+      - 72.418
+      - 27.625
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 60.09
+      overview_l1_delta_deg: 395.044
+    - source: taught_equivalent
+      joints_deg:
+      - 150.27
+      - -11.92
+      - 109.11
+      - 262.19
+      - 63.33
+      - 10.46
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 0.0
+      overview_l1_delta_deg: 429.95
+    - source: curobo_ik
+      joints_deg:
+      - -31.46
+      - 8.417
+      - -114.83
+      - 59.307
+      - 72.418
+      - 27.624
+      limit_pressure: 0.0
+      taught_l1_delta_deg: 655.142
+      overview_l1_delta_deg: 753.684

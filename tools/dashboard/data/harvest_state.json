@@ -5,25 +5,126 @@
   "damage_count": 0,
   "grasp_times": [],
   "current_harvest_start": null,
-  "messages": [],
+  "messages": [
+    {
+      "time": "16:30:04",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.2° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:04",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.3° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:04",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.4° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:04",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.5° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.6° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.7° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.8° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.9° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 259.0° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:05",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 259.1° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:06",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 259.2° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "16:30:06",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J4 259.3° 상한 170.0°까지 0.0°"
+    },
+    {
+      "time": "17:11:28",
+      "level": "success",
+      "text": "TCP jog 잠금 해제 — 관절 여유 범위 복귀"
+    },
+    {
+      "time": "manual",
+      "level": "warning",
+      "text": "cleared stale pending dashboard commands after unexpected startup motion"
+    },
+    {
+      "time": "17:24:48",
+      "level": "warning",
+      "text": "dashboard startup: stale pending commands discarded (teleop)"
+    },
+    {
+      "time": "18:47:43",
+      "level": "info",
+      "text": "START_REJECTED current joints do not match verified overview pose within 1.0 deg"
+    },
+    {
+      "time": "10:11:41",
+      "level": "warning",
+      "text": "dashboard startup: stale pending commands discarded (teleop)"
+    },
+    {
+      "time": "10:11:41",
+      "level": "warning",
+      "text": "TCP jog 잠금 — 관절한도 근접: J2 -95.0° 하한 -93.0°까지 0.0°"
+    },
+    {
+      "time": "10:17:32",
+      "level": "success",
+      "text": "TCP jog 잠금 해제 — 관절 여유 범위 복귀"
+    },
+    {
+      "time": "10:24:58",
+      "level": "warning",
+      "text": "dashboard startup: stale pending commands discarded (joint)"
+    }
+  ],
   "status": "idle",
   "robot_ready": true,
   "robot_error": "",
   "joint_angles": [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0
+    150.27,
+    -11.92,
+    109.11,
+    -97.81,
+    63.33,
+    10.46
   ],
   "tcp_pose": [
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0
+    150.27,
+    -11.92,
+    109.11,
+    -97.81,
+    63.33,
+    10.46
   ],
   "target_count": 15,
   "attempt_history": [],
@@ -43,17 +144,20 @@
   },
   "pending_joint_command": null,
   "pending_tcp_command": null,
-  "last_updated": "2026-06-01T02:51:12.035423",
+  "last_updated": "2026-06-02T10:27:10.314600",
   "gripper": {
-    "position": 100.0,
-    "raw_pos": 0,
-    "state": "open",
+    "position": 5.4,
+    "raw_pos": 700,
+    "state": "grasping",
     "force": 30.0
   },
+  "joint_guard": {
+    "enabled": true,
+    "locked": false,
+    "reason": "",
+    "margin_deg": 8.0,
+    "clear_margin_deg": 12.0
+  },
   "planned_duration_hours": 0,
-  "pending_teleop_command": {
-    "command": "stop",
-    "speed": 0.2,
-    "sent_at": "2026-06-01T02:48:43.024626"
-  }
+  "pending_teleop_command": null
 }

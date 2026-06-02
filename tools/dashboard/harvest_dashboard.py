@@ -39,6 +39,7 @@ DEFAULT_STATE: dict = {
     "pending_tcp_command":    None,
     "last_updated":           None,
     "gripper":                {"position":100.0,"state":"open","force":30.0},
+    "joint_guard":            {"enabled": True, "locked": False, "reason": ""},
     "planned_duration_hours": 0,
 }
 

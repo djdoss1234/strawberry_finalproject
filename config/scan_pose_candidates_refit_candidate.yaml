@@ -1,7 +1,7 @@
 scan_pose_candidates:
-  version: v11_se_sw_ik_branch_optimized
-  status: all_four_cells_physically_validated_automated_traversal_enabled
-  capture_date: '2026-05-29'
+  version: v12_gripper_centered_manual_teach
+  status: gripper_centered_scan_poses_taught_traversal_validated
+  capture_date: '2026-06-01'
   curobo_start_state: workspace_reset_overview_pose_manual_dart
   curobo_start_joints_deg:
   - 87.98
@@ -20,176 +20,177 @@ scan_pose_candidates:
     0.922, 0.381] (22.4 deg upward tilt).'
   use_for_automated_motion: true
   collision_world_validated_for_motion: true
-  validation_scope: Workspace was physically reset on 2026-05-28. All four scan
-    poses were manually taught with Doosan DART on 2026-05-28/29 and individually
-    validated from the ROS manual single-cell executor on 2026-05-29. Camera view
-    is confirmed good for all four cells. Automated traversal remains locked
-    because root/se and root/sw still have excessive joint motion and should be
-    optimized before full traversal.
+  validation_scope: Workspace was physically reset on 2026-05-28 and scan poses
+    were retaught on 2026-06-01. v12 intentionally aligns each cell for gripper
+    approach feasibility rather than camera optical-center-only framing. Camera
+    screenshots were captured for all four cells in order root/nw, root/ne,
+    root/se, root/sw. On 2026-06-02, the full root/nw -> root/ne -> root/se ->
+    root/sw traversal completed with direct MoveJoint execution and no inter-cell
+    overview reset. The gripper has an approximately 15.8cm 3D-printed strawberry
+    grasping attachment; tool/collision spheres should be revalidated before
+    enabling unattended pick execution.
   targets:
   - cell_id: root/nw
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-05-28 manually adjusted with Doosan DART after workspace reset.
-      Camera view fills root/nw with the cell centered enough for scan validation.
-      DART task pose x=-245.34mm y=373.90mm z=741.39mm rx=86.46 ry=66.60 rz=-88.80.
-      Single-cell ROS validation completed on 2026-05-29; camera angle is good.
-      Global automated traversal remains disabled until motion quality is reviewed.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered
+      retuning. The cell is framed so the gripper, not only the camera optical
+      center, is horizontally aligned for approach. DART task pose x=-225.46mm
+      y=338.93mm z=902.31mm rx=88.42 ry=87.31 rz=-89.88. Screenshot evidence
+      order 1/4 from 2026-06-01.
+    dart_tcp_pose_base_mm_deg: [-225.46, 338.93, 902.31, 88.42, 87.31, -89.88]
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - -0.24534
+      - -0.22546
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.3739
+      - 0.33893
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.74139
+      - 0.90231
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 139.76
-    - 75.04
-    - -79.09
-    - 128.0
-    - -69.04
-    - 87.75
+    - 144.09
+    - 22.9
+    - -1.0
+    - -238.52
+    - -75.31
+    - 108.68
     joint_range_deg:
       J1:
       - 87.98
-      - 139.76
+      - 144.09
       J2:
       - -94.92
-      - 75.04
+      - 22.9
       J3:
-      - -79.09
+      - -1.0
       - 129.89
       J4:
-      - 128.0
+      - -238.52
       - 175.94
       J5:
-      - -69.04
+      - -75.31
       - -31.34
       J6:
-      - 87.75
       - 93.42
+      - 108.68
     use_for_automated_motion: true
   - cell_id: root/ne
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-05-29 manually adjusted with Doosan DART after workspace reset.
-      Camera view fills root/ne with the cell centered enough for scan validation.
-      DART task pose x=285.75mm y=347.14mm z=730.58mm rx=85.94 ry=65.09 rz=-88.59.
-      Single-cell ROS validation completed on 2026-05-29; camera angle is good.
-      Global automated traversal remains disabled until motion quality is reviewed.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered
+      retuning. The cell is framed so the gripper, not only the camera optical
+      center, is horizontally aligned for approach. DART task pose x=314.90mm
+      y=279.89mm z=883.40mm rx=89.90 ry=86.29 rz=-89.62. Screenshot evidence
+      order 2/4 from 2026-06-01.
+    dart_tcp_pose_base_mm_deg: [314.90, 279.89, 883.40, 89.90, 86.29, -89.62]
     tcp_transform_base:
     - - 0.01198123
       - -0.99790733
       - 0.063540625
-      - 0.28575
+      - 0.3149
     - - 0.381526086
       - 0.063300028
       - 0.922188133
-      - 0.34714
+      - 0.27989
     - - -0.92428042
       - 0.013193458
       - 0.38148609
-      - 0.73058
+      - 0.8834
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 34.82
-    - 77.37
-    - -81.88
-    - 229.61
-    - -67.97
-    - 95.2
+    - 18.91
+    - 25.97
+    - 1.0
+    - 74.58
+    - 78.17
+    - -115.61
     joint_range_deg:
       J1:
-      - 34.82
+      - 18.91
       - 87.98
       J2:
       - -94.92
-      - 77.37
+      - 25.97
       J3:
-      - -81.88
+      - 1.0
       - 129.89
       J4:
+      - 74.58
       - 175.94
-      - 229.61
       J5:
-      - -67.97
       - -31.34
+      - 78.17
       J6:
+      - -115.61
       - 93.42
-      - 95.2
     use_for_automated_motion: true
   - cell_id: root/sw
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
     note: >-
-      2026-05-29 manually adjusted with Doosan DART after workspace reset.
-      Camera view fills root/sw with the cell centered enough for scan validation.
-      DART task pose x=-248.59mm y=366.73mm z=348.70mm rx=86.47 ry=64.81 rz=-88.15.
-      tcp_transform_base updated 2026-05-29: recomputed via cuRobo FK at new
-      endpoint_joints_deg so tcp_transform_base exactly matches robot FK result.
-      endpoint_joints_deg updated 2026-05-29: cuRobo IK branch search found
-      J1=+141.3° solution (same J1 direction as NW), reducing J1 swing from
-      127° to 53° and J3 swing from 255° to 4°. Awaits physical single-cell
-      verification. cuRobo MotionGen dry-run blocked: new overview pose
-      J3=129.89°/J4=175.94° triggers false self-collision in sphere model.
+      2026-06-01 manually adjusted with Doosan DART after gripper-centered
+      retuning. The cell is framed so the gripper, not only the camera optical
+      center, is horizontally aligned for approach. DART task pose x=-247.70mm
+      y=317.34mm z=533.88mm rx=87.75 ry=86.31 rz=-89.49. Screenshot evidence
+      order 4/4 from 2026-06-01. User text "j610.46" is recorded as j6=10.46.
+    dart_tcp_pose_base_mm_deg: [-247.70, 317.34, 533.88, 87.75, 86.31, -89.49]
     tcp_transform_base:
     - - 0.01237283
       - -0.99791291
       - 0.06337770
-      - -0.24854361
+      - -0.2477
     - - 0.38142559
       - 0.06330023
       - 0.92222969
-      - 0.36696601
+      - 0.31734
     - - -0.92431674
       - 0.01276329
       - 0.38141272
-      - 0.34858140
+      - 0.53388
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 141.3
-    - 14.0
-    - 125.5
-    - 229.5
-    - 87.0
-    - 58.5
+    - 150.27
+    - -11.92
+    - 109.11
+    - -97.81
+    - 63.33
+    - 10.46
     joint_range_deg:
       J1:
       - 87.98
-      - 141.3
+      - 150.27
       J2:
       - -94.92
-      - 14.0
+      - -11.92
       J3:
-      - 125.5
+      - 109.11
       - 129.89
       J4:
+      - -97.81
       - 175.94
-      - 229.5
       J5:
       - -31.34
-      - 87.0
+      - 63.33
       J6:
-      - 58.5
+      - 10.46
       - 93.42
     use_for_automated_motion: true
   - cell_id: root/se
@@ -197,57 +198,54 @@ scan_pose_candidates:
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
     note: >-
-      2026-05-29 manually adjusted with Doosan DART after workspace reset.
-      Camera view fills root/se with the cell centered enough for scan validation.
-      DART task pose x=284.91mm y=346.35mm z=342.92mm rx=86.37 ry=64.04 rz=-89.22.
-      tcp_transform_base is unchanged (camera angle verified).
-      endpoint_joints_deg updated 2026-05-29: cuRobo IK branch search found
-      J1=+34.4° solution (same J1 direction as NE), reducing J1 swing from
-      233° to 54° and J3 swing from 255° to 4°. Awaits physical single-cell
-      verification. cuRobo MotionGen dry-run blocked: new overview pose
-      J3=129.89°/J4=175.94° triggers false self-collision in sphere model.
+      2026-06-01 manually adjusted with Doosan DART after gripper-centered
+      retuning. The cell is framed so the gripper, not only the camera optical
+      center, is horizontally aligned for approach. DART task pose x=312.61mm
+      y=302.83mm z=529.32mm rx=89.90 ry=86.29 rz=-89.62. Screenshot evidence
+      order 3/4 from 2026-06-01.
+    dart_tcp_pose_base_mm_deg: [312.61, 302.83, 529.32, 89.90, 86.29, -89.62]
     tcp_transform_base:
     - - 0.01253526
       - -0.99799566
       - 0.06202848
-      - 0.28456262
+      - 0.31261
     - - 0.38132321
       - 0.06211661
       - 0.92235250
-      - 0.34662181
+      - 0.30283
     - - -0.92435679
       - 0.01209097
       - 0.38133755
-      - 0.34325516
+      - 0.52932
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     endpoint_joints_deg:
-    - 34.4
-    - 14.7
-    - 125.8
-    - 133.3
-    - 86.0
-    - 120.8
+    - 22.71
+    - -4.6
+    - 103.56
+    - 97.69
+    - 68.16
+    - -190.82
     joint_range_deg:
       J1:
-      - 34.4
+      - 22.71
       - 87.98
       J2:
       - -94.92
-      - 14.7
+      - -4.6
       J3:
-      - 125.8
+      - 103.56
       - 129.89
       J4:
-      - 133.3
+      - 97.69
       - 175.94
       J5:
       - -31.34
-      - 86.0
+      - 68.16
       J6:
+      - -190.82
       - 93.42
-      - 120.8
     use_for_automated_motion: true
   workspace_reset_registration_evidence: docs/runs/RUN-20260528-008_panel_landmark_workspace_reset_corrected.yaml

@@ -60,6 +60,29 @@ JOG_MAX_PERCENT = float(os.environ.get("DASHBOARD_JOG_MAX_PERCENT", "20.0"))
 MOVEJ_MAX_VEL = float(os.environ.get("DASHBOARD_MOVEJ_MAX_VEL", "30.0"))
 MOVEJ_MAX_ACC = float(os.environ.get("DASHBOARD_MOVEJ_MAX_ACC", "40.0"))
 JOG_WATCHDOG_S = float(os.environ.get("DASHBOARD_JOG_WATCHDOG_S", "0.35"))
+DASHBOARD_JOINT_GUARD = os.environ.get("DASHBOARD_JOINT_GUARD", "true").lower() == "true"
+JOINT_GUARD_MARGIN_DEG = float(os.environ.get("DASHBOARD_JOINT_GUARD_MARGIN_DEG", "8.0"))
+JOINT_GUARD_CLEAR_MARGIN_DEG = float(
+    os.environ.get("DASHBOARD_JOINT_GUARD_CLEAR_MARGIN_DEG", "12.0")
+)
+DASHBOARD_CLEAR_PENDING_ON_START = (
+    os.environ.get("DASHBOARD_CLEAR_PENDING_ON_START", "true").lower() == "true"
+)
+
+# Dashboard jog guard limits. J1/J4/J6 can legitimately wrap past +/-180 in
+# DART/Doosan reports, so do not reuse the tighter scan-planner operational
+# limits here. The goal is only to stop before controller hard-limit trouble.
+_OP_LIMITS_DEG = [
+    (-350.0, 350.0),
+    # The current validated overview pose sits around J2=-94.92 deg. Do not
+    # lock dashboard TCP jog at startup just because the taught home pose is
+    # near the conservative scan-planner operational boundary.
+    (-110.0, 110.0),
+    (-150.0, 150.0),
+    (-350.0, 350.0),
+    (-128.0, 128.0),
+    (-350.0, 350.0),
+]
 
 _TELEOP_TO_JOG = {
     "forward": (6, 1.0),
@@ -243,6 +266,12 @@ class ROS2Bridge(Node):
         self._last_gripper_sent_at = ""
         self._last_jog_time = 0.0
         self._jog_active = False
+        self._joint_guard_locked = False
+        self._joint_guard_reason = ""
+        self._joint_guard_last_message = ""
+
+        if DASHBOARD_CLEAR_PENDING_ON_START:
+            self._discard_pending_commands_on_start()
 
         self.create_subscription(JointState, "/dsr01/joint_states",
                                  self._joint_cb, 10)
@@ -278,8 +307,13 @@ class ROS2Bridge(Node):
                 self.create_timer(0.05, self._poll_teleop_command)
                 self.create_timer(0.10, self._jog_watchdog)
                 self.get_logger().warn(
-                    "Dashboard jog enabled: /dsr01/motion/jog, BASE frame, max %.1f%%"
-                    % JOG_MAX_PERCENT
+                    "Dashboard jog enabled: /dsr01/motion/jog, BASE frame, max %.1f%%, joint_guard=%s margin=%.1f°, clear_pending_on_start=%s"
+                    % (
+                        JOG_MAX_PERCENT,
+                        DASHBOARD_JOINT_GUARD,
+                        JOINT_GUARD_MARGIN_DEG,
+                        DASHBOARD_CLEAR_PENDING_ON_START,
+                    )
                 )
             if DASHBOARD_ENABLE_MOVEJ:
                 self.create_timer(0.10, self._poll_joint_command)
@@ -317,11 +351,103 @@ class ROS2Bridge(Node):
             f"ROS2 Bridge 시작 — 상태:{STATE_FILE}  MJPEG:{MJPEG_PORT}"
         )
 
+    def _discard_pending_commands_on_start(self) -> None:
+        """Prevent stale dashboard commands from executing after a restart."""
+        if not STATE_FILE.exists():
+            return
+        try:
+            state = json.loads(STATE_FILE.read_text())
+        except Exception:
+            return
+
+        stale = []
+        teleop = state.get("pending_teleop_command") or {}
+        joint = state.get("pending_joint_command") or {}
+        grip = state.get("gripper") or {}
+        if teleop.get("sent_at"):
+            self._last_teleop_sent_at = str(teleop.get("sent_at"))
+            stale.append("teleop")
+        if joint.get("sent_at"):
+            self._last_joint_sent_at = str(joint.get("sent_at"))
+            stale.append("joint")
+        if grip.get("sent_at"):
+            self._last_gripper_sent_at = str(grip.get("sent_at"))
+            stale.append("gripper")
+
+        state["pending_teleop_command"] = None
+        state["pending_joint_command"] = None
+        state["pending_tcp_command"] = None
+        state["status"] = "idle"
+        state["robot_error"] = ""
+        if stale:
+            self._push_message(
+                state,
+                "dashboard startup: stale pending commands discarded (%s)"
+                % ", ".join(stale),
+                "warning",
+            )
+        try:
+            tmp = STATE_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+            os.replace(tmp, STATE_FILE)
+        except Exception as exc:
+            self.get_logger().warn(f"startup pending command clear failed: {exc}")
+
     def _joint_cb(self, msg: JointState):
         name_pos = {n: p for n, p in zip(msg.name, msg.position)}
         arm = [name_pos.get(j, 0.0) for j in _JOINT_NAMES]
         with self._lock:
             self._joint_deg = [round(math.degrees(v), 2) for v in arm]
+            self._update_joint_guard_locked()
+
+    def _joint_guard_hits(self, margin_deg: float):
+        hits = []
+        for idx, (value, (lo, hi)) in enumerate(zip(self._joint_deg, _OP_LIMITS_DEG), start=1):
+            low_dist = value - lo
+            high_dist = hi - value
+            if low_dist <= margin_deg:
+                hits.append((idx, value, lo, "low", low_dist))
+            if high_dist <= margin_deg:
+                hits.append((idx, value, hi, "high", high_dist))
+        return hits
+
+    def _format_joint_guard_reason(self, hits) -> str:
+        parts = []
+        for idx, value, limit, side, dist in hits[:3]:
+            direction = "하한" if side == "low" else "상한"
+            parts.append(
+                "J%d %.1f° %s %.1f°까지 %.1f°"
+                % (idx, value, direction, limit, max(0.0, dist))
+            )
+        if len(hits) > 3:
+            parts.append("외 %d개" % (len(hits) - 3))
+        return "; ".join(parts)
+
+    def _update_joint_guard_locked(self) -> None:
+        if not DASHBOARD_JOINT_GUARD:
+            self._joint_guard_locked = False
+            self._joint_guard_reason = ""
+            return
+
+        hits = self._joint_guard_hits(JOINT_GUARD_MARGIN_DEG)
+        if hits:
+            reason = self._format_joint_guard_reason(hits)
+            if not self._joint_guard_locked:
+                self.get_logger().warn(
+                    "Dashboard joint guard locked TCP jog: %s" % reason
+                )
+            self._joint_guard_locked = True
+            self._joint_guard_reason = reason
+            return
+
+        if self._joint_guard_locked:
+            clear_hits = self._joint_guard_hits(JOINT_GUARD_CLEAR_MARGIN_DEG)
+            if clear_hits:
+                self._joint_guard_reason = self._format_joint_guard_reason(clear_hits)
+                return
+            self.get_logger().warn("Dashboard joint guard cleared; TCP jog unlocked")
+            self._joint_guard_locked = False
+            self._joint_guard_reason = ""
 
     def _poll_tcp(self):
         if self._tcp_pending or not self._pose_cli.service_is_ready():
@@ -388,6 +514,16 @@ class ROS2Bridge(Node):
             command = str(cmd.get("command", "stop"))
             if command == "stop":
                 self._stop_jog()
+                return
+
+            with self._lock:
+                guard_locked = self._joint_guard_locked
+                guard_reason = self._joint_guard_reason
+            if guard_locked:
+                self._stop_jog()
+                self.get_logger().warn(
+                    "TCP jog blocked by joint guard: %s" % guard_reason
+                )
                 return
 
             axis_sign = _TELEOP_TO_JOG.get(command)
@@ -533,7 +669,37 @@ class ROS2Bridge(Node):
                 if self._tcp_ready:
                     s["tcp_pose"] = list(self._tcp_pose)
                 s["robot_ready"] = True
-                s["robot_error"] = ""
+                if self._joint_guard_locked:
+                    s["status"] = "error"
+                    s["robot_error"] = "TCP jog locked: " + self._joint_guard_reason
+                    s["joint_guard"] = {
+                        "enabled": DASHBOARD_JOINT_GUARD,
+                        "locked": True,
+                        "reason": self._joint_guard_reason,
+                        "margin_deg": JOINT_GUARD_MARGIN_DEG,
+                        "clear_margin_deg": JOINT_GUARD_CLEAR_MARGIN_DEG,
+                    }
+                    if not self._joint_guard_last_message:
+                        self._push_message(
+                            s,
+                            "TCP jog 잠금 — 관절한도 근접: " + self._joint_guard_reason,
+                            "warning",
+                        )
+                        self._joint_guard_last_message = "locked"
+                else:
+                    if s.get("joint_guard", {}).get("locked"):
+                        self._push_message(s, "TCP jog 잠금 해제 — 관절 여유 범위 복귀", "success")
+                    if str(s.get("robot_error", "")).startswith("TCP jog locked"):
+                        s["status"] = "idle"
+                    s["robot_error"] = ""
+                    s["joint_guard"] = {
+                        "enabled": DASHBOARD_JOINT_GUARD,
+                        "locked": False,
+                        "reason": "",
+                        "margin_deg": JOINT_GUARD_MARGIN_DEG,
+                        "clear_margin_deg": JOINT_GUARD_CLEAR_MARGIN_DEG,
+                    }
+                    self._joint_guard_last_message = ""
                 if self._last_scan_status:
                     status_text = self._last_scan_status
                     self._last_scan_status = ""
