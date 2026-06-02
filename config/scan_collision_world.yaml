@@ -1,6 +1,6 @@
 scan_collision_world:
   version: v2_refit_rviz_confirmed_whiteboard
-  status: workspace_reset_pending_manual_scan_teach
+  status: workspace_reset_visual_fit_to_gripper_centered_teach_2026_06_02
   frame_id: base_link
   source_registration: config/panel_registration.yaml
   robot_geometry_source_local: ~/doosan_ws/src/e0509_gripper_description/config/curobo
@@ -32,9 +32,9 @@ scan_collision_world:
     type: cuboid
     enabled: true
     pose_wxyz:
-    - 0.128800218
-    - 0.413593194
-    - 0.676360575
+    - 0.061340843
+    - 0.414224231
+    - 0.737251664
     - 0.715925845
     - 0.698067885
     - -0.010926819

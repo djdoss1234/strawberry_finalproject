@@ -17,10 +17,10 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/Axes
       Enabled: true
-      Length: 0.2
-      Name: Cultivation Panel Origin
-      Radius: 0.01
-      Reference Frame: <Fixed Frame>
+      Length: 0.25
+      Name: Base Link Axes
+      Radius: 0.012
+      Reference Frame: base_link
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
@@ -32,9 +32,9 @@ Visualization Manager:
         Value: /strawberry/exploration/workspace_cells
       Name: Quadtree Workspace Cells
       Namespaces:
-        next_scan_cell: true
+        workspace_cell_centers: true
+        workspace_cell_labels: true
         workspace_cells: true
-        workspace_labels: true
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
@@ -44,11 +44,13 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /strawberry/scan_poses/tcp_preview
-      Name: v4 Scan Pose TCP Preview
+      Name: v12 Scan TCP And Camera Preview
       Namespaces:
-        v4_tcp_arrows: true
-        v4_tcp_spheres: true
-        v4_tcp_labels: true
+        v12_base_link_label: true
+        v12_camera_center: true
+        v12_camera_optical_axis: true
+        v12_gripper_forward_axis: true
+        v12_scan_tcp_position: true
       Value: true
   Global Options:
     Background Color: 35; 35; 35

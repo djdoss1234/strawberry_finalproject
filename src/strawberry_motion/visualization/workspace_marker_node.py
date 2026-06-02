@@ -99,8 +99,10 @@ class WorkspaceMarkerNode(Node):
 
         cells = list(self.tree.leaf_cells())
         for index, cell in enumerate(cells):
-            marker_array.markers.append(self._cell_outline_marker(cell, index * 2))
-            marker_array.markers.append(self._cell_label_marker(cell, index * 2 + 1))
+            base_id = index * 3
+            marker_array.markers.append(self._cell_outline_marker(cell, base_id))
+            marker_array.markers.append(self._cell_center_marker(cell, base_id + 1))
+            marker_array.markers.append(self._cell_label_marker(cell, base_id + 2))
         if self.config.preview_standoff_m is not None:
             for index, preview in enumerate(
                 generate_observation_pose_previews(cells, self.config.preview_standoff_m)
@@ -109,8 +111,9 @@ class WorkspaceMarkerNode(Node):
                 marker_array.markers.append(self._scan_camera_preview_marker(preview, 21000 + index))
 
         next_cell = self.tree.next_scan_cell()
-        if next_cell is not None:
-            marker_array.markers.append(self._next_cell_marker(next_cell))
+        # Keep /next_cell for logs/automation, but do not draw the magenta dot in
+        # RViz. The scan-pose preview already shows the physically taught TCP
+        # targets and the extra dot made the validation view noisy.
         self.marker_publisher.publish(marker_array)
 
         selection = String()
@@ -142,21 +145,22 @@ class WorkspaceMarkerNode(Node):
         ]
         return marker
 
-    def _cell_label_marker(self, cell: QuadtreeCell, marker_id: int) -> Marker:
-        marker = self._base_marker("workspace_labels", marker_id, Marker.TEXT_VIEW_FACING)
-        marker.scale.z = 0.035
-        marker.color.r = marker.color.g = marker.color.b = marker.color.a = 1.0
+    def _cell_center_marker(self, cell: QuadtreeCell, marker_id: int) -> Marker:
+        marker = self._base_marker("workspace_cell_centers", marker_id, Marker.SPHERE)
         marker.pose.position.x, marker.pose.position.y = cell.center
-        marker.pose.position.z = 0.01
-        marker.text = "%s\n%s" % (cell.cell_id, cell.state.value)
+        marker.pose.position.z = 0.008
+        marker.scale.x = marker.scale.y = marker.scale.z = 0.018
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.85, 0.0, 1.0)
         return marker
 
-    def _next_cell_marker(self, cell: QuadtreeCell) -> Marker:
-        marker = self._base_marker("next_scan_cell", 10000, Marker.SPHERE)
+    def _cell_label_marker(self, cell: QuadtreeCell, marker_id: int) -> Marker:
+        marker = self._base_marker("workspace_cell_labels", marker_id, Marker.TEXT_VIEW_FACING)
         marker.pose.position.x, marker.pose.position.y = cell.center
-        marker.pose.position.z = 0.015
-        marker.scale.x = marker.scale.y = marker.scale.z = 0.025
-        marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.0, 1.0, 1.0)
+        marker.pose.position.y -= 0.045
+        marker.pose.position.z = 0.018
+        marker.scale.z = 0.045
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = (1.0, 0.85, 0.0, 1.0)
+        marker.text = cell.cell_id.split("/")[-1].upper()
         return marker
 
     def _scan_pose_preview_marker(

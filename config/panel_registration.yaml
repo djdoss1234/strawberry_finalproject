@@ -1,7 +1,7 @@
 panel_registration:
   frame_id: cultivation_panel
   parent_frame_id: base_link
-  status: workspace_reset_measured_pending_manual_scan_teach
+  status: workspace_reset_visual_fit_to_gripper_centered_teach_2026_06_02
   capture_date: '2026-05-27'
   method: eye_in_hand_calibration_plus_aligned_depth
   calibration_file_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
@@ -33,6 +33,28 @@ panel_registration:
     workspace_reset_rms_error_mm: 8.689
     workspace_reset_max_error_mm: 12.608
     workspace_reset_max_abs_plane_offset_mm: 3.627
+    manual_lateral_centering_override_2026_06_02:
+      reason: superseded_by_gripper_centered_teach_fit; base_x_zero_made_tcp_projection_misaligned
+      old_base_x_m: 0.105750565
+      intermediate_base_x_m: 0.0
+      scope: superseded_rviz_only_attempt
+    gripper_centered_teach_fit_2026_06_02:
+      reason: fit cultivation_panel origin so taught scan TCP projections align with
+        four cell centers
+      source: config/scan_pose_candidates_refit_candidate.yaml v12 taught TCP positions
+      panel_xy_shift_m:
+      - 0.038737
+      - 0.060612
+      old_translation_m:
+        x: 0.0
+        y: 0.403502889
+        z: 0.651442725
+      new_translation_m:
+        x: 0.03829119
+        y: 0.404133926
+        z: 0.712333814
+      scope: rviz_panel_tf_and_offline_visualization; robot execution still uses taught
+        endpoint_joints_deg
   refit_rviz_review:
     evidence_image_local: /home/user/Pictures/Screenshot from 2026-05-27 16-49-14.png
     result: RVIZ_DISPLAY_CONFIRMED
@@ -40,9 +62,9 @@ panel_registration:
       in RViz. This confirms display orientation only and is not physical motion authorization.
   transform:
     translation_m:
-      x: 0.105750565
-      y: 0.403502889
-      z: 0.651442725
+      x: 0.03829119
+      y: 0.404133926
+      z: 0.712333814
     rotation_xyzw:
       x: 0.698067885
       y: -0.010926819
@@ -52,15 +74,15 @@ panel_registration:
     - - 0.999697176
       - -0.007153441
       - -0.023545375
-      - 0.105750565
+      - 0.03829119
     - - -0.023357206
       - 0.025338422
       - -0.999406026
-      - 0.403502889
+      - 0.404133926
     - - 0.007745795
       - 0.999653336
       - 0.025163664
-      - 0.651442725
+      - 0.712333814
     - - 0.0
       - 0.0
       - 0.0

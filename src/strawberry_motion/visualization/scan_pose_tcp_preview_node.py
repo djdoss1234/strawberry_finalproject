@@ -1,25 +1,19 @@
-"""Publish active scan pose TCP/camera candidates as RViz markers in base_link.
+"""Publish a clean RViz preview of the active v12 scan poses.
 
-Reads scan_pose_candidates_refit_candidate.yaml and publishes per-cell markers:
-  - TCP/gripper frame axes from the taught base_link transform
-  - camera optical axis derived from eye-in-hand calibration
-  - optional gray line from TCP position to cell center for task-frame context
+Reads scan_pose_candidates_refit_candidate.yaml and publishes only the markers
+needed for physical scan-pose validation:
+  - green sphere: taught scan TCP position executed by MoveJoint
+  - green sphere/arrow: taught scan TCP and gripper forward axis
+  - cyan sphere/arrow: camera center and camera optical +Z axis
+  - base_link label near the RViz base axes
 
-This preview is intentionally tied to the current v12 gripper-centered poses.
-Older camera-centered generated preview markers are disabled in workspace.yaml.
-
-Color coding:
-  PHYSICAL_VIEW_CONFIRMED* -> green
-  PLAN_VALID               -> green
-  IK_FAIL*                 -> red
-  anything else -> orange
-
-Run standalone (no ROS2):
-  python3 -m strawberry_motion.visualization.scan_pose_tcp_preview_node --once
+Per-cell TCP coordinate labels are intentionally hidden to keep the validation
+view clean. Older camera-centered generated preview markers are disabled in
+workspace.yaml.
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import yaml
@@ -45,15 +39,11 @@ _STATUS_COLOR = {
     "IK_FAIL_USE_ALTERNATIVE": (1.0, 0.5, 0.0, 0.9),  # orange
 }
 _DEFAULT_COLOR = (1.0, 0.5, 0.0, 0.9)
-_AXIS_LEN_M = 0.14
-_CAM_AXIS_LEN_M = 0.18
-_TASK_LINE_COLOR = (0.6, 0.6, 0.6, 0.55)
-_TCP_AXIS_COLORS = {
-    "x": (1.0, 0.1, 0.1, 0.85),
-    "y": (0.1, 0.9, 0.1, 0.85),
-    "z": (0.1, 0.35, 1.0, 0.85),
-}
+_CAM_AXIS_LEN_M = 0.14
+_TCP_COLOR = (0.1, 0.9, 0.2, 0.95)
+_TCP_AXIS_LEN_M = 0.12
 _CAM_COLOR = (0.0, 0.9, 1.0, 0.9)
+_LABEL_COLOR = (1.0, 1.0, 1.0, 0.95)
 
 
 def _cell_center_base(panel_T: np.ndarray, cell_id: str) -> np.ndarray:
@@ -108,6 +98,7 @@ def _load_active_targets(candidates_path: Path, registration_path: Path):
                 "approach": t.get("approach", "?"),
                 "camera_mat4": camera_mat4,
                 "joints": t.get("endpoint_joints_deg", []),
+                "panel_T": panel_T,
             }
         )
     return result
@@ -148,39 +139,28 @@ class ScanPoseTcpPreviewNode(Node):
             cell_id = target["cell_id"]
             tcp_pos = target["tcp_pos"]
             tcp_mat4 = target["tcp_mat4"]
-            cell_center = target["cell_center"]
-            status = target["status"]
-            approach = target["approach"]
-            color = _STATUS_COLOR.get(status, _DEFAULT_COLOR)
-            if str(status).startswith("PHYSICAL_VIEW_CONFIRMED"):
-                color = _STATUS_COLOR["PLAN_VALID"]
-
-            # Thin task-context line: TCP position -> cell center.
-            task_line = self._arrow_marker(
-                "v12_tcp_to_cell_center",
-                marker_id,
-                tcp_pos,
-                cell_center,
-                _TASK_LINE_COLOR,
-                scale=(0.004, 0.010, 0.014),
+            # TCP position actually sent by YAML MoveJoint.
+            sphere = self._sphere_marker(
+                "v12_scan_tcp_position", marker_id, tcp_pos, _TCP_COLOR, 0.035
             )
             marker_id += 1
-            ma.markers.append(task_line)
+            ma.markers.append(sphere)
 
-            # TCP/gripper axes. These show the actual taught gripper frame, not
-            # the old camera-centered generated pose.
-            for axis_i, axis_name in enumerate(("x", "y", "z")):
-                axis_tip = tcp_pos + tcp_mat4[:3, axis_i] * _AXIS_LEN_M
-                axis = self._arrow_marker(
-                    "v12_tcp_axes",
-                    marker_id,
-                    tcp_pos,
-                    axis_tip,
-                    _TCP_AXIS_COLORS[axis_name],
-                    scale=(0.008, 0.018, 0.024),
-                )
-                marker_id += 1
-                ma.markers.append(axis)
+            # The gripper/tool approach direction is the TCP +X axis in the
+            # current gripper_rh frame convention. This is the important axis
+            # for gripper-centered scan validation; camera optical direction is
+            # shown separately in cyan.
+            tcp_forward_tip = tcp_pos + tcp_mat4[:3, 0] * _TCP_AXIS_LEN_M
+            tcp_forward = self._arrow_marker(
+                "v12_gripper_forward_axis",
+                marker_id,
+                tcp_pos,
+                tcp_forward_tip,
+                _TCP_COLOR,
+                scale=(0.006, 0.014, 0.020),
+            )
+            marker_id += 1
+            ma.markers.append(tcp_forward)
 
             camera_mat4 = target.get("camera_mat4")
             if camera_mat4 is not None:
@@ -192,45 +172,18 @@ class ScanPoseTcpPreviewNode(Node):
                     cam_pos,
                     cam_tip,
                     _CAM_COLOR,
-                    scale=(0.008, 0.018, 0.024),
+                    scale=(0.006, 0.014, 0.020),
                 )
                 marker_id += 1
                 ma.markers.append(cam_arrow)
 
                 cam_sphere = self._sphere_marker(
-                    "v12_camera_centers", marker_id, cam_pos, _CAM_COLOR, 0.030
+                    "v12_camera_center", marker_id, cam_pos, _CAM_COLOR, 0.022
                 )
                 marker_id += 1
                 ma.markers.append(cam_sphere)
 
-            # Sphere at TCP position
-            sphere = self._sphere_marker(
-                "v12_tcp_centers", marker_id, tcp_pos, color, 0.040
-            )
-            marker_id += 1
-            ma.markers.append(sphere)
-
-            # Label at TCP position
-            text = Marker()
-            text.header.frame_id = "base_link"
-            text.header.stamp = self.get_clock().now().to_msg()
-            text.ns = "v12_tcp_labels"
-            text.id = marker_id
-            marker_id += 1
-            text.type = Marker.TEXT_VIEW_FACING
-            text.action = Marker.ADD
-            text.pose.position.x = tcp_pos[0]
-            text.pose.position.y = tcp_pos[1]
-            text.pose.position.z = tcp_pos[2] + 0.06
-            text.pose.orientation.w = 1.0
-            text.scale.z = 0.035
-            text.color.r = text.color.g = text.color.b = text.color.a = 1.0
-            text.text = (
-                "%s\n%s [%s]\nTCP base [%.3f %.3f %.3f]"
-                % (cell_id, status, approach, tcp_pos[0], tcp_pos[1], tcp_pos[2])
-            )
-            ma.markers.append(text)
-
+        ma.markers.append(self._base_link_label(marker_id))
         self._pub.publish(ma)
         self.get_logger().debug("Published %d v12 TCP/camera marker groups" % len(targets))
 
@@ -279,6 +232,41 @@ class ScanPoseTcpPreviewNode(Node):
         marker.scale.x = marker.scale.y = marker.scale.z = diameter_m
         marker.color.r, marker.color.g, marker.color.b, marker.color.a = color
         return marker
+
+
+    def _text_marker(
+        self,
+        namespace: str,
+        marker_id: int,
+        xyz: np.ndarray,
+        text_value: str,
+        height_m: float,
+    ) -> Marker:
+        marker = Marker()
+        marker.header.frame_id = "base_link"
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = namespace
+        marker.id = marker_id
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        marker.pose.position.x = float(xyz[0])
+        marker.pose.position.y = float(xyz[1])
+        marker.pose.position.z = float(xyz[2])
+        marker.pose.orientation.w = 1.0
+        marker.scale.z = height_m
+        marker.color.r, marker.color.g, marker.color.b, marker.color.a = _LABEL_COLOR
+        marker.text = text_value
+        return marker
+
+    def _base_link_label(self, marker_id: int) -> Marker:
+        return self._text_marker(
+            "v12_base_link_label",
+            marker_id,
+            np.array([0.055, 0.0, 0.055]),
+            "base_link",
+            0.035,
+        )
+
 
 
 def main(args=None) -> None:

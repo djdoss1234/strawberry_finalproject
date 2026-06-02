@@ -18,30 +18,47 @@ camera optical axis.
 Updated:
 
 - `src/strawberry_motion/visualization/scan_pose_tcp_preview_node.py`
+- `src/strawberry_motion/visualization/workspace_marker_node.py`
+- `rviz/workspace_exploration.rviz`
 
 Before:
 
-- loaded `config/scan_pose_candidates.yaml`
-- displayed old v4/v6-style TCP-to-cell arrows
-- label/namespace still said `v4`
+- loaded old camera-centered/generated preview assumptions
+- showed multiple TCP axes, TCP-to-cell lines, coordinate/status labels, and
+  extra marker text that made the validation view hard to read
 
 After:
 
-- loads `config/scan_pose_candidates_refit_candidate.yaml`
-- uses active v12 `tcp_transform_base`
-- draws:
-  - TCP/gripper frame axes in `base_link`
-    - X: red
-    - Y: green
-    - Z: blue
-  - camera optical axis from eye-in-hand calibration
-  - TCP center sphere
-  - camera center sphere
-  - thin gray TCP-to-cell-center context line
-  - label with `cell_id`, status, approach, and TCP base position
+- loads active `config/scan_pose_candidates_refit_candidate.yaml` v12 taught poses
+- shows only the markers needed for scan-pose validation:
+  - yellow dot: cell center
+  - `NW` / `NE` / `SE` / `SW`: cell name below each center
+  - green dot: taught TCP position executed by MoveJoint
+  - green arrow: gripper/tool forward axis
+  - cyan dot/arrow: camera center and camera optical direction from eye-in-hand calibration
+  - `base_link` label near the base axes
+- removes TCP projection dot, TCP coordinate labels, marker legend text, and stale
+  generated camera preview markers
 
-This makes RViz show the current gripper-centered scan geometry instead of the
-old optical-center-only assumption.
+This makes RViz a clean reference view for the current gripper-centered scan
+geometry. It is a diagnostic visualization, not a motion authorization signal.
+
+### Panel TF Visual Fit
+
+Updated:
+
+- `config/panel_registration.yaml`
+- `config/scan_collision_world.yaml`
+
+A temporary `base_link` lateral-X centering override made the cell centers look
+centered globally, but it did not match the four physically taught scan TCP
+poses. The active panel transform was therefore re-fit using the v12 taught TCP
+positions projected onto the paper plane.
+
+After the fit, the taught TCP projections are within roughly 1-3cm of the four
+cell centers in the panel frame. Robot execution still uses the taught
+`endpoint_joints_deg`; this registration update is for RViz/offline world
+consistency.
 
 ### Old Generated Camera Preview Disabled
 
