@@ -90,6 +90,26 @@ def generate_launch_description() -> LaunchDescription:
                 description="cuRobo planning retries for runtime preview logging.",
             ),
             DeclareLaunchArgument(
+                "enable_fusion_detection",
+                default_value="false",
+                description="Start strawberry_fusion_node (seg+pose dual YOLO). Requires RealSense + model weights.",
+            ),
+            DeclareLaunchArgument(
+                "fusion_seg_model",
+                default_value="~/Downloads/share_yolo/share_yolo/strawberry_seg_best.pt",
+                description="Path to seg YOLO weights (ripe/unripe/sick).",
+            ),
+            DeclareLaunchArgument(
+                "fusion_pose_model",
+                default_value="~/Downloads/share_yolo/share_yolo/strawberry_pose_best.pt",
+                description="Path to pose YOLO weights (3 stem keypoints).",
+            ),
+            DeclareLaunchArgument(
+                "fusion_show_display",
+                default_value="true",
+                description="Show OpenCV fusion visualization window.",
+            ),
+            DeclareLaunchArgument(
                 "enable_moveit",
                 default_value="false",
                 description="Also start MoveIt move_group for parallel planning-scene/trajectory checks.",
@@ -138,6 +158,20 @@ def generate_launch_description() -> LaunchDescription:
                 executable="rviz2",
                 name="workspace_rviz",
                 arguments=["-d", str(rviz_config)],
+                output="screen",
+            ),
+            Node(
+                package="e0509_gripper_description",
+                executable="strawberry_fusion_node.py",
+                name="strawberry_fusion_node",
+                condition=IfCondition(LaunchConfiguration("enable_fusion_detection")),
+                parameters=[
+                    {
+                        "seg_model": LaunchConfiguration("fusion_seg_model"),
+                        "pose_model": LaunchConfiguration("fusion_pose_model"),
+                        "show_display": LaunchConfiguration("fusion_show_display"),
+                    }
+                ],
                 output="screen",
             ),
             IncludeLaunchDescription(
