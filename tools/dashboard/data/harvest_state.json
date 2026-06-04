@@ -9,11 +9,6 @@
     {
       "time": "16:30:04",
       "level": "warning",
-      "text": "TCP jog 잠금 — 관절한도 근접: J4 258.2° 상한 170.0°까지 0.0°"
-    },
-    {
-      "time": "16:30:04",
-      "level": "warning",
       "text": "TCP jog 잠금 — 관절한도 근접: J4 258.3° 상한 170.0°까지 0.0°"
     },
     {
@@ -105,26 +100,31 @@
       "time": "10:24:58",
       "level": "warning",
       "text": "dashboard startup: stale pending commands discarded (joint)"
+    },
+    {
+      "time": "12:43:16",
+      "level": "warning",
+      "text": "dashboard startup: stale pending commands discarded (teleop)"
     }
   ],
   "status": "idle",
   "robot_ready": true,
   "robot_error": "",
   "joint_angles": [
-    150.27,
-    -11.92,
-    109.11,
-    -97.81,
-    63.33,
-    10.46
+    144.09,
+    22.9,
+    -1.0,
+    -238.52,
+    -75.31,
+    108.68
   ],
   "tcp_pose": [
-    150.27,
-    -11.92,
-    109.11,
-    -97.81,
-    63.33,
-    10.46
+    144.15,
+    23.4,
+    -2.04,
+    -238.46,
+    -75.61,
+    108.22
   ],
   "target_count": 15,
   "attempt_history": [],
@@ -144,7 +144,7 @@
   },
   "pending_joint_command": null,
   "pending_tcp_command": null,
-  "last_updated": "2026-06-02T10:27:10.314600",
+  "last_updated": "2026-06-04T14:24:49.009341",
   "gripper": {
     "position": 5.4,
     "raw_pos": 700,
