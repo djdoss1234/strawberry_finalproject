@@ -571,7 +571,8 @@ class ScanExecutorNode(Node):
     def _deduplicate_poses(
         poses: List[PoseStamped], min_dist_m: float = 0.030
     ) -> List[PoseStamped]:
-        """Remove poses within min_dist_m of an already-kept pose (keep first occurrence)."""
+        """Remove poses within min_dist_m of an already-kept pose, then sort
+        left-to-right / top-to-bottom in wall frame (X asc, Z desc)."""
         kept: List[PoseStamped] = []
         for p in poses:
             pos = np.array([p.pose.position.x, p.pose.position.y, p.pose.position.z])
@@ -582,6 +583,13 @@ class ScanExecutorNode(Node):
                 for k in kept
             ):
                 kept.append(p)
+        # Sort: top row first (Z desc), left-to-right within each row (X asc).
+        # Bin into two Z rows so minor depth noise doesn't break the ordering.
+        if len(kept) > 1:
+            zs = [p.pose.position.z for p in kept]
+            z_mid = (max(zs) + min(zs)) / 2.0
+            kept.sort(key=lambda p: (-1 if p.pose.position.z >= z_mid else 1,
+                                     p.pose.position.x))
         return kept
 
     def _wait_for_planner(self, timeout_sec: float = 60.0) -> bool:
