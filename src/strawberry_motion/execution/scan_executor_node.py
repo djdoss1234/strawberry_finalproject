@@ -583,13 +583,25 @@ class ScanExecutorNode(Node):
                 for k in kept
             ):
                 kept.append(p)
-        # Sort: top row first (Z desc), left-to-right within each row (X asc).
-        # Bin into two Z rows so minor depth noise doesn't break the ordering.
+        # Sort into 4 quadrants: NW(0) → NE(1) → SE(2) → SW(3)
+        # Within each quadrant: X asc (left→right), Z desc (top→bottom)
         if len(kept) > 1:
+            xs = [p.pose.position.x for p in kept]
             zs = [p.pose.position.z for p in kept]
+            x_mid = (max(xs) + min(xs)) / 2.0
             z_mid = (max(zs) + min(zs)) / 2.0
-            kept.sort(key=lambda p: (-1 if p.pose.position.z >= z_mid else 1,
-                                     p.pose.position.x))
+
+            def _quadrant(p):
+                x, z = p.pose.position.x, p.pose.position.z
+                if z >= z_mid and x <= x_mid:
+                    return 0  # NW
+                if z >= z_mid and x > x_mid:
+                    return 1  # NE
+                if z < z_mid and x > x_mid:
+                    return 2  # SE
+                return 3      # SW
+
+            kept.sort(key=lambda p: (_quadrant(p), p.pose.position.x, -p.pose.position.z))
         return kept
 
     def _wait_for_planner(self, timeout_sec: float = 60.0) -> bool:
