@@ -80,6 +80,11 @@ def generate_launch_description() -> LaunchDescription:
                 description="Forward detected pick poses to the pick executor after each scan dwell.",
             ),
             DeclareLaunchArgument(
+                "return_to_overview_at_end",
+                default_value="true",
+                description="Return to verified overview pose after scan sequence. Set false for harvest/VLA recovery experiments.",
+            ),
+            DeclareLaunchArgument(
                 "enable_runtime_curobo_preview",
                 default_value="false",
                 description="Compute and log a cuRobo runtime plan before each cell move; execution still uses YAML MoveJoint.",
@@ -206,6 +211,9 @@ def generate_launch_description() -> LaunchDescription:
                         ),
                         "enable_pick_integration": LaunchConfiguration(
                             "enable_pick_integration"
+                        ),
+                        "return_to_overview_at_end": LaunchConfiguration(
+                            "return_to_overview_at_end"
                         ),
                         "enable_runtime_curobo_preview": LaunchConfiguration(
                             "enable_runtime_curobo_preview"

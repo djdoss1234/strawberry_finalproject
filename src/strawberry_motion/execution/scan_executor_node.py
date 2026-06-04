@@ -142,6 +142,7 @@ class ScanExecutorNode(Node):
             "movej_service_timeout_sec", _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC
         )
         self.declare_parameter("enable_pick_integration", True)
+        self.declare_parameter("return_to_overview_at_end", True)
         self.declare_parameter("enable_runtime_curobo_preview", False)
         self.declare_parameter("runtime_curobo_preview_retries", 2)
         self._execute_motion = bool(self.get_parameter("execute_motion").value)
@@ -162,6 +163,9 @@ class ScanExecutorNode(Node):
         )
         self._enable_pick_integration = bool(
             self.get_parameter("enable_pick_integration").value
+        )
+        self._return_to_overview_at_end = bool(
+            self.get_parameter("return_to_overview_at_end").value
         )
         self._runtime_curobo_preview_enabled = bool(
             self.get_parameter("enable_runtime_curobo_preview").value
@@ -604,6 +608,52 @@ class ScanExecutorNode(Node):
             kept.sort(key=lambda p: (_quadrant(p), p.pose.position.x, -p.pose.position.z))
         return kept
 
+    @staticmethod
+    def _group_poses_by_subcell(
+        poses: List[PoseStamped],
+    ) -> List[Tuple[str, List[PoseStamped]]]:
+        """Split detections inside the current scan cell into a logical 2x2 order.
+
+        The robot currently has one taught scan pose per root cell.  This helper
+        does not move the robot to four new sub-poses; it partitions the
+        detections from that single view so harvesting proceeds as:
+        parent/nw -> parent/ne -> parent/se -> parent/sw.
+        """
+        if not poses:
+            return []
+        if len(poses) == 1:
+            return [("nw", poses)]
+
+        xs = [p.pose.position.x for p in poses]
+        zs = [p.pose.position.z for p in poses]
+        x_mid = (max(xs) + min(xs)) / 2.0
+        z_mid = (max(zs) + min(zs)) / 2.0
+        groups: Dict[str, List[PoseStamped]] = {
+            "nw": [],
+            "ne": [],
+            "se": [],
+            "sw": [],
+        }
+        for pose in poses:
+            x, z = pose.pose.position.x, pose.pose.position.z
+            if z >= z_mid and x <= x_mid:
+                groups["nw"].append(pose)
+            elif z >= z_mid and x > x_mid:
+                groups["ne"].append(pose)
+            elif z < z_mid and x > x_mid:
+                groups["se"].append(pose)
+            else:
+                groups["sw"].append(pose)
+
+        ordered: List[Tuple[str, List[PoseStamped]]] = []
+        for subcell in ("nw", "ne", "se", "sw"):
+            subposes = groups[subcell]
+            if not subposes:
+                continue
+            subposes.sort(key=lambda p: (p.pose.position.x, -p.pose.position.z))
+            ordered.append((subcell, subposes))
+        return ordered
+
     def _wait_for_planner(self, timeout_sec: float = 60.0) -> bool:
         """Block until curobo_planner_node has subscribed to /dsr01/curobo/pick_pose."""
         deadline = time.time() + timeout_sec
@@ -875,19 +925,40 @@ class ScanExecutorNode(Node):
                     "TARGET_FOUND %s %d pick candidate(s) detected" % (cell_id, count)
                 )
                 if self._enable_pick_integration:
-                    self._trigger_picks_for_cell(cell_id, poses_snapshot)
+                    unique = self._deduplicate_poses(poses_snapshot)
+                    subgroups = self._group_poses_by_subcell(unique)
+                    subgroup_msg = "  ".join(
+                        "%s/%s:%d" % (cell_id, subcell, len(subposes))
+                        for subcell, subposes in subgroups
+                    )
+                    self._pub_status(
+                        "SUBCELL_SCAN_ORDER %s %s" % (cell_id, subgroup_msg)
+                    )
+                    for subcell, subposes in subgroups:
+                        logical_cell = "%s/%s" % (cell_id, subcell)
+                        self._pub_state(logical_cell, "SCANNING")
+                        completed = self._trigger_picks_for_cell(logical_cell, subposes)
+                        self._pub_state(
+                            logical_cell,
+                            "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                        )
             else:
                 self._pub_state(cell_id, "SCANNED_EMPTY")
                 self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
 
             # After picks (or empty cell) go directly to next scan pose from current
-            # position (curobo_planner left robot at HOME after last pick).
-            # Overview reset is done only at sequence end to prevent J6 wind-up over
-            # the full traversal.
+            # position. HOME/overview recovery is reserved for explicit recovery
+            # policy (e.g. future VLA after repeated failed pick attempts).
             if cell_id != scan_order[-1]:
                 self._pub_status("INTER_CELL_DIRECT — no overview reset; continuing to next cell")
 
-        # Return to overview at the end of the full scan sequence.
+        # Return to overview is optional.  During harvest experiments we often
+        # continue from the last cell pose so VLA/recovery logic can decide when
+        # HOME is actually needed.
+        if not self._return_to_overview_at_end:
+            self._pub_status("SCAN_COMPLETE stay_at_last_scan_pose=true")
+            return
+
         self._pub_status("RETURNING_TO_OVERVIEW")
         if not self._movej(
             self._overview_joints_deg,
