@@ -620,9 +620,14 @@ class ScanExecutorNode(Node):
         parent/nw -> parent/ne -> parent/se -> parent/sw.
         """
         if not poses:
-            return []
+            return [(subcell, []) for subcell in ("nw", "ne", "se", "sw")]
         if len(poses) == 1:
-            return [("nw", poses)]
+            return [
+                ("nw", poses),
+                ("ne", []),
+                ("se", []),
+                ("sw", []),
+            ]
 
         xs = [p.pose.position.x for p in poses]
         zs = [p.pose.position.z for p in poses]
@@ -648,8 +653,6 @@ class ScanExecutorNode(Node):
         ordered: List[Tuple[str, List[PoseStamped]]] = []
         for subcell in ("nw", "ne", "se", "sw"):
             subposes = groups[subcell]
-            if not subposes:
-                continue
             subposes.sort(key=lambda p: (p.pose.position.x, -p.pose.position.z))
             ordered.append((subcell, subposes))
         return ordered
@@ -937,6 +940,12 @@ class ScanExecutorNode(Node):
                     for subcell, subposes in subgroups:
                         logical_cell = "%s/%s" % (cell_id, subcell)
                         self._pub_state(logical_cell, "SCANNING")
+                        if not subposes:
+                            self._pub_status(
+                                "SUBCELL_EMPTY %s no pick candidate" % logical_cell
+                            )
+                            self._pub_state(logical_cell, "SCANNED_EMPTY")
+                            continue
                         completed = self._trigger_picks_for_cell(logical_cell, subposes)
                         self._pub_state(
                             logical_cell,
