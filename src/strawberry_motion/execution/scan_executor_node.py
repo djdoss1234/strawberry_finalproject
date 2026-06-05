@@ -825,22 +825,6 @@ class ScanExecutorNode(Node):
             )
         )
 
-    @staticmethod
-    def _spline_vel_for_j1_swing(traj_rad: np.ndarray) -> float:
-        """Return spline velocity (deg/s) scaled down for large J1 arcs.
-
-        SE requires a 114° J1 swing (geometrically unavoidable at 0.50 m).
-        Running at 120°/s through that arc looks violent. Cap at 60°/s when
-        swing >= 90°, 80°/s when >= 60°, otherwise 120°/s.
-        """
-        j1 = np.rad2deg(traj_rad[:, 0])
-        swing = float(np.max(j1) - np.min(j1))
-        if swing >= 90.0:
-            return 60.0
-        if swing >= 60.0:
-            return 80.0
-        return 120.0
-
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
