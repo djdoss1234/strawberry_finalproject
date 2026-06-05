@@ -40,7 +40,7 @@ from rclpy.node import Node
 import rclpy.callback_groups
 from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Empty, Float64MultiArray, String
+from std_msgs.msg import Empty, Float64MultiArray, Int32, String
 from std_srvs.srv import Trigger
 
 from ament_index_python.packages import get_package_share_directory
@@ -75,6 +75,7 @@ _MAX_SPLINE_PTS = 12
 _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
 _SCAN_DWELL_SEC = 1.0
+_GRIPPER_APPROACH_POS = 500   # 스캔 이동 중 그리퍼 pre-close 개도 (0=완전열림, 700=완전닫힘)
 _OVERVIEW_TOLERANCE_DEG = 1.0
 _DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 60.0
 _DEFAULT_SCAN_MOVEJ_ACC_DEG_S2 = 90.0
@@ -241,6 +242,9 @@ class ScanExecutorNode(Node):
         )
         self._pick_trigger_pub = self.create_publisher(
             PoseStamped, "/dsr01/curobo/pick_pose", 10
+        )
+        self._gripper_pos_pub = self.create_publisher(
+            Int32, "/dsr01/gripper/position_cmd", 10
         )
         self._state_pub = self.create_publisher(
             String, "/strawberry/exploration/set_cell_state", 10
@@ -858,6 +862,11 @@ class ScanExecutorNode(Node):
                 "MOVING_TO %s  endpoint_deg=[%s]  (direct MoveJoint, YAML pose)"
                 % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
             )
+
+            # 스캔 이동 시작 전 그리퍼 pre-close — 수 초 이동하는 동안 완료됨
+            _gmsg = Int32()
+            _gmsg.data = _GRIPPER_APPROACH_POS
+            self._gripper_pos_pub.publish(_gmsg)
 
             if not self._movej(
                 endpoint_deg, vel=self._scan_movej_vel, acc=self._scan_movej_acc
