@@ -80,6 +80,11 @@ def generate_launch_description() -> LaunchDescription:
                 description="Forward detected pick poses to the pick executor after each scan dwell.",
             ),
             DeclareLaunchArgument(
+                "scan_dwell_sec",
+                default_value="5.0",
+                description="Seconds to collect stable perception targets after reaching each scan pose.",
+            ),
+            DeclareLaunchArgument(
                 "return_to_overview_at_end",
                 default_value="true",
                 description="Return to verified overview pose after scan sequence. Set false for harvest/VLA recovery experiments.",
@@ -212,6 +217,7 @@ def generate_launch_description() -> LaunchDescription:
                         "enable_pick_integration": LaunchConfiguration(
                             "enable_pick_integration"
                         ),
+                        "scan_dwell_sec": LaunchConfiguration("scan_dwell_sec"),
                         "return_to_overview_at_end": LaunchConfiguration(
                             "return_to_overview_at_end"
                         ),
