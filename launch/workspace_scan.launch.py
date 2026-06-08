@@ -81,8 +81,8 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "scan_dwell_sec",
-                default_value="5.0",
-                description="Seconds to collect stable perception targets after reaching each scan pose.",
+                default_value="12.0",
+                description="Maximum seconds to wait for the first stable perception target after reaching each scan pose.",
             ),
             DeclareLaunchArgument(
                 "return_to_overview_at_end",

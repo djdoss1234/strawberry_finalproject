@@ -74,7 +74,7 @@ _ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
 _MAX_SPLINE_PTS = 12
 _SPLINE_TIME_SCALE = 0.75
 _SPLINE_MIN_TIME = 0.5
-_DEFAULT_SCAN_DWELL_SEC = 5.0
+_DEFAULT_SCAN_DWELL_SEC = 12.0
 _GRIPPER_APPROACH_POS = 600   # 스캔 이동 중 그리퍼 pre-close 개도 (0=완전열림, 700=완전닫힘)
 _OVERVIEW_TOLERANCE_DEG = 1.0
 _DEFAULT_SCAN_MOVEJ_VEL_DEG_S = 60.0
@@ -909,10 +909,15 @@ class ScanExecutorNode(Node):
             joints_now = self._current_joints or []
             joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
             self._pub_status(
-                "AT_SCAN_POSE %s joints_deg=[%s] — dwell %.1fs"
+                "AT_SCAN_POSE %s joints_deg=[%s] — adaptive detection wait up to %.1fs"
                 % (cell_id, joints_deg_str, self._scan_dwell_sec)
             )
-            time.sleep(self._scan_dwell_sec)
+            detection_deadline = time.time() + self._scan_dwell_sec
+            while time.time() < detection_deadline:
+                with self._detection_lock:
+                    if self._detection_count > 0:
+                        break
+                time.sleep(0.05)
 
             with self._detection_lock:
                 count = self._detection_count
