@@ -51,22 +51,22 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "scan_movej_vel_deg_s",
-                default_value="60.0",
+                default_value="150.0",
                 description="MoveJoint velocity for scan pose validation in deg/s.",
             ),
             DeclareLaunchArgument(
                 "scan_movej_acc_deg_s2",
-                default_value="90.0",
+                default_value="200.0",
                 description="MoveJoint acceleration for scan pose validation in deg/s^2.",
             ),
             DeclareLaunchArgument(
                 "overview_return_vel_deg_s",
-                default_value="60.0",
+                default_value="150.0",
                 description="MoveJoint velocity for return-to-overview in deg/s.",
             ),
             DeclareLaunchArgument(
                 "overview_return_acc_deg_s2",
-                default_value="90.0",
+                default_value="200.0",
                 description="MoveJoint acceleration for return-to-overview in deg/s^2.",
             ),
             DeclareLaunchArgument(
@@ -81,7 +81,7 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "scan_dwell_sec",
-                default_value="12.0",
+                default_value="4.0",
                 description="Maximum seconds to wait for the first stable perception target after reaching each scan pose.",
             ),
             DeclareLaunchArgument(

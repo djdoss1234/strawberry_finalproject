@@ -51,7 +51,7 @@ measurements:
     margin.
 
 scan_policy:
-  initial_subdivision_depth: 1
+  initial_subdivision_depth: 2
   revisit_states:
     - OCCLUDED
     - PLANNING_FAIL
@@ -61,11 +61,12 @@ scan_policy:
   intermediate_states:
     - SCAN_POSE_REACHED
 
-# The exact camera stand-off distance and orientation will be measured after
-# the overview camera pose is fixed.
+# Standoff measured 2026-06-17 at NW scan pose via RealSense depth (upper wall median 381mm,
+# full-frame median 410mm). Using 400mm as working value. Panel transform derived from
+# 4 root scan poses + calibration (SVD registration, residual ~25mm).
 scan_pose:
-  standoff_m: null
+  standoff_m: 0.40
   orientation_xyzw: null
-  preview_standoff_m: null
-  preview_source: disabled_after_v12_gripper_centered_scan_pose_reteach
+  preview_standoff_m: 0.40
+  preview_source: derived_from_v12_scan_poses_svd_registration_20260617
   validated_for_motion: false

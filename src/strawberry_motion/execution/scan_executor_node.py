@@ -840,8 +840,19 @@ class ScanExecutorNode(Node):
             scan_order = [c for c in _ALL_CELLS_ZORDER if c in self._targets]
             self._pub_status("TRAVERSAL_SCAN_STARTED cells=%s" % scan_order)
         else:
-            scan_order = [self._target_cell]
-            self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
+            # If sub-cells exist in YAML, scan them in order (nw→ne→sw→se)
+            sub_cell_order = [
+                "%s/%s" % (self._target_cell, s) for s in ("nw", "ne", "sw", "se")
+            ]
+            available_subs = [c for c in sub_cell_order if c in self._targets]
+            if available_subs:
+                scan_order = available_subs
+                self._pub_status(
+                    "SUBCELL_SCAN_STARTED parent=%s cells=%s" % (self._target_cell, scan_order)
+                )
+            else:
+                scan_order = [self._target_cell]
+                self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
 
         cell_detections: Dict[str, int] = {}
 

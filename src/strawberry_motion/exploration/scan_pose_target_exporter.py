@@ -21,6 +21,15 @@ def parse_args(args=None):
     return parser.parse_args(args)
 
 
+def _subdivide_to_depth(tree: QuadtreeMap, cell_id: str, target_depth: int) -> None:
+    cell = tree.get(cell_id)
+    if cell.depth >= target_depth:
+        return
+    children = tree.subdivide(cell_id)
+    for child in children:
+        _subdivide_to_depth(tree, child.cell_id, target_depth)
+
+
 def export_targets(workspace_path: Path, registration_path: Path, calibration_path: Path):
     config = load_workspace_config(workspace_path)
     if config.preview_standoff_m is None:
@@ -33,7 +42,8 @@ def export_targets(workspace_path: Path, registration_path: Path, calibration_pa
     tcp_to_camera = calibration["T_cam_to_gripper"]
 
     tree = QuadtreeMap(config.bounds, config.max_depth, root_split=config.root_split)
-    cells = tree.subdivide("root")
+    _subdivide_to_depth(tree, "root", config.initial_subdivision_depth)
+    cells = tuple(tree.leaf_cells())
     targets = generate_observation_pose_targets(
         cells, config.preview_standoff_m, panel_transform_base, tcp_to_camera
     )

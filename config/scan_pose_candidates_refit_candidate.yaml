@@ -14,31 +14,26 @@ scan_pose_candidates:
   source_calibration_local: ~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
   camera_centered_search_record: docs/runs/RUN-20260528-005_camera_centered_search.yaml
   manual_teach_record: docs/runs/RUN-20260529-002_manual_scan_pose_teaching.md
-  derivation: 'v8: all cells use cam_pos = cell_center - 0.35m * cam_dir so the camera
-    center ray passes through the cell center (eliminates the 60-173mm upward offset
-    that v7 had due to panel_normal vs cam_dir mismatch). cam_dir = R_tcp[:,2] = [0.064,
-    0.922, 0.381] (22.4 deg upward tilt).'
+  derivation: 'v8: all cells use cam_pos = cell_center - 0.35m * cam_dir so the camera center ray passes through the cell
+    center (eliminates the 60-173mm upward offset that v7 had due to panel_normal vs cam_dir mismatch). cam_dir = R_tcp[:,2]
+    = [0.064, 0.922, 0.381] (22.4 deg upward tilt).'
   use_for_automated_motion: true
   collision_world_validated_for_motion: true
-  validation_scope: Workspace was physically reset on 2026-05-28 and scan poses were
-    retaught on 2026-06-01. v12 intentionally aligns each cell for gripper approach
-    feasibility rather than camera optical-center-only framing. Camera screenshots
-    were captured for all four cells in order root/nw, root/ne, root/se, root/sw.
-    On 2026-06-02, the full root/nw -> root/ne -> root/se -> root/sw traversal completed
-    with direct MoveJoint execution and no inter-cell overview reset. The gripper
-    has an approximately 15.8cm 3D-printed strawberry grasping attachment; tool/collision
-    spheres should be revalidated before enabling unattended pick execution.
+  validation_scope: Workspace was physically reset on 2026-05-28 and scan poses were retaught on 2026-06-01. v12 intentionally
+    aligns each cell for gripper approach feasibility rather than camera optical-center-only framing. Camera screenshots were
+    captured for all four cells in order root/nw, root/ne, root/se, root/sw. On 2026-06-02, the full root/nw -> root/ne ->
+    root/se -> root/sw traversal completed with direct MoveJoint execution and no inter-cell overview reset. The gripper has
+    an approximately 15.8cm 3D-printed strawberry grasping attachment; tool/collision spheres should be revalidated before
+    enabling unattended pick execution.
   targets:
   - cell_id: root/nw
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning.
-      The cell is framed so the gripper, not only the camera optical center, is horizontally
-      aligned for approach. DART task pose x=-225.46mm y=338.93mm z=902.31mm rx=88.42
-      ry=87.31 rz=-89.88. Screenshot evidence order 1/4 from 2026-06-01. tcp_transform_base
-      rotation refreshed from endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera
-      preview consistency.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning. The cell is framed so the gripper,
+      not only the camera optical center, is horizontally aligned for approach. DART task pose x=-225.46mm y=338.93mm z=902.31mm
+      rx=88.42 ry=87.31 rz=-89.88. Screenshot evidence order 1/4 from 2026-06-01. tcp_transform_base rotation refreshed from
+      endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera preview consistency.
     dart_tcp_pose_base_mm_deg:
     - -225.46
     - 338.93
@@ -90,16 +85,158 @@ scan_pose_candidates:
       - 93.42
       - 108.68
     use_for_automated_motion: true
+  - cell_id: root/nw/nw
+    approach: manual_teach_dart_2026_06_17
+    standoff_m: taught
+    note: Manually taught with DART. DART TCP x=-369.76mm y=432.92mm z=826.06mm rx=85.68 ry=66.28 rz=-89.12. NW quadrant of NW cell.
+    dart_tcp_pose_base_mm_deg:
+    - -369.76
+    - 432.92
+    - 826.06
+    - 85.68
+    - 66.28
+    - -89.12
+    tcp_transform_base:
+    - - 0.069165355
+      - -0.015022480
+      - 0.997492095
+      - -0.369760000
+    - - 0.912846711
+      - -0.402368790
+      - -0.069355882
+      - 0.432920000
+    - - 0.402401584
+      - 0.915354402
+      - -0.014116759
+      - 0.826060000
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - -35.82
+    - -53.89
+    - 26.90
+    - 287.32
+    - -54.86
+    - 119.13
+    use_for_automated_motion: true
+  - cell_id: root/nw/ne
+    approach: manual_teach_dart_2026_06_17
+    standoff_m: taught
+    note: Manually taught with DART. DART TCP x=-265.38mm y=432.92mm z=841.81mm rx=85.68 ry=66.28 rz=-89.12. NE quadrant of NW cell.
+    dart_tcp_pose_base_mm_deg:
+    - -265.38
+    - 432.92
+    - 841.81
+    - 85.68
+    - 66.28
+    - -89.12
+    tcp_transform_base:
+    - - 0.069052901
+      - -0.015233553
+      - 0.997496685
+      - -0.265380000
+    - - 0.912926205
+      - -0.402191033
+      - -0.069340583
+      - 0.432920000
+    - - 0.402240526
+      - 0.915429031
+      - -0.013865348
+      - 0.841810000
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - -44.81
+    - -57.00
+    - 44.92
+    - 305.52
+    - -58.82
+    - 101.59
+    use_for_automated_motion: true
+  - cell_id: root/nw/sw
+    approach: manual_teach_dart_2026_06_17
+    standoff_m: taught
+    note: Manually taught with DART. DART TCP x=-463.99mm y=432.92mm z=665.21mm rx=85.68 ry=66.28 rz=-89.12. SW quadrant of NW cell.
+    dart_tcp_pose_base_mm_deg:
+    - -463.99
+    - 432.92
+    - 665.21
+    - 85.68
+    - 66.28
+    - -89.12
+    tcp_transform_base:
+    - - 0.069000213
+      - -0.014987331
+      - 0.997504060
+      - -0.463990000
+    - - 0.912892305
+      - -0.402293598
+      - -0.069191769
+      - 0.432920000
+    - - 0.402326498
+      - 0.915388027
+      - -0.014076525
+      - 0.665210000
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - -30.06
+    - -79.78
+    - 50.44
+    - 280.27
+    - -56.94
+    - 122.66
+    use_for_automated_motion: true
+  - cell_id: root/nw/se
+    approach: manual_teach_dart_2026_06_17
+    standoff_m: taught
+    note: Manually taught with DART. DART TCP x=-140.88mm y=432.92mm z=665.21mm rx=85.68 ry=66.28 rz=-89.12. SE quadrant of NW cell.
+    dart_tcp_pose_base_mm_deg:
+    - -140.88
+    - 432.92
+    - 665.21
+    - 85.68
+    - 66.28
+    - -89.12
+    tcp_transform_base:
+    - - 0.068966250
+      - -0.015032745
+      - 0.997505726
+      - -0.140880000
+    - - 0.912901535
+      - -0.402274806
+      - -0.069179242
+      - 0.432920000
+    - - 0.402311376
+      - 0.915395541
+      - -0.014019969
+      - 0.665210000
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - -60.98
+    - -86.50
+    - 95.34
+    - 328.39
+    - -73.74
+    - 85.83
+    use_for_automated_motion: true
   - cell_id: root/ne
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning.
-      The cell is framed so the gripper, not only the camera optical center, is horizontally
-      aligned for approach. DART task pose x=314.90mm y=279.89mm z=883.40mm rx=89.90
-      ry=86.29 rz=-89.62. Screenshot evidence order 2/4 from 2026-06-01. tcp_transform_base
-      rotation refreshed from endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera
-      preview consistency.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning. The cell is framed so the gripper,
+      not only the camera optical center, is horizontally aligned for approach. DART task pose x=314.90mm y=279.89mm z=883.40mm
+      rx=89.90 ry=86.29 rz=-89.62. Screenshot evidence order 2/4 from 2026-06-01. tcp_transform_base rotation refreshed from
+      endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera preview consistency.
     dart_tcp_pose_base_mm_deg:
     - 314.9
     - 279.89
@@ -155,12 +292,10 @@ scan_pose_candidates:
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning.
-      The cell is framed so the gripper, not only the camera optical center, is horizontally
-      aligned for approach. DART task pose x=-247.70mm y=317.34mm z=533.88mm rx=87.75
-      ry=86.31 rz=-89.49. Screenshot evidence order 4/4 from 2026-06-01. User text
-      "j610.46" is recorded as j6=10.46. tcp_transform_base rotation refreshed from
-      endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera preview consistency.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning. The cell is framed so the gripper,
+      not only the camera optical center, is horizontally aligned for approach. DART task pose x=-247.70mm y=317.34mm z=533.88mm
+      rx=87.75 ry=86.31 rz=-89.49. Screenshot evidence order 4/4 from 2026-06-01. User text "j610.46" is recorded as j6=10.46.
+      tcp_transform_base rotation refreshed from endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera preview consistency.
     dart_tcp_pose_base_mm_deg:
     - -247.7
     - 317.34
@@ -216,12 +351,10 @@ scan_pose_candidates:
     approach: manual_teach_dart
     standoff_m: taught
     curobo_status: PHYSICAL_VIEW_CONFIRMED_AFTER_WORKSPACE_RESET
-    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning.
-      The cell is framed so the gripper, not only the camera optical center, is horizontally
-      aligned for approach. DART task pose x=312.61mm y=302.83mm z=529.32mm rx=89.90
-      ry=86.29 rz=-89.62. Screenshot evidence order 3/4 from 2026-06-01. tcp_transform_base
-      rotation refreshed from endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera
-      preview consistency.
+    note: 2026-06-01 manually adjusted with Doosan DART after gripper-centered retuning. The cell is framed so the gripper,
+      not only the camera optical center, is horizontally aligned for approach. DART task pose x=312.61mm y=302.83mm z=529.32mm
+      rx=89.90 ry=86.29 rz=-89.62. Screenshot evidence order 3/4 from 2026-06-01. tcp_transform_base rotation refreshed from
+      endpoint_joints_deg FK on 2026-06-02 for RViz TCP/camera preview consistency.
     dart_tcp_pose_base_mm_deg:
     - 312.61
     - 302.83

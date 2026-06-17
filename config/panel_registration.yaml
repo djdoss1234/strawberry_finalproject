@@ -62,27 +62,31 @@ panel_registration:
       in RViz. This confirms display orientation only and is not physical motion authorization.
   transform:
     translation_m:
-      x: 0.03829119
-      y: 0.404133926
-      z: 0.712333814
+      x: 0.045624
+      y: 0.744713
+      z: 0.649951
     rotation_xyzw:
-      x: 0.698067885
-      y: -0.010926819
-      z: -0.005658325
-      w: 0.715925845
+      x: 0.707402
+      y: -0.016923
+      z: -0.030268
+      w: 0.705960
+    # Derived 2026-06-17: SVD registration from 4 root scan poses (v12) +
+    # calibration_eye_in_hand_1.npz + RealSense depth standoff=400mm.
+    # Residual ~25mm (acceptable for scan coverage; not for precise IK).
+    # Previous matrix (y=0.404m) was wrong — 120mm registration error confirmed.
     matrix:
-    - - 0.999697176
-      - -0.007153441
-      - -0.023545375
-      - 0.03829119
-    - - -0.023357206
-      - 0.025338422
-      - -0.999406026
-      - 0.404133926
-    - - 0.007745795
-      - 0.999653336
-      - 0.025163664
-      - 0.712333814
+    - - 0.997595
+      - 0.018793
+      - -0.066716
+      - 0.045624
+    - - -0.066678
+      - -0.002668
+      - -0.997771
+      - 0.744713
+    - - -0.018929
+      - 0.999820
+      - -0.001409
+      - 0.649951
     - - 0.0
       - 0.0
       - 0.0
