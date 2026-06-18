@@ -84,11 +84,11 @@ CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 
 CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
 CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
 # NW high cell: 2026-06-18 실기에서 Z≈825mm target은 +15deg branch로 접근하면서
-# 실제 파지점보다 약 30mm 위에서 닿았다. 깊이는 10~20mm 얕게 보였다.
-# TOOL finish 90mm는 성공, 120mm는 Doosan MoveLine 무동작으로 실패했으므로
-# 기본 추가 깊이는 중간값 15mm만 적용한다.
+# 실제 파지점보다 약 30mm 위에서 닿았다. 깊이는 10~20mm 얕게 보였지만,
+# +15mm final_extra는 +15deg 접근 방향을 따라가며 옆으로 빗겨가는 부작용이
+# 확인됐다. 기본값은 깊이 추가 없이 open descent만 유지한다.
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
-NW_HIGH_TARGET_FINAL_EXTRA_M = 0.015
+NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
