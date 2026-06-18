@@ -254,36 +254,49 @@ ERROR: ABORT: 직선 진입 실패
      `+10deg -> +5deg -> 0deg -> +15deg -> -5deg -> -10deg`
    - NW high target에서는 J3 good-enough threshold를 40deg로 낮춰, +10deg branch가
      충분히 건강하면 +15deg까지 가지 않고 멈춘다.
+12. 19:36 실기 결과: +10deg branch로 바뀌었지만 깊이는 크게 개선되지 않음
+   - 로그: `curobo_planner_node_20260618T193657-7d510ad0.jsonl`
+   - target: raw=(-248,672,819)mm
+   - 선택 branch: `variant=('base', [1, 0, 0], 10.0)`, J3=47.0deg
+   - final path: cuRobo 90mm + TOOL finish 90mm = total 180mm
+   - open descent: 60mm
+   - 결과: `GRASP_EMPTY` (present_pos=700)
+   - 결론: orientation을 +15deg에서 +10deg로 낮춰도 cuRobo가 허용한 final depth는 여전히
+     90mm이고 총 접근 깊이도 180mm라서, 깊이 부족 자체는 해결되지 않았다.
+   - 즉 현재 병목은 "branch 각도"보다 **target depth / TCP frame / final straight segment**
+     쪽에 더 가깝다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
-1. 0.200m 천장 상향 자체의 효과는 **여전히 미검증** — 이번 로그는 다른(아마 calibration
-   drift) 타겟을 봐서 검증이 안 됐다. 같은 타겟(x≈-255mm 근처)으로 재시도 필요.
-2. MoveLine "success인데 무동작" 버그가 **J3 특이점이 아닌 경우에도** 재현됨 — 위 가설 A/B
-   검증 필요. 코드 수정은 아직 하지 않음(근거 부족).
-3. 이번 타겟의 Detection Y 99mm 드리프트 — perception/calibration 쪽 원인 미조사.
+1. NW high target은 접근과 하강은 되지만 여전히 `GRASP_EMPTY`다.
+   현재 성공한 실제 접근 깊이는 cuRobo 90mm + TOOL finish 90mm = total 180mm이고,
+   이보다 깊게 하려는 단순 final_extra는 빗김 또는 MoveLine 무동작을 만들었다.
+2. 깊이 부족의 근본 후보:
+   - perception target이 실제 KP1보다 벽 바깥/안쪽으로 어긋남
+   - measured TCP grasp center가 실제 줄기 파지점보다 뒤에 있음
+   - final TOOL +Z segment가 90mm 이상에서 해당 branch/pose와 잘 맞지 않음
+   - collision/world 또는 joint limit 때문에 cuRobo deep endpoint가 90mm까지만 허용됨
+3. Detection Y drift가 계속 큼: raw Y≈799~805mm가 wall 672mm로 clamp됨.
+   Y는 clamp되지만 X/Z target도 같은 detection에서 나온 값이라 같이 의심해야 한다.
 4. SW regression 테스트 — `FINAL_APPROACH_VEL/ACC`, `RETREAT_VEL/ACC`,
    `PRE_APPROACH_SETTLE_SEC`, `STRAIGHT_RETREAT_SETTLE_SEC` 변경이 SW와 공유되는데
    아직 SW로 재실행 안 함.
-5. `scan_movej_vel_deg_s:=20/30` 권장값도 실기 미검증(직전 권장이었을 뿐).
-6. 미커밋 상태로 남아있는 파일: `config/scan_pose_candidates_depth2.yaml`
+5. 미커밋 상태로 남아있는 파일: `config/scan_pose_candidates_depth2.yaml`
    (untracked, `use_for_automated_motion: false`, 이번 세션에서 만든 게 아니라 이전부터
    있던 파일로 보임 — 내용 검토 후 필요하면 별도로 커밋할 것. 이번 세션에서는 건드리지
    않았음).
 
 ## 6. 다음 할 일 (우선순위)
 
-1. **같은 타겟 재검증**: 이전 `GRASP_POSE_REACHED` 2회와 같은 위치(x≈-255mm 근처)
-   딸기로 `measured_tcp_max_approach_m:=0.200` 재시도 — 천장 상향이 실제로 깊이를
-   늘려서 grasp 성공으로 이어지는지 확인.
-2. **가설 A 검증**: 이번 JSONL을 `replay_plan_call_dump.py`로 재생해서, MoveLine이
-   실패한 그 타겟이 cuRobo로도 IK_FAIL인지 재확인(이미 로그상 IK_FAIL이었음 — 재생으로
-   재확인만).
-3. 재현되면: "남은 거리가 cuRobo 도달 한계를 넘으면 MoveLine 시도 자체를 스킵하고
-   바로 ABORT/재스캔"하는 방향 검토 (지금처럼 헛되이 MoveLine 시도 후 52초 타임아웃
-   기다리는 것보다 빠름). **단, 코드 수정 전에 가설 A/B를 먼저 증거로 확인할 것.**
-4. perception calibration drift(99mm) 원인 조사 — 재현성 확인 후 필요시 별도 작업으로
-   분리.
+1. **target/TCP 기준 재확인**: 카메라 검출점이 실제 잡아야 하는 줄기 위치보다 얼마나
+   얕은지 실측/영상 기준으로 표시한다. 단순 approach distance 튜닝만으로는 옆빗김이 생김.
+2. **파지점 자체 보정 실험**: `pick_target_x_bias_m`, `pick_target_z_bias_m` 또는
+   perception의 KP target 정의를 조정한다. depth 방향을 approach distance로 더 밀지 말고,
+   목표점 자체를 실제 줄기 파지점으로 옮기는 쪽을 우선 검토한다.
+3. **TCP/URDF 확인**: measured TCP가 실제 "줄기를 잡는 중심"인지, 아니면 파츠 끝/집게 중심과
+   10~20mm 차이가 남아 있는지 재확인한다. 지금 증상은 TCP 기준이 뒤쪽이면 그대로 재현된다.
+4. **cuRobo deep endpoint 한계 분석**: debug dump/replay로 왜 110/130/150/200mm endpoint가
+   IK_FAIL인지 확인한다. collision sphere, joint limit, orientation 중 무엇이 한계인지 분리.
 5. SW 회귀 테스트 1회 실행.
 6. `config/scan_pose_candidates_depth2.yaml` untracked 파일 검토.
 
