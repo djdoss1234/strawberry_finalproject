@@ -83,6 +83,12 @@ NEIGHBOR_SPHERE_RADIUS_M = 0.030
 CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 거리
 CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
 CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
+# NW high cell: 2026-06-18 실기에서 Z≈825mm target은 +15deg branch로 접근하면서
+# 실제 파지점보다 약 30mm 위/얕게 닿았다. SW 저위치 target 회귀를 피하려고
+# high target에만 추가 깊이/하강 보정을 적용한다.
+NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
+NW_HIGH_TARGET_FINAL_EXTRA_M = 0.030
+NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -380,6 +386,13 @@ class CuroboPlanner(Node):
             True)
         self.declare_parameter("pick_target_x_bias_m", 0.0)
         self.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
+        self.declare_parameter(
+            "nw_high_target_z_threshold_m", NW_HIGH_TARGET_Z_THRESHOLD_M)
+        self.declare_parameter(
+            "nw_high_target_final_extra_m", NW_HIGH_TARGET_FINAL_EXTRA_M)
+        self.declare_parameter(
+            "nw_high_target_close_extra_down_m",
+            NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M)
         self.declare_parameter("debug_dump_plan_calls", False)
         self._debug_dump_plan_calls = bool(
             self.get_parameter("debug_dump_plan_calls").value)
@@ -442,6 +455,13 @@ class CuroboPlanner(Node):
             self.get_parameter("pick_target_x_bias_m").value)
         self._pick_target_z_bias_m = float(
             self.get_parameter("pick_target_z_bias_m").value)
+        self._nw_high_target_z_threshold_m = float(
+            self.get_parameter("nw_high_target_z_threshold_m").value)
+        self._nw_high_target_final_extra_m = max(
+            0.0, float(self.get_parameter("nw_high_target_final_extra_m").value))
+        self._nw_high_target_close_extra_down_m = max(
+            0.0, float(
+                self.get_parameter("nw_high_target_close_extra_down_m").value))
         self._leftmost_extra_advance_request_m = max(
             0.0, float(self.get_parameter("leftmost_extra_advance_request_m").value))
         self._leftmost_wall_safety_margin_m = float(
@@ -569,6 +589,11 @@ class CuroboPlanner(Node):
             self.get_logger().info(
                 f"  OPEN_STEM_DESCENT={CRANE_Z_OFFSET_M*1000:.0f}mm: "
                 "horizontal approach above KP1 -> open BASE -Z descent -> close at KP1")
+            self.get_logger().warn(
+                "  NW_HIGH_TARGET_CORRECTION "
+                f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
+                f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
+                f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm")
         else:
             self.get_logger().warn(
                 "  TOOL_GEOMETRY_LEGACY: planner offset="
@@ -2374,6 +2399,10 @@ class CuroboPlanner(Node):
             self._pick_target_z_bias_m,
         ])
         straw[2] = max(straw[2], 0.05)
+        is_nw_high_target = (
+            self._measured_tcp_model
+            and float(raw_straw[2]) >= self._nw_high_target_z_threshold_m
+        )
 
         x_min, x_max = DIRECT_GRASP_TARGET_X_RANGE_M
         if not (x_min <= float(raw_straw[0]) <= x_max):
@@ -2411,6 +2440,7 @@ class CuroboPlanner(Node):
             grasp_x_bias_m=self._pick_target_x_bias_m,
             grasp_z_bias_m=self._pick_target_z_bias_m,
             wall_y_clamped=wall_y_clamped,
+            nw_high_target=is_nw_high_target,
         )
 
         # 접근 중 잎/과실을 집게로 미는 것을 줄이기 위해 수평 진입 전에
@@ -2676,6 +2706,26 @@ class CuroboPlanner(Node):
                 0.0,
                 min(uncapped_distance, self._measured_tcp_max_approach_m),
             )
+            if is_nw_high_target and self._nw_high_target_final_extra_m > 0.0:
+                before_extra_m = final_approach_distance
+                final_approach_distance = min(
+                    MEASURED_TCP_MAX_APPROACH_CEILING_M,
+                    final_approach_distance + self._nw_high_target_final_extra_m,
+                )
+                self.get_logger().warn(
+                    "NW_HIGH_TARGET_FINAL_EXTRA: "
+                    f"{before_extra_m*1000:.0f}mm -> "
+                    f"{final_approach_distance*1000:.0f}mm "
+                    f"(target_z={raw_straw[2]*1000:.0f}mm, "
+                    "observed shallow by ~30mm)")
+                self.runtime_log.log(
+                    "nw_high_target_final_extra",
+                    target_z_m=float(raw_straw[2]),
+                    before_m=before_extra_m,
+                    after_m=final_approach_distance,
+                    requested_extra_m=self._nw_high_target_final_extra_m,
+                    ceiling_m=MEASURED_TCP_MAX_APPROACH_CEILING_M,
+                )
             if final_approach_distance + 1e-6 < uncapped_distance:
                 self.get_logger().warn(
                     "MEASURED_TCP_APPROACH_CAPPED: requested "
@@ -2981,11 +3031,26 @@ class CuroboPlanner(Node):
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and CRANE_Z_OFFSET_M > 0:
+            open_stem_descent_m = CRANE_Z_OFFSET_M
+            if is_nw_high_target and self._nw_high_target_close_extra_down_m > 0.0:
+                open_stem_descent_m += self._nw_high_target_close_extra_down_m
+                self.get_logger().warn(
+                    "NW_HIGH_TARGET_CLOSE_EXTRA_DOWN: open descent "
+                    f"{CRANE_Z_OFFSET_M*1000:.0f}mm -> "
+                    f"{open_stem_descent_m*1000:.0f}mm "
+                    "(observed close point high by ~30mm)")
+                self.runtime_log.log(
+                    "nw_high_target_close_extra_down",
+                    target_z_m=float(raw_straw[2]),
+                    base_descent_m=CRANE_Z_OFFSET_M,
+                    extra_down_m=self._nw_high_target_close_extra_down_m,
+                    executed_descent_m=open_stem_descent_m,
+                )
             self.get_logger().info(
                 f"OPEN_STEM_DESCENT — gripper={GRIPPER_APPROACH_POS}, "
-                f"BASE -Z {CRANE_Z_OFFSET_M*1000:.0f}mm to KP1")
+                f"BASE -Z {open_stem_descent_m*1000:.0f}mm to KP1")
             if not self.execute_base_z_relative(
-                    -CRANE_Z_OFFSET_M, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
+                    -open_stem_descent_m, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
                 self.get_logger().error("ABORT: open stem descent 실패")
                 self._clear_neighbor_obstacles()
                 self._reset_gripper()
