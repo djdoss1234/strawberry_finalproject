@@ -365,6 +365,9 @@ class CuroboPlanner(Node):
         self.declare_parameter(
             "measured_tcp_tool_line_after_curobo_fallback",
             True)
+        self.declare_parameter("debug_dump_plan_calls", False)
+        self._debug_dump_plan_calls = bool(
+            self.get_parameter("debug_dump_plan_calls").value)
         self.declare_parameter(
             "leftmost_extra_advance_request_m",
             0.0 if self._measured_tcp_model else LEFTMOST_EXTRA_ADVANCE_REQUEST_M)
@@ -1008,6 +1011,37 @@ class CuroboPlanner(Node):
             position=torch.tensor([target_pos], device="cuda:0", dtype=torch.float32),
             quaternion=torch.tensor([target_quat_wxyz], device="cuda:0", dtype=torch.float32),
         )
+        if self._debug_dump_plan_calls:
+            # 2026-06-18: offline replay of (start_joints, target, world) with
+            # identical inputs consistently found a healthy-J3 branch while the
+            # live node converged to a near-singular one for the same logged
+            # values — root cause still unknown. Dump the exact live inputs
+            # (including world state) so a replay script can find the real
+            # divergence instead of guessing. Off by default; zero cost to SW.
+            self.runtime_log.log(
+                "plan_call_debug_dump",
+                start_joints_rad=start_joints,
+                target_pos_m=target_pos,
+                target_quat_wxyz=target_quat_wxyz,
+                num_ik_seeds=num_ik_seeds,
+                max_attempts=(
+                    max_attempts if max_attempts is not None else CARTESIAN_PLAN_MAX_ATTEMPTS
+                ),
+                timeout_sec=(
+                    timeout_sec if timeout_sec is not None else CARTESIAN_PLAN_TIMEOUT_SEC
+                ),
+                max_joint_delta_deg=max_joint_delta_deg,
+                static_cuboids=[
+                    {"name": c.name, "pose": c.pose, "dims": c.dims} for c in self.static_cuboids
+                ],
+                dynamic_cuboids=[
+                    {"name": c.name, "pose": c.pose, "dims": c.dims} for c in self.dynamic_cuboids
+                ],
+                neighbor_spheres=[
+                    {"name": s.name, "pose": s.pose, "radius": s.radius}
+                    for s in self.neighbor_spheres
+                ],
+            )
         result = self.motion_gen.plan_single(
             start_state, target_pose,
             MotionGenPlanConfig(
