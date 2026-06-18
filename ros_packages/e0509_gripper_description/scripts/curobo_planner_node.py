@@ -2426,6 +2426,16 @@ class CuroboPlanner(Node):
         used_grasp_ee_pos = None
         measured_best = None
         measured_best_depth_m = -1.0
+        # 2026-06-18: depth probing picks the deepest reachable standoff, but
+        # multiple grasp_quat_variants often reach the IDENTICAL depth with
+        # wildly different elbow health (J3 from ~0deg/near-singular up to
+        # ~60deg/healthy) — verified by replaying a real failing run offline
+        # bit-for-bit (replay_plan_call_dump.py). The old `depth_m >
+        # measured_best_depth_m` strict-greater comparison always kept the
+        # FIRST variant tried on a tie, which was consistently the worst one.
+        # Track J3 health as a tiebreaker so an equally-deep but healthier
+        # elbow from a later variant can replace it.
+        measured_best_j3_deg = None
         grasp_attempt = 0
         for quat_frame, axis, quat_deg in grasp_quat_variants:
             q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
@@ -2474,8 +2484,15 @@ class CuroboPlanner(Node):
                     grasp_attempt += 1
                     if r_final_probe is None:
                         continue
-                    if depth_m > measured_best_depth_m:
+                    candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
+                    is_deeper = depth_m > measured_best_depth_m + 1e-6
+                    is_tied_but_healthier = (
+                        abs(depth_m - measured_best_depth_m) <= 1e-6
+                        and (measured_best_j3_deg is None or candidate_j3_deg > measured_best_j3_deg)
+                    )
+                    if is_deeper or is_tied_but_healthier:
                         measured_best_depth_m = depth_m
+                        measured_best_j3_deg = candidate_j3_deg
                         measured_best = (
                             r_pre_for_variant,
                             r_final_probe,
@@ -2488,8 +2505,9 @@ class CuroboPlanner(Node):
                         )
                         self.get_logger().info(
                             "MEASURED_TCP_FINAL_PROBE_BEST "
-                            f"depth={depth_m*1000:.0f}mm "
-                            f"variant={(quat_frame, axis, quat_deg)}")
+                            f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
+                            f"variant={(quat_frame, axis, quat_deg)}"
+                            + (" (tie-break: healthier elbow)" if is_tied_but_healthier else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
                 if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
