@@ -107,6 +107,20 @@ _JOINT_LIMITS_RAD = [
 _WRAP_EQUIVALENT_JOINT_IDX = {0, 3, 5}  # J1/J4/J6: same physical angle every 360 deg
 
 
+def _wrap_aware_joints_within_tolerance_deg(current_rad, target_deg, tolerance_deg):
+    if not current_rad or len(current_rad) != len(target_deg):
+        return False
+    current_deg = np.rad2deg(current_rad).tolist()
+    for idx, (cur, target) in enumerate(zip(current_deg, target_deg)):
+        if idx in _WRAP_EQUIVALENT_JOINT_IDX:
+            diff = min(abs((target + 360.0 * k) - cur) for k in range(-2, 3))
+        else:
+            diff = abs(target - cur)
+        if diff > tolerance_deg:
+            return False
+    return True
+
+
 def _mat4_to_pos_quat_wxyz(mat4: np.ndarray) -> Tuple[List[float], List[float]]:
     pos = mat4[:3, 3].tolist()
     q_xyzw = Rotation.from_matrix(mat4[:3, :3]).as_quat()
@@ -143,6 +157,7 @@ class ScanExecutorNode(Node):
             "movej_service_timeout_sec", _DEFAULT_MOVEJ_SERVICE_TIMEOUT_SEC
         )
         self.declare_parameter("enable_pick_integration", True)
+        self.declare_parameter("max_total_picks", 0)  # 0 = unlimited
         self.declare_parameter("scan_dwell_sec", _DEFAULT_SCAN_DWELL_SEC)
         self.declare_parameter("return_to_overview_at_end", True)
         self.declare_parameter("enable_runtime_curobo_preview", False)
@@ -166,6 +181,8 @@ class ScanExecutorNode(Node):
         self._enable_pick_integration = bool(
             self.get_parameter("enable_pick_integration").value
         )
+        self._max_total_picks = int(self.get_parameter("max_total_picks").value)
+        self._total_picks_attempted = 0
         self._scan_dwell_sec = max(
             1.0, float(self.get_parameter("scan_dwell_sec").value)
         )
@@ -345,7 +362,7 @@ class ScanExecutorNode(Node):
                 allowed, reason = single_cell_request_allowed(
                     self._target_cell, _INITIAL_SINGLE_CELL_CANDIDATES
                 )
-        if allowed and not joints_within_tolerance_deg(
+        if allowed and not _wrap_aware_joints_within_tolerance_deg(
             self._current_joints or [], self._overview_joints_deg, _OVERVIEW_TOLERANCE_DEG
         ):
             allowed = False
@@ -549,12 +566,19 @@ class ScanExecutorNode(Node):
         taught pose, but rewrite J1/J4/J6 to the 360-deg equivalent closest to
         the current measured joint state and inside the hard robot limits.
         """
-        reference = reference_joints_rad if reference_joints_rad is not None else self._current_joints
-        if reference is None:
+        if reference_joints_rad is not None:
+            current_deg = np.rad2deg(reference_joints_rad).tolist()
+        elif self._last_movej_command_deg is not None:
+            # Doosan reports wrap-capable joints normalized to [-180, 180].
+            # Keep continuity from the last command representation instead of
+            # the normalized feedback, otherwise J4 can take a full-turn detour.
+            current_deg = list(self._last_movej_command_deg)
+        elif self._current_joints is not None:
+            current_deg = np.rad2deg(self._current_joints).tolist()
+        else:
             return [float(v) for v in target_deg]
 
         adjusted = [float(v) for v in target_deg]
-        current_deg = np.rad2deg(reference).tolist()
         for idx in _WRAP_EQUIVALENT_JOINT_IDX:
             lo = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][0]))
             hi = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][1]))
@@ -595,8 +619,9 @@ class ScanExecutorNode(Node):
                 for k in kept
             ):
                 kept.append(p)
-        # Sort into 4 quadrants: NW(0) → NE(1) → SE(2) → SW(3)
-        # Within each quadrant: X asc (left→right), Z desc (top→bottom)
+        # Sort into 4 quadrants, but prefer lower stem-level candidates first.
+        # The NW occlusion run often sees high leaf/top candidates before the
+        # actual KP1/stem target; with max_total_picks=1 that wastes the run.
         if len(kept) > 1:
             xs = [p.pose.position.x for p in kept]
             zs = [p.pose.position.z for p in kept]
@@ -605,15 +630,15 @@ class ScanExecutorNode(Node):
 
             def _quadrant(p):
                 x, z = p.pose.position.x, p.pose.position.z
-                if z >= z_mid and x <= x_mid:
-                    return 0  # NW
-                if z >= z_mid and x > x_mid:
-                    return 1  # NE
+                if z < z_mid and x <= x_mid:
+                    return 0  # SW: lower-left, usually stem-level first
                 if z < z_mid and x > x_mid:
-                    return 2  # SE
-                return 3      # SW
+                    return 1  # SE
+                if z >= z_mid and x <= x_mid:
+                    return 2  # NW
+                return 3      # NE
 
-            kept.sort(key=lambda p: (_quadrant(p), p.pose.position.x, -p.pose.position.z))
+            kept.sort(key=lambda p: (_quadrant(p), p.pose.position.x, p.pose.position.z))
         return kept
 
     @staticmethod
@@ -659,9 +684,9 @@ class ScanExecutorNode(Node):
                 groups["sw"].append(pose)
 
         ordered: List[Tuple[str, List[PoseStamped]]] = []
-        for subcell in ("nw", "ne", "se", "sw"):
+        for subcell in ("sw", "se", "nw", "ne"):
             subposes = groups[subcell]
-            subposes.sort(key=lambda p: (p.pose.position.x, -p.pose.position.z))
+            subposes.sort(key=lambda p: (p.pose.position.x, p.pose.position.z))
             ordered.append((subcell, subposes))
         return ordered
 
@@ -696,6 +721,13 @@ class ScanExecutorNode(Node):
             return 0
         success = 0
         for i, pose in enumerate(unique):
+            if self._max_total_picks > 0 and self._total_picks_attempted >= self._max_total_picks:
+                self._pub_status(
+                    "PICK_LIMIT_REACHED max_total_picks=%d — skipping remaining targets"
+                    % self._max_total_picks
+                )
+                break
+            self._total_picks_attempted += 1
             self._pick_complete_event.clear()
             self._pub_status(
                 "PICK_TRIGGER %s %d/%d pos=(%.0f,%.0f,%.0f)mm"
@@ -730,7 +762,7 @@ class ScanExecutorNode(Node):
         return success
 
     def _is_at_overview(self) -> bool:
-        return self._current_joints is not None and joints_within_tolerance_deg(
+        return self._current_joints is not None and _wrap_aware_joints_within_tolerance_deg(
             self._current_joints, self._overview_joints_deg, _OVERVIEW_TOLERANCE_DEG
         )
 
@@ -840,7 +872,9 @@ class ScanExecutorNode(Node):
             scan_order = [c for c in _ALL_CELLS_ZORDER if c in self._targets]
             self._pub_status("TRAVERSAL_SCAN_STARTED cells=%s" % scan_order)
         else:
-            # If sub-cells exist in YAML, scan them in order (nw→ne→sw→se)
+            # If sub-cells exist in YAML, scan in canonical visual order.
+            # Target filtering should happen in candidate selection, not by
+            # silently changing the physical scan traversal order.
             sub_cell_order = [
                 "%s/%s" % (self._target_cell, s) for s in ("nw", "ne", "sw", "se")
             ]
