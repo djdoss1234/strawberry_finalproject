@@ -247,6 +247,13 @@ ERROR: ABORT: 직선 진입 실패
    - 이것은 장기적인 perception/KP target correction이 아니라, 현재 NW high-cell 실기
      편차를 흡수하는 제한적 보정이다. 실제 근본 해결은 KP1/KP2 stem target 정확도와
      eye-in-hand/depth drift를 별도로 줄여야 한다.
+11. NW high target은 +15deg 대신 더 수평에 가까운 branch 우선
+   - +15deg는 J3가 건강하고 계산은 잘 되지만 접근선이 위/옆으로 빗겨가는 경향이 있다.
+   - 깊이 extra를 거리로 더 밀면 같은 방향으로 더 빗겨가므로 기본값에서 끈다.
+   - NW high target 전용 variant order:
+     `+10deg -> +5deg -> 0deg -> +15deg -> -5deg -> -10deg`
+   - NW high target에서는 J3 good-enough threshold를 40deg로 낮춰, +10deg branch가
+     충분히 건강하면 +15deg까지 가지 않고 멈춘다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

@@ -72,6 +72,7 @@ MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
 # every pick wastes ~15-20s of GPU planning on variants that are strictly
 # worse than one already found. NW-only (measured_tcp_model path).
 MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
+NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -128,6 +129,16 @@ MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base", [1, 0, 0], +10.0),
     ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0],   0.0),
+    ("base", [1, 0, 0],  -5.0),
+    ("base", [1, 0, 0], -10.0),
+]
+NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
+    # +15deg는 J3가 가장 건강했지만 접근선이 위/옆으로 빗겼다. NW high
+    # target에서는 더 수평에 가까운 +10/+5/0deg를 먼저 시도한다.
+    ("base", [1, 0, 0], +10.0),
+    ("base", [1, 0, 0],  +5.0),
+    ("base", [1, 0, 0],   0.0),
+    ("base", [1, 0, 0], +15.0),
     ("base", [1, 0, 0],  -5.0),
     ("base", [1, 0, 0], -10.0),
 ]
@@ -2464,7 +2475,10 @@ class CuroboPlanner(Node):
 
         # 2. Grasp (cuRobo 2-step): 6cm pre-approach → 직선 진입
         # 직전 측방 편차가 줄기 형상/검출점 영향인지 분리하기 위해 6cm를 재검증한다.
-        grasp_quat_variants = self.grasp_quat_variants()
+        grasp_quat_variants = (
+            NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS
+            if is_nw_high_target else self.grasp_quat_variants()
+        )
         n_offsets = len(grasp_retry_offsets)
         n_quats   = len(grasp_quat_variants)
         self.get_logger().info(
@@ -2472,6 +2486,11 @@ class CuroboPlanner(Node):
             f"trying {n_offsets} offsets × {n_quats} quats "
             f"| target=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
             f"| start_J1={np.rad2deg(self.current_joints[0]):.1f}°")
+        if is_nw_high_target:
+            self.get_logger().warn(
+                "NW_HIGH_TARGET_VARIANT_ORDER: "
+                + ", ".join(f"{v[2]:+.0f}deg" for v in grasp_quat_variants)
+                + " (prefer flatter branch over +15deg side-drift)")
         ret_pre   = None
         ret_grasp = None
         used_grasp_offset = None
@@ -2585,12 +2604,19 @@ class CuroboPlanner(Node):
                     break
                 if (
                     measured_best_j3_deg is not None
-                    and measured_best_j3_deg >= MEASURED_TCP_J3_GOOD_ENOUGH_DEG
+                    and measured_best_j3_deg >= (
+                        NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
+                        if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
+                    )
                 ):
+                    good_enough_j3_deg = (
+                        NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
+                        if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
+                    )
                     self.get_logger().info(
                         "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
                         f"J3={measured_best_j3_deg:.1f}deg >= "
-                        f"{MEASURED_TCP_J3_GOOD_ENOUGH_DEG:.0f}deg good-enough threshold — "
+                        f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
                         "skipping remaining grasp_quat_variants")
                     break
                 continue
