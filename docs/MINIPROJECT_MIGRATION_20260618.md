@@ -107,3 +107,20 @@ ros_packages/e0509_gripper_description/
 2. finalproject README/architecture에서 `ros_packages/e0509_gripper_description` 포함 사실을 명시한다.
 3. 중복 문서가 많아지면 finalproject 상위 docs에는 요약본을 두고, 상세 실험 문서는 package 내부 docs로 유지한다.
 4. 이후 실전 프로젝트 기록은 `strawberry_finalproject`를 기준으로 남긴다.
+
+## Canonical 작업 경로 전환
+
+복구 후 실제 ROS workspace가 finalproject의 패키지를 사용하도록 다음과 같이 정리했다.
+
+```text
+/home/user/doosan_ws/src/e0509_gripper_description
+ -> /home/user/doosan_ws/src/strawberry_finalproject/ros_packages/e0509_gripper_description
+```
+
+기존 miniproject 기반 작업 폴더는 다음 경로에 보존했다.
+
+```text
+/home/user/doosan_ws/src/e0509_gripper_description_legacy_miniproject_20260618
+```
+
+백업 폴더는 `COLCON_IGNORE`로 colcon discovery에서 제외했다. 앞으로 `e0509_gripper_description` 관련 새 수정과 커밋은 `strawberry_finalproject` 원격만 기준으로 한다.
