@@ -50,6 +50,40 @@ COLLECT_PICK_READY_RANK center=(-292,670,854)mm (...)
 COLLECT_THEN_PICK_READY_MOVE root/nw/pick_ready candidates=N best=(...)mm
 ```
 
+### 1.2 추가 버그 발견/수정: ranking 후 publish 직전 재정렬
+
+이후 로그를 다시 확인했을 때, ranking 자체는 정상인데 실제 publish 직전에 순서가
+다시 바뀌는 버그가 있었다.
+
+확인된 문제 로그:
+
+```text
+COLLECT_PICK_READY_RANK center=(-292,670,854)mm (-252,795,827)mm score=49 ...
+COLLECT_THEN_PICK_READY_MOVE root/nw/pick_ready candidates=4 best=(-252,795,827)mm
+PICK_TRIGGER root/nw/best 1/4 pos=(-374,771,765)mm
+```
+
+원인:
+
+- collect mode에서 `unique_all`을 `_rank_poses_for_pick_ready()`로 올바르게 정렬했다.
+- 하지만 `_trigger_picks_for_cell()` 내부가 항상 `_deduplicate_poses()`를 다시 호출했다.
+- `_deduplicate_poses()`는 lower-left/stem-level 우선 정렬을 포함하므로, 이미 정한
+  pick-ready 기준 ranking을 다시 깨뜨렸다.
+
+수정:
+
+- `_trigger_picks_for_cell(..., poses_are_ranked=True)` 옵션 추가.
+- collect-then-pick의 best target publish에서는 이미 정렬된 리스트를 그대로 사용한다.
+
+수정 후 기대 로그:
+
+```text
+COLLECT_PICK_READY_RANK ... (-252,795,827)mm score=...
+COLLECT_THEN_PICK_READY_MOVE ... best=(-252,795,827)mm
+PICK_SEQUENCE_USING_RANKED_ORDER root/nw/best first=(-252,795,827)mm
+PICK_TRIGGER root/nw/best 1/4 pos=(-252,795,827)mm
+```
+
 의도:
 
 - NW 중앙 pick-ready branch에서 물리적으로 더 가까운 후보를 먼저 시도한다.

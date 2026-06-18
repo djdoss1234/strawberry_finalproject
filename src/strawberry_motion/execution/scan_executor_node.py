@@ -787,14 +787,28 @@ class ScanExecutorNode(Node):
         return False
 
     def _trigger_picks_for_cell(
-        self, cell_id: str, poses: List[PoseStamped], pick_timeout_sec: float = 120.0
+        self,
+        cell_id: str,
+        poses: List[PoseStamped],
+        pick_timeout_sec: float = 120.0,
+        poses_are_ranked: bool = False,
     ) -> int:
         """Publish each pose to curobo_planner one at a time; return success count."""
-        unique = self._deduplicate_poses(poses)
+        unique = list(poses) if poses_are_ranked else self._deduplicate_poses(poses)
         self._pub_status(
             "PICK_SEQUENCE_START %s — %d unique targets (raw=%d)"
             % (cell_id, len(unique), len(poses))
         )
+        if poses_are_ranked and unique:
+            self._pub_status(
+                "PICK_SEQUENCE_USING_RANKED_ORDER %s first=(%.0f,%.0f,%.0f)mm"
+                % (
+                    cell_id,
+                    unique[0].pose.position.x * 1000,
+                    unique[0].pose.position.y * 1000,
+                    unique[0].pose.position.z * 1000,
+                )
+            )
         if not self._wait_for_planner():
             return 0
         success = 0
@@ -1148,7 +1162,9 @@ class ScanExecutorNode(Node):
                     self._pub_state(self._target_cell, "PLANNING_FAIL")
                     return
                 completed = self._trigger_picks_for_cell(
-                    "%s/best" % self._target_cell, unique_all
+                    "%s/best" % self._target_cell,
+                    unique_all,
+                    poses_are_ranked=True,
                 )
                 self._pub_state(
                     self._target_cell,
