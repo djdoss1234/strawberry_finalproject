@@ -235,15 +235,19 @@ ERROR: ABORT: 직선 진입 실패
      육안상 파지점보다 약 30mm 높고 얕게 들어가 `GRASP_EMPTY`가 발생했다.
    - 19:18 run에서 final approach를 180→210mm로 늘리자 TOOL finish가 90→120mm가 되었고,
      Doosan MoveLine이 "success but no motion"으로 실패했다.
-   - 따라서 기본값은 깊이 추가 없이 유지하고, 높이 문제만 open descent 추가 하강으로 보정한다.
+   - 19:22 run에서는 높이는 괜찮아졌고 깊이만 10~20mm 부족한 것으로 관찰됐다.
+     120mm TOOL finish는 실패했으므로 중간값인 105mm TOOL finish가 되도록
+     final_extra 기본값을 15mm로 둔다.
    - 기본값:
      - `nw_high_target_z_threshold_m:=0.750`
-     - `nw_high_target_final_extra_m:=0.000`
+     - `nw_high_target_final_extra_m:=0.015`
      - `nw_high_target_close_extra_down_m:=0.030`
    - 기대 로그:
+     - `NW_HIGH_TARGET_FINAL_EXTRA: 180mm -> 195mm`
      - `NW_HIGH_TARGET_CLOSE_EXTRA_DOWN: open descent 30mm -> 60mm`
-   - `nw_high_target_final_extra_m`는 명시 파라미터로만 켠다. 현재 branch에서 120mm
-     TOOL finish는 실패 확인됨.
+   - 이것은 장기적인 perception/KP target correction이 아니라, 현재 NW high-cell 실기
+     편차를 흡수하는 제한적 보정이다. 실제 근본 해결은 KP1/KP2 stem target 정확도와
+     eye-in-hand/depth drift를 별도로 줄여야 한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
