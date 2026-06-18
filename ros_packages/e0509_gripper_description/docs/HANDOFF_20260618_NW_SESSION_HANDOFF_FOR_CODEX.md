@@ -217,6 +217,19 @@ ERROR: ABORT: 직선 진입 실패
 4. 불필요한 IK variant 탐색 — J3 good-enough early-exit로 개선
 5. 속도 +30%, settle 시간 단축 — 코드 반영 완료
 6. "SW는 legacy_160mm" 라는 잘못된 전제 — 정정 완료 (둘 다 measured_tcp_260mm)
+7. collect-then-pick ranking 후 publish 직전 재정렬 문제 — 해결
+   (`PICK_SEQUENCE_USING_RANKED_ORDER` 로그로 확인 가능)
+8. NW measured-TCP 후보 탐색 낭비 — 개선
+   - `+15deg` grasp orientation을 먼저 시도한다. 직전 실기 로그에서 같은 90mm depth에서
+     J3=53.6deg로 가장 건강한 branch였기 때문이다.
+   - 첫 성공 depth가 나온 뒤에는 다음 orientation에서 그보다 깊은 IK_FAIL 후보를 반복
+     검사하지 않는다.
+   - probing 때 이미 계산한 final cuRobo plan을 실행 시 재사용한다. 기존에는 같은 90mm
+     final plan을 버리고 실행 단계에서 다시 fallback search를 수행했다.
+9. 파지점 미세 보정용 ROS 파라미터 추가
+   - `pick_target_x_bias_m` (default 0.0)
+   - `pick_target_z_bias_m` (default `GRASP_Z_BIAS`, 현재 0.0)
+   - 로그의 `PICK 딸기 raw=... grasp=... x_bias=... z_bias=...`로 실제 보정량 확인 가능.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

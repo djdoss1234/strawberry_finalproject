@@ -115,12 +115,14 @@ GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base",  [1, 0, 0],  +5.0),  # 5° 위 (4차)
 ]
 MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
+    # NW 실기 로그(2026-06-18): +15deg가 같은 90mm 도달 깊이에서 J3=53.6deg로
+    # 가장 건강한 branch였다. 먼저 시도해 불필요한 IK_FAIL probing을 줄인다.
+    ("base", [1, 0, 0], +15.0),
+    ("base", [1, 0, 0], +10.0),
+    ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0],   0.0),
     ("base", [1, 0, 0],  -5.0),
-    ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0], -10.0),
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0], +15.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1
@@ -376,6 +378,8 @@ class CuroboPlanner(Node):
         self.declare_parameter(
             "measured_tcp_tool_line_after_curobo_fallback",
             True)
+        self.declare_parameter("pick_target_x_bias_m", 0.0)
+        self.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
         self.declare_parameter("debug_dump_plan_calls", False)
         self._debug_dump_plan_calls = bool(
             self.get_parameter("debug_dump_plan_calls").value)
@@ -434,6 +438,10 @@ class CuroboPlanner(Node):
         self._measured_tcp_tool_line_after_curobo_fallback = bool(
             self.get_parameter(
                 "measured_tcp_tool_line_after_curobo_fallback").value)
+        self._pick_target_x_bias_m = float(
+            self.get_parameter("pick_target_x_bias_m").value)
+        self._pick_target_z_bias_m = float(
+            self.get_parameter("pick_target_z_bias_m").value)
         self._leftmost_extra_advance_request_m = max(
             0.0, float(self.get_parameter("leftmost_extra_advance_request_m").value))
         self._leftmost_wall_safety_margin_m = float(
@@ -2360,7 +2368,11 @@ class CuroboPlanner(Node):
                 f"(FK calibration drift) — clamped to {WALL_SURFACE_Y_M*1000:.0f}mm")
             raw_y = WALL_SURFACE_Y_M
         raw_straw = np.array([p.x, raw_y, max(p.z, 0.05)])
-        straw = raw_straw + np.array([0.0, 0.0, GRASP_Z_BIAS])
+        straw = raw_straw + np.array([
+            self._pick_target_x_bias_m,
+            0.0,
+            self._pick_target_z_bias_m,
+        ])
         straw[2] = max(straw[2], 0.05)
 
         x_min, x_max = DIRECT_GRASP_TARGET_X_RANGE_M
@@ -2390,12 +2402,14 @@ class CuroboPlanner(Node):
         self.get_logger().info(
             f"=== PICK 딸기 raw=({raw_straw[0]*1000:.0f},{raw_straw[1]*1000:.0f},{raw_straw[2]*1000:.0f})mm "
             f"grasp=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
-            f"z_bias={GRASP_Z_BIAS*1000:+.0f}mm ===")
+            f"x_bias={self._pick_target_x_bias_m*1000:+.0f}mm "
+            f"z_bias={self._pick_target_z_bias_m*1000:+.0f}mm ===")
         self.runtime_log.log(
             "pick_target_prepared",
             raw_target_m=raw_straw,
             grasp_target_m=straw,
-            grasp_z_bias_m=GRASP_Z_BIAS,
+            grasp_x_bias_m=self._pick_target_x_bias_m,
+            grasp_z_bias_m=self._pick_target_z_bias_m,
             wall_y_clamped=wall_y_clamped,
         )
 
@@ -2481,6 +2495,21 @@ class CuroboPlanner(Node):
                 for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
                     if 0.001 < depth_m < requested_probe_depth_m - 0.005:
                         probe_depths.append(depth_m)
+                if measured_best_depth_m > 0.0:
+                    # If one orientation already proved that deeper endpoints fail,
+                    # do not repeat those expensive IK_FAIL probes for every later
+                    # orientation. Later variants are now used mainly to find a
+                    # healthier elbow at the same reachable depth.
+                    probe_depths = [
+                        d for d in probe_depths
+                        if d <= measured_best_depth_m + 1e-6
+                    ]
+                    if not probe_depths:
+                        probe_depths = [measured_best_depth_m]
+                    self.get_logger().info(
+                        "MEASURED_TCP_PROBE_PRUNED: existing best depth="
+                        f"{measured_best_depth_m*1000:.0f}mm; "
+                        f"next depths={[round(d*1000) for d in probe_depths]}mm")
                 for depth_m in probe_depths:
                     probe_target = ee_pre + depth_m * approach_dir
                     r_final_probe = self.plan(
@@ -2681,17 +2710,73 @@ class CuroboPlanner(Node):
                 self._measured_tcp_model
                 and self._direct_curobo_final_approach_for_measured_tcp
             ):
-                approach_ok = False
-                self.get_logger().warn(
-                    "FINAL_APPROACH_STRAIGHT_BASE skipped: measured TCP uses "
-                    "cuRobo final approach because Doosan MoveLine returns "
-                    "success without motion in this branch")
+                selected_curobo_depth_m = measured_best_depth_m
+                approach_ok = (
+                    ret_grasp is not None
+                    and selected_curobo_depth_m > 0.0
+                    and self.execute_spline(*ret_grasp)
+                )
                 self.runtime_log.log(
-                    "final_approach_moveline_skipped",
-                    reason="measured_tcp_direct_curobo_final_approach",
-                    distance_m=final_approach_distance,
+                    "final_approach_precomputed_curobo",
+                    controller="curobo_plus_doosan_move_spline_joint",
+                    requested_distance_m=final_approach_distance,
+                    executed_depth_m=selected_curobo_depth_m,
+                    success=approach_ok,
                     approach_dir=used_approach_dir,
                 )
+                if approach_ok:
+                    self.get_logger().info(
+                        "FINAL_APPROACH_PRECOMPUTED_CUROBO "
+                        f"depth={selected_curobo_depth_m*1000:.0f}mm "
+                        "(reusing probe plan; no extra IK fallback search)")
+                    final_approach_distance = selected_curobo_depth_m
+                    used_grasp_ee_pos = (
+                        used_pre_ee_pos
+                        + final_approach_distance * used_approach_dir)
+                    remaining_tool_line_m = (
+                        requested_final_approach_distance
+                        - selected_curobo_depth_m)
+                    if (
+                        self._measured_tcp_tool_line_after_curobo_fallback
+                        and remaining_tool_line_m >= 0.020
+                    ):
+                        self.get_logger().warn(
+                            "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
+                            f"{selected_curobo_depth_m*1000:.0f}mm only; executing "
+                            f"remaining {remaining_tool_line_m*1000:.0f}mm with "
+                            "TOOL +Z MoveLine like the proven SW baseline")
+                        self.runtime_log.log(
+                            "final_approach_tool_finish_requested",
+                            reason="curobo_deep_final_approach_ik_fail",
+                            curobo_depth_m=selected_curobo_depth_m,
+                            tool_finish_m=remaining_tool_line_m,
+                            requested_total_m=requested_final_approach_distance,
+                        )
+                        if not self.execute_tool_z_line(
+                            remaining_tool_line_m,
+                            motion_label="FINAL_APPROACH_TOOL_FINISH",
+                            vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                            acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                            min_distance_m=0.005,
+                        ):
+                            self.get_logger().error(
+                                "FINAL_APPROACH_TOOL_FINISH failed after "
+                                "precomputed cuRobo final approach")
+                            approach_ok = False
+                        else:
+                            final_approach_distance = (
+                                selected_curobo_depth_m + remaining_tool_line_m)
+                            used_grasp_ee_pos = (
+                                used_grasp_ee_pos
+                                + remaining_tool_line_m * used_approach_dir)
+                            self.runtime_log.log(
+                                "final_approach_tool_finish_success",
+                                executed_total_m=final_approach_distance,
+                            )
+                else:
+                    self.get_logger().warn(
+                        "FINAL_APPROACH_PRECOMPUTED_CUROBO failed; "
+                        "falling back to depth search")
             elif self._measured_tcp_model:
                 approach_ok = self.execute_base_relative_line(
                     final_approach_distance * used_approach_dir,
