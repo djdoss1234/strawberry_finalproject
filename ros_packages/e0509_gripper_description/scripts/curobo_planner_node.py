@@ -84,10 +84,11 @@ CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 
 CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
 CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
 # NW high cell: 2026-06-18 실기에서 Z≈825mm target은 +15deg branch로 접근하면서
-# 실제 파지점보다 약 30mm 위/얕게 닿았다. SW 저위치 target 회귀를 피하려고
-# high target에만 추가 깊이/하강 보정을 적용한다.
+# 실제 파지점보다 약 30mm 위에서 닿았다. 깊이도 얕게 보였지만, TOOL finish
+# 90mm는 성공하고 120mm는 Doosan MoveLine 무동작으로 실패했다. 따라서 기본값은
+# 깊이 추가 없이 open descent만 늘리고, final_extra는 명시 파라미터로만 켠다.
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
-NW_HIGH_TARGET_FINAL_EXTRA_M = 0.030
+NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
@@ -2756,11 +2757,13 @@ class CuroboPlanner(Node):
 
         if final_approach_distance > 0.001:
             requested_final_approach_distance = final_approach_distance
+            precomputed_final_attempted = False
             if (
                 self._measured_tcp_model
                 and self._direct_curobo_final_approach_for_measured_tcp
             ):
                 selected_curobo_depth_m = measured_best_depth_m
+                precomputed_final_attempted = True
                 approach_ok = (
                     ret_grasp is not None
                     and selected_curobo_depth_m > 0.0
@@ -2843,6 +2846,7 @@ class CuroboPlanner(Node):
                 if (
                     self._measured_tcp_model
                     and ENABLE_CUROBO_FINAL_APPROACH_FALLBACK
+                    and not precomputed_final_attempted
                     and used_pre_ee_pos is not None
                     and used_grasp_quat is not None
                     and self.current_joints is not None

@@ -233,14 +233,17 @@ ERROR: ABORT: 직선 진입 실패
 10. NW high target 접근 높이/깊이 보정 추가
    - 2026-06-18 19:07 run에서 target Z≈825mm는 접근 자체는 성공했지만,
      육안상 파지점보다 약 30mm 높고 얕게 들어가 `GRASP_EMPTY`가 발생했다.
-   - SW 회귀를 피하기 위해 Z가 높은 measured-TCP target에만 자동 보정한다.
+   - 19:18 run에서 final approach를 180→210mm로 늘리자 TOOL finish가 90→120mm가 되었고,
+     Doosan MoveLine이 "success but no motion"으로 실패했다.
+   - 따라서 기본값은 깊이 추가 없이 유지하고, 높이 문제만 open descent 추가 하강으로 보정한다.
    - 기본값:
      - `nw_high_target_z_threshold_m:=0.750`
-     - `nw_high_target_final_extra_m:=0.030`
+     - `nw_high_target_final_extra_m:=0.000`
      - `nw_high_target_close_extra_down_m:=0.030`
    - 기대 로그:
-     - `NW_HIGH_TARGET_FINAL_EXTRA: 180mm -> 210mm`
      - `NW_HIGH_TARGET_CLOSE_EXTRA_DOWN: open descent 30mm -> 60mm`
+   - `nw_high_target_final_extra_m`는 명시 파라미터로만 켠다. 현재 branch에서 120mm
+     TOOL finish는 실패 확인됨.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
