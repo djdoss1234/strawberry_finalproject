@@ -124,3 +124,73 @@ ros_packages/e0509_gripper_description/
 ```
 
 백업 폴더는 `COLCON_IGNORE`로 colcon discovery에서 제외했다. 앞으로 `e0509_gripper_description` 관련 새 수정과 커밋은 `strawberry_finalproject` 원격만 기준으로 한다.
+
+## 나중에 확인하는 방법
+
+이번 복구의 의미는 다음과 같이 구분한다.
+
+```text
+strawberry_miniproject
+= 2026-06-04~2026-06-18 실험 중 잘못 쌓인 세부 과정 커밋 이력
+
+strawberry_finalproject
+= 앞으로 기준이 되는 공식 프로젝트 레포
+= miniproject에 있던 최종 코드/문서 스냅샷 복구 완료
+= 날짜별 worklog 백필 완료
+```
+
+### 무엇을 복구했는가
+
+`e0509_gripper_description`의 `afef927 feat: organize strawberry harvest mini-project portfolio` 이후 변경된 실전 수확 작업 파일을 finalproject에 복구했다.
+
+복구 위치:
+
+```text
+/home/user/doosan_ws/src/strawberry_finalproject/ros_packages/e0509_gripper_description
+```
+
+복구 커밋:
+
+```text
+0181c98 chore: migrate harvest package from miniproject
+```
+
+날짜별 worklog 백필 커밋:
+
+```text
+b2c380a docs: backfill June harvest worklogs
+```
+
+canonical 경로 전환 기록 커밋:
+
+```text
+73e7565 docs: record finalproject package path switch
+```
+
+### 파일 누락 여부 확인 방법
+
+miniproject에서 `afef927` 이후 바뀐 파일과 finalproject 복구 스냅샷을 비교하면 된다.
+
+```bash
+cd ~/doosan_ws/src/e0509_gripper_description_legacy_miniproject_20260618
+git diff --name-only afef927..HEAD
+```
+
+복구 당시 별도 스크립트로 확인한 결과:
+
+```text
+changed_after_afef927=67
+missing_in_final_snapshot=0
+```
+
+### 커밋 이력은 어떻게 봐야 하는가
+
+finalproject에는 miniproject의 세부 실험 커밋이 하나하나 replay된 것이 아니라, 최종 tracked snapshot이 `0181c98` 한 커밋으로 들어갔다. 따라서 GitHub history에서 6/9~6/16의 작은 실험 커밋들이 finalproject에 개별적으로 보이지 않는 것은 정상이다.
+
+나중에 포트폴리오를 쓸 때는 다음 기준으로 보면 된다.
+
+- 세부 시행착오와 과정 커밋: `strawberry_miniproject` / legacy backup history
+- 공식 코드/문서 산출물: `strawberry_finalproject`
+- 날짜별 설명 가능한 진행 기록: `strawberry_finalproject/docs/worklogs/`
+
+즉, mini는 실험 과정 블랙박스이고 final은 정리된 공식 제출본이다. 이후 새 작업과 커밋은 finalproject만 기준으로 한다.
