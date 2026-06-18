@@ -229,6 +229,43 @@ scan_pose_candidates:
     - -73.74
     - 85.83
     use_for_automated_motion: true
+  - cell_id: root/nw/pick_ready
+    approach: computed_ik_healthy_branch_2026_06_18
+    standoff_m: taught
+    note: Offline cuRobo IK solve at the centroid of the 4 NW sub-cell TCP positions
+      (shared sub-cell orientation), seeded from root/nw/se. Replaces using root/nw
+      (camera-framing center, J3~-1deg near-singular, no healthy-J3 branch exists at
+      that exact TCP pose -- verified by 128-seed IK sweep) as the collect-then-pick
+      pick-ready pose. This pose is reachable from all 4 sub-cells with <=36deg max
+      joint delta (vs 174-205deg from the old root/nw center), and can cuRobo-plan a
+      real failing target (x=-255,z=828mm, 2026-06-18 log) all the way to the wall
+      surface (y=672mm) with healthy J3~73deg -- no MoveLine fallback needed. See
+      scripts/compute_nw_pick_ready_pose.py.
+    tcp_transform_base:
+    - - 0.015032726
+      - -0.997504877
+      - 0.068978529
+      - -0.292036921
+    - - 0.402270571
+      - 0.069190537
+      - 0.912902545
+      - 0.670270681
+    - - -0.915397403
+      - 0.014024618
+      - 0.402306979
+      - 0.854195178
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - -40.55
+    - -73.05
+    - 62.73
+    - 301.94
+    - -60.48
+    - 100.44
+    use_for_automated_motion: true
   - cell_id: root/ne
     approach: manual_teach_dart
     standoff_m: taught
