@@ -56,6 +56,12 @@ COLOR_KP2    = (0, 200, 0)     # stem_tip  — green
 SEG_ALPHA    = 0.35
 
 
+def _as_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 # ── E0509 FK (calibration-identical) ─────────────────────────────────────────
 def _T(xyz, rpy, q=0.0):
     M = np.eye(4)
@@ -199,6 +205,9 @@ class StrawberryFusionNode(Node):
         self.declare_parameter("target_lock_enabled", True)
         self.declare_parameter("target_lock_ttl_sec", 3.0)
         self.declare_parameter("target_switch_distance_m", 0.090)
+        self.declare_parameter("pick_target_min_z_m", 0.0)
+        self.declare_parameter("pick_target_max_z_m", 1.05)
+        self.declare_parameter("prefer_lower_z_target", False)
         self.declare_parameter("show_display", True)
         self.declare_parameter("show_cell_grid", True)
 
@@ -235,11 +244,15 @@ class StrawberryFusionNode(Node):
         self._track_match_dist = float(self.get_parameter("track_match_distance_m").value)
         self._track_ttl_sec = float(self.get_parameter("track_ttl_sec").value)
         self._publish_period_sec = float(self.get_parameter("publish_period_sec").value)
-        self._target_lock_enabled = bool(self.get_parameter("target_lock_enabled").value)
+        self._target_lock_enabled = _as_bool(self.get_parameter("target_lock_enabled").value)
         self._target_lock_ttl_sec = float(self.get_parameter("target_lock_ttl_sec").value)
         self._target_switch_dist = float(self.get_parameter("target_switch_distance_m").value)
+        self._pick_target_min_z_m = float(self.get_parameter("pick_target_min_z_m").value)
+        self._pick_target_max_z_m = float(self.get_parameter("pick_target_max_z_m").value)
+        self._prefer_lower_z_target = _as_bool(
+            self.get_parameter("prefer_lower_z_target").value)
         self._display = self.get_parameter("show_display").value
-        self._show_cell_grid = bool(self.get_parameter("show_cell_grid").value)
+        self._show_cell_grid = _as_bool(self.get_parameter("show_cell_grid").value)
 
         # ── calibration ───────────────────────────────────────────────────────
         self.get_logger().info(f"Loading calibration: {calib_path}")
@@ -312,6 +325,10 @@ class StrawberryFusionNode(Node):
             f"Stem grasp target: mode={self._stem_grasp_direction_mode}, "
             f"offset up to {self._stem_grasp_offset_m*1000:.0f}mm, "
             f"base-Z trim={self._grasp_target_base_z_trim_m*1000:+.0f}mm")
+        self.get_logger().info(
+            f"Pick target gate: base_z={self._pick_target_min_z_m:.3f}.."
+            f"{self._pick_target_max_z_m:.3f}m, "
+            f"prefer_lower_z={self._prefer_lower_z_target}")
         self.runtime_log.log(
             "node_start",
             pipeline_role="seg_pose_fusion_and_target_generation",
@@ -334,6 +351,9 @@ class StrawberryFusionNode(Node):
                 "target_position_min_samples": self._position_min_samples,
                 "target_position_max_spread_m": self._position_max_spread_m,
                 "track_match_distance_m": self._track_match_dist,
+                "pick_target_min_z_m": self._pick_target_min_z_m,
+                "pick_target_max_z_m": self._pick_target_max_z_m,
+                "prefer_lower_z_target": self._prefer_lower_z_target,
             },
         )
 
@@ -404,13 +424,32 @@ class StrawberryFusionNode(Node):
         """Pick one stable target and hold it briefly to suppress target swaps."""
         now = time.monotonic()
         candidates = [c for c in candidates if self._track_is_stable(c["track"])]
+        gated = []
+        for c in candidates:
+            z_m = float(c["track"]["pos"][2])
+            if z_m < self._pick_target_min_z_m or z_m > self._pick_target_max_z_m:
+                self._reject_target(
+                    "pick_target_z_out_of_range",
+                    track_id=c["track_id"],
+                    target_pos_m=c["track"]["pos"],
+                    min_z_m=self._pick_target_min_z_m,
+                    max_z_m=self._pick_target_max_z_m,
+                )
+                continue
+            gated.append(c)
+        candidates = gated
         if not candidates:
             if now - self._active_last_seen > self._target_lock_ttl_sec:
                 self._active_track_id = None
             return None
 
+        def priority(candidate):
+            if self._prefer_lower_z_target:
+                return (float(candidate["track"]["pos"][2]), candidate["center_dist_px"])
+            return (candidate["center_dist_px"],)
+
         if not self._target_lock_enabled:
-            return min(candidates, key=lambda c: c["center_dist_px"])
+            return min(candidates, key=priority)
 
         active = None
         if self._active_track_id is not None:
@@ -419,6 +458,22 @@ class StrawberryFusionNode(Node):
                     active = c
                     break
             if active is not None:
+                if self._prefer_lower_z_target:
+                    best = min(candidates, key=priority)
+                    active_z = float(active["track"]["pos"][2])
+                    best_z = float(best["track"]["pos"][2])
+                    if best["track_id"] != active["track_id"] and best_z < active_z - 0.030:
+                        self.runtime_log.log(
+                            "target_lock_switched_to_lower_z",
+                            previous_track_id=active["track_id"],
+                            previous_z_m=active_z,
+                            new_track_id=best["track_id"],
+                            new_z_m=best_z,
+                            reason="prefer_lower_z_target",
+                        )
+                        self._active_track_id = best["track_id"]
+                        self._active_last_seen = now
+                        return best
                 self._active_last_seen = now
                 return active
 
@@ -431,12 +486,12 @@ class StrawberryFusionNode(Node):
                 if float(np.linalg.norm(c["track"]["pos"] - prev)) <= self._target_switch_dist
             ]
             if nearby:
-                active = min(nearby, key=lambda c: c["center_dist_px"])
+                active = min(nearby, key=priority)
                 self._active_track_id = active["track_id"]
                 self._active_last_seen = now
                 return active
 
-        active = min(candidates, key=lambda c: c["center_dist_px"])
+        active = min(candidates, key=priority)
         self._active_track_id = active["track_id"]
         self._active_last_seen = now
         return active

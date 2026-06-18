@@ -5,6 +5,60 @@
 SW 단일 딸기에서 검증됐던 수확 모션을 NW 잎/줄기 가림 셀로 확장한다.
 현재 place는 잠시 중단하고, NW 셀에서 딸기 접근/파지 모션 안정화가 우선이다.
 
+## 2026-06-18 추가 구현: collect-then-pick
+
+NW 세부 scan pose에서 바로 pick을 시작하면, perception에는 유리하지만 pick
+branch로는 불리한 자세에서 수확이 시작되어 final approach가 계속 막혔다.
+이를 분리하기 위해 `strawberry_motion` scan executor에 collect-then-pick 모드를
+추가했다.
+
+구현 흐름:
+
+```text
+root/nw/nw scan
+ -> root/nw/ne scan
+ -> root/nw/se scan
+ -> root/nw/sw scan
+ -> 후보 PoseStamped 전체 수집/중복 제거
+ -> root/nw 중앙 pick-ready pose로 이동
+ -> best target 1개를 /dsr01/curobo/pick_pose로 forward
+```
+
+사용된 중앙 pick-ready pose:
+
+```text
+source: config/scan_pose_candidates_refit_candidate.yaml / root/nw
+TCP BASE [mm,deg] = [-225.46, 338.93, 902.31, 88.42, 87.31, -89.88]
+joints_deg = [144.09, 22.90, -1.00, -238.52, -75.31, 108.68]
+```
+
+새 launch parameter:
+
+```text
+collect_then_pick:=true             # workspace_scan.launch.py 기본값 true
+collect_pick_ready_cell:=root/nw    # 생략 시 target_cell 사용
+```
+
+다음 실기에서 기대 로그:
+
+```text
+COLLECT_THEN_PICK_ENABLED scan_cells=[...] pick_ready_cell=root/nw
+COLLECT_TARGETS root/nw/nw kept=... total_buffer=...
+COLLECT_TARGETS root/nw/ne kept=... total_buffer=...
+COLLECT_TARGETS root/nw/se kept=... total_buffer=...
+COLLECT_TARGETS root/nw/sw kept=... total_buffer=...
+COLLECT_THEN_PICK_READY_MOVE root/nw candidates=... best=(x,y,z)mm
+PICK_TRIGGER root/nw/best 1/...
+```
+
+주의:
+
+- `max_total_picks:=1`이면 수집 후보 중 첫 best target 1개만 시도한다.
+- 한 개를 따면 줄기/잎이 움직일 수 있으므로 NW 안정화 단계에서는
+  `1 pick -> 재스캔 -> 다음 pick`을 기본으로 한다.
+- 이 구현은 scan executor의 target forwarding 방식 변경이며,
+  `curobo_planner_node.py`의 SW 수확 모션 자체를 직접 바꾸지 않는다.
+
 ## 오늘 확인한 문제
 
 ### 1. NW에서 딸기까지 충분히 접근하지 못함
@@ -99,6 +153,96 @@ nw -> ne -> sw -> se
 단, candidate sorting/grouping 쪽에는 lower stem-level 후보를 우선하려는
 변경이 남아 있다. 이는 `max_total_picks=1` 조건에서 높은 잎/꼭지 후보를
 먼저 소비하는 문제를 줄이기 위한 것이다.
+
+### 5. 현재 scan executor는 "4개 포즈 collect 후 pick" 구조가 아님
+
+사용자 가정:
+
+```text
+NW 세부 scan pose 4개를 전부 훑음
+ -> 후보를 기억함
+ -> 해당 pose 또는 안정적인 중앙 pose로 돌아감
+ -> pick 실행
+```
+
+실제 코드 흐름:
+
+```text
+각 sub-scan pose로 이동
+ -> dwell 중 detection buffer 수집
+ -> 해당 pose에서 target이 잡히면 즉시 /dsr01/curobo/pick_pose로 forward
+ -> curobo_planner가 그 scan pose의 현재 joint branch에서 바로 pick 시작
+ -> pick_complete 대기
+ -> 다음 scan pose 이동
+```
+
+즉 현재는 `보고 즉시 따기`에 가깝다. `max_total_picks:=1`이면 첫 번째로
+잡힌 후보 하나에 바로 수확 시도를 소비한다. NW에서는 이 때문에 scan view로는
+좋지만 pick branch로는 나쁜 세부 scan pose에서 바로 접근을 시작하게 된다.
+
+최근 로그 예:
+
+```text
+target raw=(-374,672,765)mm
+start_J1=-30.1deg
+pre-approach end_J=[-25.6, -49.7, 29.2, 294.2, -81.3, 109.3]deg
+final approach 150/130/110/90mm IK_FAIL, 70mm만 성공
+남은 80mm TOOL MoveLine no-motion으로 실패
+```
+
+결론:
+
+```text
+perception target은 이전보다 정상화됐지만,
+pick을 시작하는 joint branch가 NW 세부 scan pose에 묶여 있어 final approach가 막힌다.
+```
+
+### 6. 다음 권장 구조: collect-then-pick + NW 중앙 pick-ready pose
+
+새 티칭을 당장 추가하지 않고, 이미 검증/기록된 gripper-centered NW 중앙 pose를
+pick-ready pose로 활용한다.
+
+NW 중앙 gripper-centered pose:
+
+```text
+source: config/scan_pose_candidates_refit_candidate.yaml / root/nw
+TCP BASE [mm,deg] = [-225.46, 338.93, 902.31, 88.42, 87.31, -89.88]
+joints_deg = [144.09, 22.90, -1.00, -238.52, -75.31, 108.68]
+```
+
+권장 시퀀스:
+
+```text
+1. root/nw/nw, root/nw/ne, root/nw/sw, root/nw/se를 순서대로 scan
+2. 각 pose에서는 pick을 실행하지 않고 후보 PoseStamped만 buffer에 저장
+3. 전체 후보 중 best target 1개 선택
+   - z 너무 높은 leaf/top 후보 제외
+   - stem keypoint confidence/geometry 정상
+   - 낮은 stem-level 후보 우선
+   - 필요 시 x/z 위치와 subcell 정보를 함께 기록
+4. 로봇을 root/nw 중앙 pick-ready joints로 이동
+5. 저장해 둔 best target pose를 /dsr01/curobo/pick_pose로 publish
+6. cuRobo planner는 중앙 pick-ready branch에서 수확 시작
+7. pick/detach/retreat 후에는 재스캔 권장
+```
+
+재스캔 판단:
+
+- 모형 딸기라도 한 개를 따면 줄기/잎이 움직이고, 인접 딸기 keypoint가 조금 변할 수 있다.
+- 따라서 NW 안정화 단계에서는 `1 pick -> 재스캔 -> 다음 pick`이 안전하다.
+- 향후 충분히 안정되면 같은 scan 후보 묶음에서 2개 이상 연속 수확하는 최적화를 검토한다.
+
+위에서 아래로 훑는 대안:
+
+```text
+top -> mid -> low 순서로 scan만 수행
+ -> 후보를 누적
+ -> 중앙 pick-ready pose에서 best target 수확
+```
+
+이는 지금의 2x2 subcell 순회보다 perception 관점에서 자연스럽고, 잎/상단 후보를
+먼저 소비하지 않게 만들 수 있다. 단, 구현은 동일하게 `scan은 저장만, pick은
+중앙 pose에서`라는 원칙을 따른다.
 
 ## 오늘 코드 수정
 

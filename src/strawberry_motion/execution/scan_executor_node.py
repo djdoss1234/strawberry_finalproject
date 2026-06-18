@@ -107,6 +107,12 @@ _JOINT_LIMITS_RAD = [
 _WRAP_EQUIVALENT_JOINT_IDX = {0, 3, 5}  # J1/J4/J6: same physical angle every 360 deg
 
 
+def _as_bool(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
 def _wrap_aware_joints_within_tolerance_deg(current_rad, target_deg, tolerance_deg):
     if not current_rad or len(current_rad) != len(target_deg):
         return False
@@ -158,6 +164,8 @@ class ScanExecutorNode(Node):
         )
         self.declare_parameter("enable_pick_integration", True)
         self.declare_parameter("max_total_picks", 0)  # 0 = unlimited
+        self.declare_parameter("collect_then_pick", False)
+        self.declare_parameter("collect_pick_ready_cell", "")
         self.declare_parameter("scan_dwell_sec", _DEFAULT_SCAN_DWELL_SEC)
         self.declare_parameter("return_to_overview_at_end", True)
         self.declare_parameter("enable_runtime_curobo_preview", False)
@@ -178,10 +186,16 @@ class ScanExecutorNode(Node):
         self._movej_service_timeout_sec = float(
             self.get_parameter("movej_service_timeout_sec").value
         )
-        self._enable_pick_integration = bool(
+        self._enable_pick_integration = _as_bool(
             self.get_parameter("enable_pick_integration").value
         )
         self._max_total_picks = int(self.get_parameter("max_total_picks").value)
+        self._collect_then_pick = _as_bool(
+            self.get_parameter("collect_then_pick").value
+        )
+        self._collect_pick_ready_cell = str(
+            self.get_parameter("collect_pick_ready_cell").value
+        ).strip()
         self._total_picks_attempted = 0
         self._scan_dwell_sec = max(
             1.0, float(self.get_parameter("scan_dwell_sec").value)
@@ -245,6 +259,11 @@ class ScanExecutorNode(Node):
             "MoveJoint service dispatch timeout: %.1fs; arrival is verified from /joint_states"
             % self._movej_service_timeout_sec
         )
+        if self._collect_then_pick:
+            self.get_logger().warn(
+                "collect_then_pick=true: scan poses only collect targets; "
+                "pick is triggered after moving to collect_pick_ready_cell or parent cell."
+            )
         if self._runtime_curobo_preview_enabled:
             self.get_logger().warn(
                 "Runtime cuRobo preview enabled: plans are logged only; "
@@ -651,6 +670,9 @@ class ScanExecutorNode(Node):
         does not move the robot to four new sub-poses; it partitions the
         detections from that single view so harvesting proceeds as:
         parent/nw -> parent/ne -> parent/se -> parent/sw.
+
+        In collect_then_pick mode this helper is bypassed. The executor first
+        scans all physical sub-poses, then moves to the parent pick-ready pose.
         """
         if not poses:
             return [(subcell, []) for subcell in ("nw", "ne", "se", "sw")]
@@ -684,7 +706,7 @@ class ScanExecutorNode(Node):
                 groups["sw"].append(pose)
 
         ordered: List[Tuple[str, List[PoseStamped]]] = []
-        for subcell in ("sw", "se", "nw", "ne"):
+        for subcell in ("nw", "ne", "se", "sw"):
             subposes = groups[subcell]
             subposes.sort(key=lambda p: (p.pose.position.x, p.pose.position.z))
             ordered.append((subcell, subposes))
@@ -876,7 +898,7 @@ class ScanExecutorNode(Node):
             # Target filtering should happen in candidate selection, not by
             # silently changing the physical scan traversal order.
             sub_cell_order = [
-                "%s/%s" % (self._target_cell, s) for s in ("nw", "ne", "sw", "se")
+                "%s/%s" % (self._target_cell, s) for s in ("nw", "ne", "se", "sw")
             ]
             available_subs = [c for c in sub_cell_order if c in self._targets]
             if available_subs:
@@ -889,6 +911,19 @@ class ScanExecutorNode(Node):
                 self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
 
         cell_detections: Dict[str, int] = {}
+        collect_then_pick_active = (
+            self._collect_then_pick
+            and self._enable_pick_integration
+            and self._target_cell != "all"
+            and len(scan_order) > 1
+        )
+        collected_poses: List[PoseStamped] = []
+        if collect_then_pick_active:
+            ready_cell = self._collect_pick_ready_cell or self._target_cell
+            self._pub_status(
+                "COLLECT_THEN_PICK_ENABLED scan_cells=%s pick_ready_cell=%s"
+                % (scan_order, ready_cell)
+            )
 
         for cell_id in scan_order:
             if cell_id not in self._targets:
@@ -976,28 +1011,35 @@ class ScanExecutorNode(Node):
                 )
                 if self._enable_pick_integration:
                     unique = self._deduplicate_poses(poses_snapshot)
-                    subgroups = self._group_poses_by_subcell(unique)
-                    subgroup_msg = "  ".join(
-                        "%s/%s:%d" % (cell_id, subcell, len(subposes))
-                        for subcell, subposes in subgroups
-                    )
-                    self._pub_status(
-                        "SUBCELL_SCAN_ORDER %s %s" % (cell_id, subgroup_msg)
-                    )
-                    for subcell, subposes in subgroups:
-                        logical_cell = "%s/%s" % (cell_id, subcell)
-                        self._pub_state(logical_cell, "SCANNING")
-                        if not subposes:
-                            self._pub_status(
-                                "SUBCELL_EMPTY %s no pick candidate" % logical_cell
-                            )
-                            self._pub_state(logical_cell, "SCANNED_EMPTY")
-                            continue
-                        completed = self._trigger_picks_for_cell(logical_cell, subposes)
-                        self._pub_state(
-                            logical_cell,
-                            "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                    if collect_then_pick_active:
+                        collected_poses.extend(unique)
+                        self._pub_status(
+                            "COLLECT_TARGETS %s kept=%d total_buffer=%d"
+                            % (cell_id, len(unique), len(collected_poses))
                         )
+                    else:
+                        subgroups = self._group_poses_by_subcell(unique)
+                        subgroup_msg = "  ".join(
+                            "%s/%s:%d" % (cell_id, subcell, len(subposes))
+                            for subcell, subposes in subgroups
+                        )
+                        self._pub_status(
+                            "SUBCELL_SCAN_ORDER %s %s" % (cell_id, subgroup_msg)
+                        )
+                        for subcell, subposes in subgroups:
+                            logical_cell = "%s/%s" % (cell_id, subcell)
+                            self._pub_state(logical_cell, "SCANNING")
+                            if not subposes:
+                                self._pub_status(
+                                    "SUBCELL_EMPTY %s no pick candidate" % logical_cell
+                                )
+                                self._pub_state(logical_cell, "SCANNED_EMPTY")
+                                continue
+                            completed = self._trigger_picks_for_cell(logical_cell, subposes)
+                            self._pub_state(
+                                logical_cell,
+                                "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                            )
             else:
                 self._pub_state(cell_id, "SCANNED_EMPTY")
                 self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
@@ -1007,6 +1049,54 @@ class ScanExecutorNode(Node):
             # policy (e.g. future VLA after repeated failed pick attempts).
             if cell_id != scan_order[-1]:
                 self._pub_status("INTER_CELL_DIRECT — no overview reset; continuing to next cell")
+
+        if collect_then_pick_active:
+            unique_all = self._deduplicate_poses(collected_poses)
+            if not unique_all:
+                self._pub_status("COLLECT_THEN_PICK_EMPTY no candidates after full scan")
+            else:
+                ready_cell = self._collect_pick_ready_cell or self._target_cell
+                ready_target = self._targets.get(ready_cell)
+                ready_joints = ready_target.get("endpoint_joints_deg") if ready_target else None
+                if ready_joints is None:
+                    self._pub_status(
+                        "COLLECT_THEN_PICK_BLOCKED missing pick-ready pose %s" % ready_cell
+                    )
+                    self._pub_state(self._target_cell, "PLANNING_FAIL")
+                    return
+                self._pub_status(
+                    "COLLECT_THEN_PICK_READY_MOVE %s candidates=%d best=(%.0f,%.0f,%.0f)mm"
+                    % (
+                        ready_cell,
+                        len(unique_all),
+                        unique_all[0].pose.position.x * 1000,
+                        unique_all[0].pose.position.y * 1000,
+                        unique_all[0].pose.position.z * 1000,
+                    )
+                )
+                if not self._movej(
+                    ready_joints, vel=self._scan_movej_vel, acc=self._scan_movej_acc
+                ):
+                    self._pub_status(
+                        "COLLECT_THEN_PICK_BLOCKED pick-ready MoveJoint failed"
+                    )
+                    self._pub_state(self._target_cell, "PLANNING_FAIL")
+                    return
+                arrival_target_deg = self._last_movej_command_deg or ready_joints
+                ready_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
+                if not self._wait_for_joints(ready_rad, 3.0, 90.0):
+                    self._pub_status(
+                        "COLLECT_THEN_PICK_BLOCKED pick-ready pose not confirmed"
+                    )
+                    self._pub_state(self._target_cell, "PLANNING_FAIL")
+                    return
+                completed = self._trigger_picks_for_cell(
+                    "%s/best" % self._target_cell, unique_all
+                )
+                self._pub_state(
+                    self._target_cell,
+                    "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                )
 
         # Return to overview is optional.  During harvest experiments we often
         # continue from the last cell pose so VLA/recovery logic can decide when

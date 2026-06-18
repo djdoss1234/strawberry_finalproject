@@ -80,6 +80,27 @@ def generate_launch_description() -> LaunchDescription:
                 description="Forward detected pick poses to the pick executor after each scan dwell.",
             ),
             DeclareLaunchArgument(
+                "max_total_picks",
+                default_value="0",
+                description="Maximum total pick attempts across all cells. 0 = unlimited.",
+            ),
+            DeclareLaunchArgument(
+                "collect_then_pick",
+                default_value="true",
+                description=(
+                    "For subcell scans, collect candidates from all scan poses first, "
+                    "then move to the parent pick-ready pose before forwarding one target."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "collect_pick_ready_cell",
+                default_value="",
+                description=(
+                    "Cell ID used as the pick-ready pose after collect_then_pick. "
+                    "Empty means the parent target_cell, e.g. root/nw."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "scan_dwell_sec",
                 default_value="4.0",
                 description="Maximum seconds to wait for the first stable perception target after reaching each scan pose.",
@@ -118,6 +139,16 @@ def generate_launch_description() -> LaunchDescription:
                 "fusion_show_display",
                 default_value="true",
                 description="Show OpenCV fusion visualization window.",
+            ),
+            DeclareLaunchArgument(
+                "fusion_pick_target_max_z_m",
+                default_value="0.88",
+                description="Reject fusion pick targets above this base-link Z height before publishing to planner.",
+            ),
+            DeclareLaunchArgument(
+                "fusion_prefer_lower_z_target",
+                default_value="true",
+                description="When multiple stable fusion targets exist, prefer lower base-link Z before image-center distance.",
             ),
             DeclareLaunchArgument(
                 "enable_moveit",
@@ -180,6 +211,12 @@ def generate_launch_description() -> LaunchDescription:
                         "seg_model": LaunchConfiguration("fusion_seg_model"),
                         "pose_model": LaunchConfiguration("fusion_pose_model"),
                         "show_display": LaunchConfiguration("fusion_show_display"),
+                        "pick_target_max_z_m": LaunchConfiguration(
+                            "fusion_pick_target_max_z_m"
+                        ),
+                        "prefer_lower_z_target": LaunchConfiguration(
+                            "fusion_prefer_lower_z_target"
+                        ),
                     }
                 ],
                 output="screen",
@@ -216,6 +253,11 @@ def generate_launch_description() -> LaunchDescription:
                         ),
                         "enable_pick_integration": LaunchConfiguration(
                             "enable_pick_integration"
+                        ),
+                        "max_total_picks": LaunchConfiguration("max_total_picks"),
+                        "collect_then_pick": LaunchConfiguration("collect_then_pick"),
+                        "collect_pick_ready_cell": LaunchConfiguration(
+                            "collect_pick_ready_cell"
                         ),
                         "scan_dwell_sec": LaunchConfiguration("scan_dwell_sec"),
                         "return_to_overview_at_end": LaunchConfiguration(
