@@ -54,24 +54,35 @@ LEFTMOST_WALL_SAFETY_MARGIN_M = -0.030   # 실기 확인: 줄기가 모델 벽 3
 LEFTMOST_EXTRA_ADVANCE_VEL_MM_S = 20.0    # NW 실기 안정화 후 30% 증속
 GRASP_Z_BIAS             = 0.000    # fusion이 생성한 KP1 근처 목표를 중복 상승시키지 않음
 PRE_APPROACH_OFFSET      = 0.06     # 6cm 접근 재검증: 직전 측방 편차가 줄기 형상 영향인지 분리
-PRE_APPROACH_SETTLE_SEC  = 0.5      # spline 잔진동이 멈춘 뒤 직선 접근 시작
-FINAL_APPROACH_VEL_MM_S  = 20.0
-FINAL_APPROACH_ACC_MM_S2 = 24.0
+PRE_APPROACH_SETTLE_SEC  = 0.3      # NW 실기 안정화 후 단축 (0.5 -> 0.3)
+FINAL_APPROACH_VEL_MM_S  = 26.0    # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0). SW도 공유.
+FINAL_APPROACH_ACC_MM_S2 = 31.0    # NW 실기 안정화 후 30% 증속 (24.0 -> 31.0). SW도 공유.
 DIRECT_CUROBO_FINAL_APPROACH_FOR_MEASURED_TCP = False
 ENABLE_CUROBO_FINAL_APPROACH_FALLBACK = True
 MEASURED_TCP_TARGET_Z_MAX_M = 1.050
 MEASURED_TCP_MAX_APPROACH_M = 0.180
+# 2026-06-18: hard ceiling for measured_tcp_max_approach_m. Was 0.180, which
+# silently clamped the parameter even when a deeper approach was requested
+# and real-world testing showed grasp-empty (gripper closed on nothing,
+# ~20-30mm short). Raised so the existing parameter can actually be tuned
+# deeper without another code change.
+MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
+# 2026-06-18: stop probing further grasp_quat_variants once a "healthy enough"
+# elbow (J3) branch is found at the best depth so far — trying all 6 variants
+# every pick wastes ~15-20s of GPU planning on variants that are strictly
+# worse than one already found. NW-only (measured_tcp_model path).
+MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
-RETREAT_VEL_MM_S         = 31.0
-RETREAT_ACC_MM_S2         = 39.0
-STRAIGHT_RETREAT_SETTLE_SEC = 0.5
+RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
+RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
+STRAIGHT_RETREAT_SETTLE_SEC = 0.3   # NW 실기 안정화 후 단축 (0.5 -> 0.3)
 NEIGHBOR_SPHERE_RADIUS_M = 0.030
 # ── 열린 그리퍼 줄기 하강 ─────────────────────────────────────────────────────
 # 수평 접근은 유지하되 KP1보다 위에서 진입을 끝낸 뒤, 그리퍼를 연 상태로
 # BASE -Z 하강하여 KP1에서 닫는다. 이후 추가 BASE -Z detach pull로 분리한다.
 CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 거리
-CRANE_DESCENT_VEL_MM_S = 12.0
-CRANE_ASCENT_VEL_MM_S  = 20.0
+CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
+CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -2465,7 +2476,7 @@ class CuroboPlanner(Node):
                 # 실행 전 각 orientation의 final depth reachability를 probing해
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
                 requested_probe_depth_m = max(
-                    0.060, min(0.180, self._measured_tcp_max_approach_m))
+                    0.060, min(MEASURED_TCP_MAX_APPROACH_CEILING_M, self._measured_tcp_max_approach_m))
                 probe_depths = [requested_probe_depth_m]
                 for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
                     if 0.001 < depth_m < requested_probe_depth_m - 0.005:
@@ -2511,6 +2522,16 @@ class CuroboPlanner(Node):
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
                 if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
+                    break
+                if (
+                    measured_best_j3_deg is not None
+                    and measured_best_j3_deg >= MEASURED_TCP_J3_GOOD_ENOUGH_DEG
+                ):
+                    self.get_logger().info(
+                        "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
+                        f"J3={measured_best_j3_deg:.1f}deg >= "
+                        f"{MEASURED_TCP_J3_GOOD_ENOUGH_DEG:.0f}deg good-enough threshold — "
+                        "skipping remaining grasp_quat_variants")
                     break
                 continue
 
