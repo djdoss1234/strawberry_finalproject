@@ -194,3 +194,41 @@ finalproject에는 miniproject의 세부 실험 커밋이 하나하나 replay된
 - 날짜별 설명 가능한 진행 기록: `strawberry_finalproject/docs/worklogs/`
 
 즉, mini는 실험 과정 블랙박스이고 final은 정리된 공식 제출본이다. 이후 새 작업과 커밋은 finalproject만 기준으로 한다.
+
+## ignored/local asset 추가 감사
+
+tracked snapshot 복구 후 `strawberry_fusion_node` 실행 중 다음 파일이 없어 node가 RealSense를 열기 전에 종료되는 문제가 있었다.
+
+```text
+config/calibration_eye_in_hand_1.npz
+```
+
+원인은 `config/*.npz`, `config/calibration/`, `models/*.pt`, `logs/` 등이 `.gitignore` 대상이라 tracked snapshot 복구에 포함되지 않았기 때문이다.
+
+2026-06-18에 legacy backup과 finalproject package를 전체 비교했고, 실행에 필요한 ignored asset을 추가 복구했다.
+
+복구한 local runtime asset:
+
+```text
+/home/user/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz
+/home/user/doosan_ws/src/e0509_gripper_description/config/calibration/calibration_eye_in_hand.npz
+/home/user/doosan_ws/src/e0509_gripper_description/models/best.pt
+```
+
+위 경로의 `e0509_gripper_description`은 finalproject package로 향하는 symlink다.
+
+추가 비교 결과:
+
+```text
+missing_total_including_logs_cache_local=1032
+missing_important_after_exclusions=0
+```
+
+남은 누락은 다음 범주다.
+
+- `logs/`, `log/`: raw runtime/build/experiment records. legacy backup에 보존한다.
+- `__pycache__`, `*.pyc`: 실행 캐시. 복구하지 않는다.
+- `scripts/측정.py`: 사용자 로컬 측정 파일. 수정/커밋 금지, legacy backup에만 보존한다.
+- `COLCON_IGNORE`: legacy backup을 colcon에서 제외하기 위한 marker.
+
+따라서 코드/설정/실행 필수 asset 기준으로는 finalproject package에 누락이 없다. 단, `.npz` calibration과 `.pt` model은 gitignore 대상이라 GitHub에는 올라가지 않으며, 새 PC/새 workspace에서 실행할 때는 legacy backup 또는 별도 asset 저장소에서 수동 복구해야 한다.
