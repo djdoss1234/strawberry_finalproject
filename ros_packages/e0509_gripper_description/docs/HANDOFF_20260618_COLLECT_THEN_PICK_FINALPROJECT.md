@@ -167,7 +167,13 @@ colcon build --packages-select e0509_gripper_description strawberry_motion --all
 - diff check 통과
 - colcon build 통과
 
-## 다음 실행 커맨드
+## 다음 실행 커맨드 (2026-06-18 갱신, 커밋 `aae1832` 기준)
+
+> 이 섹션은 한 번 갱신되었음. tie-break 버그 수정(`69037f0`)으로 NW가 `GRASP_POSE_REACHED`까지는
+> 2회 연속 도달했으나, `measured_tcp_max_approach_m:=0.150`이 옛 0.180mm 하드 천장에 막혀 있던
+> 시절의 값이라 깊이가 부족해 빈손 파지(GRASP_EMPTY)가 났다. 천장을 0.220m로 올렸으므로
+> 아래는 0.200으로 더 깊게 시도하는 값으로 갱신함. 자세한 원인/근거는
+> [[project_scan_pose_current]] 참고.
 
 Planner:
 
@@ -177,8 +183,9 @@ source ~/doosan_ws/install/setup.bash
 ros2 run e0509_gripper_description curobo_planner_node.py --ros-args \
   -p measured_tcp_plan_only:=false \
   -p direct_curobo_final_approach_for_measured_tcp:=true \
-  -p measured_tcp_max_approach_m:=0.150 \
-  -p measured_tcp_tool_line_after_curobo_fallback:=true
+  -p measured_tcp_max_approach_m:=0.200 \
+  -p measured_tcp_tool_line_after_curobo_fallback:=true \
+  -p debug_dump_plan_calls:=true
 ```
 
 Scan:
@@ -192,13 +199,17 @@ ros2 launch strawberry_motion workspace_scan.launch.py \
   enable_fusion_detection:=true \
   enable_pick_integration:=true \
   collect_then_pick:=true \
-  collect_pick_ready_cell:=root/nw \
+  collect_pick_ready_cell:=root/nw/pick_ready \
   max_total_picks:=1 \
-  scan_movej_vel_deg_s:=5.0 \
-  scan_movej_acc_deg_s2:=10.0 \
-  overview_return_vel_deg_s:=5.0 \
-  overview_return_acc_deg_s2:=10.0
+  scan_movej_vel_deg_s:=20.0 \
+  scan_movej_acc_deg_s2:=30.0 \
+  overview_return_vel_deg_s:=20.0 \
+  overview_return_acc_deg_s2:=30.0
 ```
+
+`collect_pick_ready_cell`을 `root/nw/pick_ready`로 바꾼 이유: 옛 `root/nw` 중심 포즈는 J3가
+특이점 근처(약 -1°)라 건강한 IK 분기가 그 위치엔 존재하지 않음(128-seed 스윕으로 확인). 4개
+서브셀의 TCP 중심으로 새로 계산한 `root/nw/pick_ready`(J3=62.73°)로 교체함.
 
 Trigger:
 
@@ -208,20 +219,16 @@ ros2 service call /strawberry/scan/start std_srvs/srv/Trigger "{}"
 
 ## 아직 못 해결한 것
 
-- NW collect-then-pick 실기 성공은 아직 미검증.
-- cuRobo final approach가 여전히 깊게 못 들어가면, scan/pick branch 분리만으로는
-  부족하고 NW용 grasp pose/orientation을 다시 잡아야 한다.
-- Doosan MoveLine이 일부 branch에서 success처럼 반환하지만 실제 joint 변화가 없는
-  문제가 남아 있다.
+- 위 깊이(0.200m)/속도(+30%) 조합은 아직 실기 미검증.
 - SafeGrasp/gripper service는 간헐적으로 timeout/초기화 실패가 있었다. 현재 NW
   모션 안정화 우선이라 place/전류 기반 자동 판정은 보류.
-- SW regression은 이번 collect-then-pick 변경 후 아직 재실행하지 않았다.
+- SW regression: `FINAL_APPROACH_VEL_MM_S/ACC`, `RETREAT_VEL_MM_S/ACC`,
+  `PRE_APPROACH_SETTLE_SEC`, `STRAIGHT_RETREAT_SETTLE_SEC`는 SW와 공유되는데
+  +30% 속도/단축 settle 적용 후 SW 재실행 검증을 아직 안 함.
 
 ## 다음 의사결정
 
-1. 위 커맨드로 `COLLECT_THEN_PICK_*` 로그가 실제로 찍히는지 확인한다.
-2. best target이 높은 leaf 후보가 아니라 stem-level 후보인지 Fusion 화면에서 확인한다.
-3. root/nw 중앙 pick-ready pose에서 시작했는데도 final approach가 막히면:
-   - measured TCP direct policy를 중단하고 SW 성공 policy와 비교
-   - NW 전용 orientation/top-down/side approach 재검토
+1. 위 커맨드로 실제로 줄기를 잡는지(GRASP_EMPTY가 아니라 진짜 저항이 걸리는지) 확인한다.
+2. 여전히 짧으면 `measured_tcp_max_approach_m`을 0.210까지만 더 올려본다(ceiling은 0.220).
+3. 잡히면 SW 셀로 회귀 테스트 1회 돌려서 속도 변경이 SW를 깨지 않았는지 확인한다.
 4. 한 개라도 따면 바로 재스캔한다. NW 안정화 전에는 여러 개를 한 번에 연속 pick하지 않는다.
