@@ -712,6 +712,62 @@ class ScanExecutorNode(Node):
             ordered.append((subcell, subposes))
         return ordered
 
+    @staticmethod
+    def _target_position_from_config(target: dict) -> Optional[np.ndarray]:
+        mat_rows = target.get("tcp_transform_base") if target else None
+        if mat_rows is None:
+            return None
+        try:
+            mat4 = np.array(mat_rows, dtype=float)
+            if mat4.shape == (3, 4):
+                mat4 = np.vstack([mat4, [0.0, 0.0, 0.0, 1.0]])
+            return mat4[:3, 3].astype(float)
+        except Exception:
+            return None
+
+    def _rank_poses_for_pick_ready(
+        self, poses: List[PoseStamped], ready_target: Optional[dict]
+    ) -> List[PoseStamped]:
+        """Rank collected candidates from the pose that will actually pick.
+
+        The old lower-left-first ordering was useful to avoid high leaf targets,
+        but in collect-then-pick it can pick a far-left strawberry that is hard
+        to reach from the central NW pick-ready branch. Prefer candidates whose
+        X/Z position is closest to the pick-ready TCP center, then prefer lower
+        stem-level Z as a tie-breaker.
+        """
+        if len(poses) <= 1:
+            return poses
+        ready_pos = self._target_position_from_config(ready_target)
+        if ready_pos is None:
+            return poses
+
+        def _score(p: PoseStamped) -> Tuple[float, float, float]:
+            dx = p.pose.position.x - float(ready_pos[0])
+            dz = p.pose.position.z - float(ready_pos[2])
+            xz_dist = float(np.hypot(dx, dz))
+            # Keep Y as a weak tie-breaker only. Perception Y can drift and the
+            # planner clamps to the wall surface, so do not over-weight it.
+            y_offset = abs(float(p.pose.position.y) - 0.672)
+            return (xz_dist, y_offset, p.pose.position.x)
+
+        ranked = sorted(poses, key=_score)
+        summary = "  ".join(
+            "(%.0f,%.0f,%.0f)mm score=%.0f"
+            % (
+                p.pose.position.x * 1000,
+                p.pose.position.y * 1000,
+                p.pose.position.z * 1000,
+                _score(p)[0] * 1000,
+            )
+            for p in ranked[:5]
+        )
+        self._pub_status(
+            "COLLECT_PICK_READY_RANK center=(%.0f,%.0f,%.0f)mm %s"
+            % (ready_pos[0] * 1000, ready_pos[1] * 1000, ready_pos[2] * 1000, summary)
+        )
+        return ranked
+
     def _wait_for_planner(self, timeout_sec: float = 60.0) -> bool:
         """Block until curobo_planner_node has subscribed to /dsr01/curobo/pick_pose."""
         deadline = time.time() + timeout_sec
@@ -995,7 +1051,7 @@ class ScanExecutorNode(Node):
             detection_deadline = time.time() + self._scan_dwell_sec
             while time.time() < detection_deadline:
                 with self._detection_lock:
-                    if self._detection_count > 0:
+                    if self._detection_count > 0 and not collect_then_pick_active:
                         break
                 time.sleep(0.05)
 
@@ -1064,6 +1120,7 @@ class ScanExecutorNode(Node):
                     )
                     self._pub_state(self._target_cell, "PLANNING_FAIL")
                     return
+                unique_all = self._rank_poses_for_pick_ready(unique_all, ready_target)
                 self._pub_status(
                     "COLLECT_THEN_PICK_READY_MOVE %s candidates=%d best=(%.0f,%.0f,%.0f)mm"
                     % (

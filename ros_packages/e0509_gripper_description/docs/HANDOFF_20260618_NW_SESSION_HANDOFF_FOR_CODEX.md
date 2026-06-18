@@ -15,8 +15,47 @@ NW 셀 수확 모션 안정화만. place, AnyGrasp, KPI 작업, 큰 리팩터링
 ## 1. 공식 repo / 최신 커밋
 
 - 공식 repo: `~/doosan_ws/src/strawberry_finalproject`
-- 최신 커밋(이 문서 작성 시점): `aae1832` (origin/main과 동기화됨)
+- 최신 커밋은 `git log --oneline -5`로 확인할 것. 이 문서 원본 작성 직후 기준은
+  `27bb50e`였고, 이후 Codex가 collect target ranking 수정을 추가했다.
 - 이번 세션에서 push된 커밋 순서: `1d9bb59` → `7004a3a` → `69037f0` → `aae1832`
+
+### 1.1 Codex 추가 수정 (27bb50e 이후)
+
+`27bb50e` 인계 이후 Codex가 로그를 다시 확인했을 때, collect-then-pick 자체는
+정상 동작했지만 후보 선택 기준이 문제였다.
+
+확인된 로그:
+
+```text
+COLLECT_TARGETS root/nw/se kept=1 total_buffer=1
+COLLECT_TARGETS root/nw/sw kept=1 total_buffer=2
+COLLECT_THEN_PICK_READY_MOVE root/nw/pick_ready candidates=2 best=(-373,771,765)mm
+```
+
+즉, "다른 딸기"를 노린 이유는 collect 후 best target이 이전 성공 타겟
+`x≈-255mm`가 아니라 더 왼쪽 `x≈-373mm`로 선택됐기 때문이다.
+
+수정:
+
+- collect-then-pick mode에서는 첫 detection이 들어와도 dwell을 바로 끊지 않고
+  scan dwell 전체 동안 후보를 더 모은다.
+- collect 후 best target은 기존 lower-left-first 정렬이 아니라
+  `collect_pick_ready_cell`의 TCP 중심에 X/Z가 가까운 후보를 우선한다.
+- 로그에 후보 ranking을 남긴다.
+
+기대 로그:
+
+```text
+COLLECT_PICK_READY_RANK center=(-292,670,854)mm (...)
+COLLECT_THEN_PICK_READY_MOVE root/nw/pick_ready candidates=N best=(...)mm
+```
+
+의도:
+
+- NW 중앙 pick-ready branch에서 물리적으로 더 가까운 후보를 먼저 시도한다.
+- `x=-373mm`처럼 왼쪽 끝 후보가 먼저 선택되어 final approach가 막히는 일을 줄인다.
+- 이 변경은 `strawberry_motion`의 scan target forwarding 정책만 바꾸며,
+  `curobo_planner_node.py`의 pick motion 자체는 건드리지 않는다.
 
 ## 2. 오늘 한 일 (시간순)
 
