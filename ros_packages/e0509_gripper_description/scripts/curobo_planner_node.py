@@ -37,6 +37,7 @@ from curobo.types.robot import JointState as CuroboJointState, RobotConfig
 from curobo.types.math import Pose
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from curobo.geom.types import WorldConfig, Cuboid, Sphere
+from doosan_motion_client import DoosanMotionClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
 from harvest_math import (
     quat_from_axis_angle,
@@ -359,6 +360,14 @@ class CuroboPlanner(Node):
         self.cli_change_op_speed = self.create_client(
             ChangeOperationSpeed, "/dsr01/motion/change_operation_speed",
             callback_group=self.service_cb_group)
+        self.motion_client = DoosanMotionClient(
+            node=self,
+            runtime_log=self.runtime_log,
+            cli_spline=self.cli_spline,
+            cli_movej=self.cli_movej,
+            cli_movel=self.cli_movel,
+            current_joints_getter=lambda: self.current_joints,
+        )
 
         self.get_logger().info("cuRobo Planner Ready!")
         self.get_logger().info(f"Runtime JSONL: {self.runtime_log.path}")
@@ -1182,320 +1191,36 @@ class CuroboPlanner(Node):
         return ok
 
     def execute_spline(self, traj_rad, motion_time: float) -> bool:
-        if not self.cli_spline.wait_for_service(timeout_sec=3.0):
-            self.get_logger().error("MoveSplineJoint not available")
-            return False
-        traj_deg = np.rad2deg(traj_rad)
-        n = traj_deg.shape[0]
-        if n > MAX_SPLINE_POINTS:
-            idx = np.linspace(0, n - 1, MAX_SPLINE_POINTS, dtype=int)
-            traj_deg = traj_deg[idx]
-            n = MAX_SPLINE_POINTS
-
-        from std_msgs.msg import Float64MultiArray as F64MA
-        req = MoveSplineJoint.Request()
-        req.pos_cnt = n
-        for row in traj_deg:
-            pt = F64MA()
-            pt.data = row.tolist()
-            req.pos.append(pt)
-        req.vel = [SPLINE_VEL_DEG_S] * 6
-        req.acc = [SPLINE_ACC_DEG_S2] * 6
-        req.time = max(float(motion_time) * SPLINE_TIME_SCALE, SPLINE_MIN_TIME)
-        req.mode = 0
-        req.sync_type = 0
-
-        self.get_logger().info(
-            f"Spline {n}pts plan={motion_time:.2f}s exec={req.time:.2f}s "
-            f"→ end={[f'{v:.1f}' for v in traj_deg[-1]]}°")
-        self.runtime_log.log(
-            "motion_command",
-            controller="doosan_move_spline_joint",
-            service="/dsr01/motion/move_spline_joint",
-            trajectory_deg=traj_deg,
-            planned_motion_time_sec=motion_time,
-            requested_time_sec=req.time,
-            velocity_deg_s=req.vel,
-            acceleration_deg_s2=req.acc,
-        )
-        future = self.cli_spline.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < 60.0:
-            time.sleep(0.05)
-
-        ok = future.done() and future.result() and future.result().success
-        if not ok:
-            self.get_logger().error("Spline failed/timeout")
-        self.runtime_log.log(
-            "motion_result",
-            controller="doosan_move_spline_joint",
-            success=bool(ok),
-            current_joints_rad=self.current_joints,
-        )
-        return ok
+        return self.motion_client.execute_spline(traj_rad, motion_time)
 
     def execute_tool_z_line(self, distance_m: float, motion_label="FINAL_APPROACH_STRAIGHT",
                             vel_mm_s: float = None, acc_mm_s2: float = None,
                             min_distance_m: float = 0.02) -> bool:
-        """현재 TCP 자세를 유지하고 TOOL Z축 방향으로 직선 이동."""
-        if not min_distance_m <= abs(distance_m) <= 0.25:
-            self.get_logger().error(
-                f"MoveLine rejected: {motion_label} distance={distance_m*1000:.1f}mm "
-                f"allowed={min_distance_m*1000:.1f}..250.0mm")
-            return False
-        if not self.cli_movel.wait_for_service(timeout_sec=3.0):
-            self.get_logger().error("MoveLine not available")
-            return False
-
-        vel = vel_mm_s if vel_mm_s is not None else FINAL_APPROACH_VEL_MM_S
-        acc = acc_mm_s2 if acc_mm_s2 is not None else FINAL_APPROACH_ACC_MM_S2
-
-        req = MoveLine.Request()
-        req.pos = [0.0, 0.0, float(distance_m * 1000.0), 0.0, 0.0, 0.0]
-        req.vel = [vel, 10.0]
-        req.acc = [acc, 20.0]
-        req.time = 0.0
-        req.radius = 0.0
-        req.ref = 1         # DR_TOOL
-        req.mode = 1        # DR_MV_MOD_REL
-        req.blend_type = 0
-        req.sync_type = 0   # SYNC: 완전히 도착한 뒤 응답
-
-        self.get_logger().info(
-            f"{motion_label} TOOL {'+Z' if distance_m > 0 else '-Z'} "
-            f"{abs(distance_m)*1000:.1f}mm "
-            f"vel={vel:.1f}mm/s")
-        self.runtime_log.log(
-            "motion_command",
-            controller="doosan_move_line",
-            label=motion_label,
-            service="/dsr01/motion/move_line",
-            reference_frame="tool",
-            relative_pose_mm_deg=req.pos,
-            velocity=req.vel,
-            acceleration=req.acc,
+        return self.motion_client.execute_tool_z_line(
+            distance_m,
+            motion_label=motion_label,
+            vel_mm_s=vel_mm_s,
+            acc_mm_s2=acc_mm_s2,
+            min_distance_m=min_distance_m,
         )
-        start_joints = (
-            np.array(self.current_joints, dtype=float)
-            if self.current_joints is not None
-            else None
-        )
-        future = self.cli_movel.call_async(req)
-        t0 = time.time()
-        # The Doosan operation-speed slider scales the commanded velocity.
-        # At 10%, a nominal 180 mm / 50 mm/s move takes about 36 s, so a fixed
-        # 30 s timeout aborts just before arrival and prevents gripper close.
-        nominal_motion_sec = abs(distance_m * 1000.0) / max(float(vel), 1.0)
-        timeout_sec = max(30.0, nominal_motion_sec * 10.0 + 10.0)
-        while not future.done() and (time.time() - t0) < timeout_sec:
-            time.sleep(0.05)
-        ok = future.done() and future.result() and future.result().success
-        elapsed_sec = time.time() - t0
-        min_expected_sec = max(0.5, nominal_motion_sec * 0.6)
-        if ok and elapsed_sec < min_expected_sec:
-            remaining_sec = min_expected_sec - elapsed_sec
-            self.get_logger().warn(
-                f"{motion_label} MoveLine returned early "
-                f"({elapsed_sec:.2f}s < expected {min_expected_sec:.2f}s); "
-                f"waiting {remaining_sec:.2f}s before continuing")
-            time.sleep(remaining_sec)
-        if ok and start_joints is not None and abs(distance_m) > 0.05:
-            end_joints = (
-                np.array(self.current_joints, dtype=float)
-                if self.current_joints is not None
-                else start_joints
-            )
-            joint_delta_deg = np.degrees(np.abs(end_joints - start_joints))
-            max_delta_deg = float(np.max(joint_delta_deg))
-            if max_delta_deg < 0.5:
-                self.get_logger().error(
-                    f"{motion_label} MoveLine reported success but joints barely moved "
-                    f"(max_delta={max_delta_deg:.2f}deg); treating as failed")
-                ok = False
-        if not ok:
-            self.get_logger().error(
-                f"{motion_label} MoveLine failed/timeout>{timeout_sec:.1f}s")
-        self.runtime_log.log(
-            "motion_result",
-            controller="doosan_move_line",
-            label=motion_label,
-            success=bool(ok),
-            timeout_sec=timeout_sec,
-            elapsed_sec=elapsed_sec,
-            current_joints_rad=self.current_joints,
-        )
-        return ok
 
     def _execute_pitch_detach(self) -> bool:
-        """파지 후 TCP를 BASE -Z 방향으로 당겨 줄기 분리. 회전 없음."""
-        if not self.cli_movel.wait_for_service(timeout_sec=3.0):
-            self.get_logger().warn("DETACH_PULL: MoveLine service unavailable")
-            return False
-        req = MoveLine.Request()
-        req.pos = [0.0, 0.0, -float(DETACH_PULL_DOWN_MM), 0.0, 0.0, 0.0]
-        req.vel = [float(DETACH_PULL_VEL_MM_S), 10.0]
-        req.acc = [30.0, 20.0]
-        req.time = 0.0
-        req.radius = 0.0
-        req.ref = 0   # BASE frame
-        req.mode = 1  # RELATIVE
-        req.blend_type = 0
-        req.sync_type = 0
-        future = self.cli_movel.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < 30.0:
-            time.sleep(0.05)
-        ok = future.done() and bool(future.result() and future.result().success)
-        self.get_logger().info(
-            f"DETACH_PULL_DOWN: BASE -Z {DETACH_PULL_DOWN_MM:.0f}mm "
-            f"→ {'OK' if ok else 'FAIL'}")
-        self.runtime_log.log("detach_pull_down",
-                             pull_mm=DETACH_PULL_DOWN_MM,
-                             vel_mm_s=DETACH_PULL_VEL_MM_S, success=ok)
-        return ok
+        return self.motion_client.execute_pitch_detach()
 
     def execute_base_z_relative(self, distance_m: float, motion_label: str,
                                 vel_mm_s: float = 30.0) -> bool:
-        """BASE 기준 Z축 상대 직선 이동. 크레인 접근/이탈 하강·상승에 사용."""
-        return self.execute_base_relative_line(
-            [0.0, 0.0, float(distance_m)], motion_label, vel_mm_s)
+        return self.motion_client.execute_base_z_relative(
+            distance_m, motion_label, vel_mm_s)
 
     def execute_base_relative_line(self, delta_m, motion_label: str,
                                    vel_mm_s: float = 30.0,
                                    acc_mm_s2: float = 30.0) -> bool:
-        """BASE 기준 XYZ 상대 직선 이동."""
-        if not self.cli_movel.wait_for_service(timeout_sec=3.0):
-            self.get_logger().error(f"{motion_label}: MoveLine service unavailable")
-            return False
-        delta_m = np.array(delta_m, dtype=float)
-        distance_m = float(np.linalg.norm(delta_m))
-        if not 0.005 <= distance_m <= 0.30:
-            self.get_logger().error(
-                f"{motion_label}: BASE relative distance "
-                f"{distance_m*1000:.1f}mm outside 5..300mm")
-            return False
-        req = MoveLine.Request()
-        req.pos = [
-            float(delta_m[0] * 1000.0),
-            float(delta_m[1] * 1000.0),
-            float(delta_m[2] * 1000.0),
-            0.0, 0.0, 0.0,
-        ]
-        req.vel = [float(vel_mm_s), 10.0]
-        req.acc = [float(acc_mm_s2), 20.0]
-        req.time = 0.0
-        req.radius = 0.0
-        req.ref = 0   # DR_BASE
-        req.mode = 1  # DR_MV_MOD_REL
-        req.blend_type = 0
-        req.sync_type = 0
-        self.get_logger().info(
-            f"{motion_label} BASE REL "
-            f"xyz={[round(v * 1000.0, 1) for v in delta_m]}mm "
-            f"dist={distance_m*1000:.1f}mm vel={vel_mm_s:.1f}mm/s")
-        self.runtime_log.log(
-            "motion_command",
-            controller="doosan_move_line",
-            label=motion_label,
-            service="/dsr01/motion/move_line",
-            reference_frame="base",
-            relative_pose_mm_deg=req.pos,
-            velocity=req.vel,
-        )
-        start_joints = (
-            np.array(self.current_joints, dtype=float)
-            if self.current_joints is not None
-            else None
-        )
-        future = self.cli_movel.call_async(req)
-        t0 = time.time()
-        nominal_motion_sec = distance_m * 1000.0 / max(float(vel_mm_s), 1.0)
-        timeout_sec = max(10.0, nominal_motion_sec * 3.0 + 5.0)
-        while not future.done() and (time.time() - t0) < timeout_sec:
-            time.sleep(0.05)
-        ok = future.done() and bool(future.result() and future.result().success)
-        elapsed_sec = time.time() - t0
-        min_expected_sec = max(0.5, nominal_motion_sec * 0.6)
-        if ok and elapsed_sec < min_expected_sec:
-            remaining_sec = min_expected_sec - elapsed_sec
-            self.get_logger().warn(
-                f"{motion_label} BASE MoveLine returned early "
-                f"({elapsed_sec:.2f}s < expected {min_expected_sec:.2f}s); "
-                f"waiting {remaining_sec:.2f}s before continuing")
-            time.sleep(remaining_sec)
-        if ok and start_joints is not None and distance_m > 0.05:
-            end_joints = (
-                np.array(self.current_joints, dtype=float)
-                if self.current_joints is not None
-                else start_joints
-            )
-            max_delta_deg = float(np.max(np.degrees(np.abs(end_joints - start_joints))))
-            if max_delta_deg < 0.5:
-                self.get_logger().error(
-                    f"{motion_label} BASE MoveLine reported success but joints barely moved "
-                    f"(max_delta={max_delta_deg:.2f}deg); treating as failed")
-                ok = False
-        self.runtime_log.log(
-            "motion_result",
-            controller="doosan_move_line",
-            label=motion_label,
-            success=bool(ok),
-            timeout_sec=timeout_sec,
-            elapsed_sec=elapsed_sec,
-        )
-        if not ok:
-            self.get_logger().error(f"{motion_label} BASE relative failed/timeout")
-        return ok
+        return self.motion_client.execute_base_relative_line(
+            delta_m, motion_label, vel_mm_s, acc_mm_s2)
 
     def execute_base_line(self, posx_mm_deg, motion_label, vel_mm_s=20.0) -> bool:
-        """베이스 기준 절대 TCP 직선 이동. Marker place의 수직 above/release에만 사용."""
-        if len(posx_mm_deg) != 6:
-            self.get_logger().error(f"{motion_label}: expected 6D posx")
-            return False
-        if not self.cli_movel.wait_for_service(timeout_sec=3.0):
-            self.get_logger().error("MoveLine not available")
-            return False
-
-        req = MoveLine.Request()
-        req.pos = [float(v) for v in posx_mm_deg]
-        req.vel = [float(vel_mm_s), 10.0]
-        req.acc = [30.0, 20.0]
-        req.time = 0.0
-        req.radius = 0.0
-        req.ref = 0         # DR_BASE
-        req.mode = 0        # DR_MV_MOD_ABS
-        req.blend_type = 0
-        req.sync_type = 0
-
-        self.get_logger().info(
-            f"{motion_label} BASE ABS "
-            f"xyz={[round(v, 1) for v in req.pos[:3]]}mm "
-            f"abc={[round(v, 1) for v in req.pos[3:]]}deg")
-        self.runtime_log.log(
-            "motion_command",
-            controller="doosan_move_line",
-            label=motion_label,
-            service="/dsr01/motion/move_line",
-            reference_frame="base",
-            absolute_pose_mm_deg=req.pos,
-            velocity=req.vel,
-            acceleration=req.acc,
-        )
-        future = self.cli_movel.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < 60.0:
-            time.sleep(0.05)
-        ok = future.done() and future.result() and future.result().success
-        if not ok:
-            self.get_logger().error(f"{motion_label} MoveLine failed/timeout")
-        self.runtime_log.log(
-            "motion_result",
-            controller="doosan_move_line",
-            label=motion_label,
-            success=bool(ok),
-            current_joints_rad=self.current_joints,
-        )
-        return ok
+        return self.motion_client.execute_base_line(
+            posx_mm_deg, motion_label, vel_mm_s)
 
     def _doosan_zyz_to_wxyz(self, rx_deg: float, ry_deg: float, rz_deg: float):
         """Doosan ZYZ Euler (deg) → quaternion [w, x, y, z] for cuRobo."""
@@ -1600,29 +1325,7 @@ class CuroboPlanner(Node):
         return self._nearest_equivalent_joints(OVERVIEW_JOINTS_DEG)
 
     def movej_direct(self, joints_deg, vel=40.0, acc=60.0):
-        """cuRobo 우회 — Doosan MoveJoint 직접 호출. 최후 수단용."""
-        if not self.cli_movej.wait_for_service(timeout_sec=3.0):
-            self.get_logger().error("MoveJoint service not available")
-            return False
-        req = MoveJoint.Request()
-        req.pos = [float(v) for v in joints_deg]
-        req.vel = float(vel)
-        req.acc = float(acc)
-        req.time = 0.0
-        req.radius = 0.0
-        req.mode = 0
-        req.blend_type = 0
-        req.sync_type = 0
-        self.get_logger().warn(
-            f"MoveJoint direct → {[round(v, 1) for v in joints_deg]}° vel={vel}")
-        future = self.cli_movej.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < 90.0:
-            time.sleep(0.05)
-        ok = future.done() and future.result() and future.result().success
-        if not ok:
-            self.get_logger().error("MoveJoint direct failed/timeout")
-        return ok
+        return self.motion_client.movej_direct(joints_deg, vel, acc)
 
     def plan_to_fixed_joints_pose(self, start_joints, target_joints_deg, label,
                                    skip_swing_check=False,

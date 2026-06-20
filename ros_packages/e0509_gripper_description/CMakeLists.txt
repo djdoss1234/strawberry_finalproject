@@ -61,6 +61,7 @@ install(PROGRAMS
   scripts/robot_slider_control.py
   scripts/joint_jog_control.py
   scripts/curobo_planner_node.py
+  scripts/doosan_motion_client.py
   scripts/harvest_grasp_orientation.py
   scripts/harvest_math.py
   scripts/harvest_motion_params.py
