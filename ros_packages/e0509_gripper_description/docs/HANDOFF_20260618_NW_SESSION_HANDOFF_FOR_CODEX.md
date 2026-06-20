@@ -298,6 +298,25 @@ ERROR: ABORT: 직선 진입 실패
      - `MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth=70mm < 90mm minimum`
      - 이후 +5/+10 branch에서 `MEASURED_TCP_FINAL_PROBE_BEST depth=90mm ...`
    - 목표: 예전에 직선진입이 됐던 `90mm cuRobo + 90mm TOOL finish = 180mm` 구조를 복구.
+15. 2026-06-20 15:49 run: 직선진입 복구, 단 +15deg tilted descent로 밀림 의심
+   - 로그: `curobo_planner_node_20260620T154912-04e3a3c3.jsonl`
+   - pruning 수정 후 직선진입은 다시 성공했다.
+   - 최종 선택은 `variant=('base', [1,0,0], +15.0)`, cuRobo 90mm + TOOL finish 90mm.
+   - 하지만 열린 그리퍼 상태에서 `BASE -Z 60mm` 하강했고, 사용자 관찰상 수평이 아닌
+     그리퍼가 딸기를 같이 밀어 움직였을 가능성이 있다.
+   - 시간 문제도 확인됨: NW high에서 200/150/130/110mm는 반복적으로 IK_FAIL인데 매 run마다
+     모두 probe하여 실패 로그와 시간이 과도하게 발생했다.
+   - 수정:
+     - `NW_HIGH_TARGET_PROBE_DEPTHS_M = [0.090, 0.070, 0.060]`
+       - NW high에서는 검증된 90mm부터 probe하여 불가능한 깊은 후보를 건너뛴다.
+     - `NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG = 10.0`
+       - +15deg처럼 기울어진 branch가 선택되면 `close_extra_down` 30mm를 생략하고
+         기본 open descent 30mm만 수행한다.
+   - 기대 로그:
+     - 깊은 IK_FAIL 후보가 줄어든다.
+     - +15deg 선택 시 `NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_SKIPPED`가 뜬다.
+   - 목적: 직선진입은 유지하되, tilted open descent가 딸기를 밀어 파지 실패로 이어지는
+     문제를 줄인다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

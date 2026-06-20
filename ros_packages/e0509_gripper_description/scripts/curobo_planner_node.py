@@ -79,6 +79,8 @@ MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
 NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
 NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 20.0
 MEASURED_TCP_MIN_PRUNE_DEPTH_M = 0.090
+NW_HIGH_TARGET_PROBE_DEPTHS_M = [0.090, 0.070, 0.060]
+NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG = 10.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -2556,10 +2558,20 @@ class CuroboPlanner(Node):
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
                 requested_probe_depth_m = max(
                     0.060, min(MEASURED_TCP_MAX_APPROACH_CEILING_M, self._measured_tcp_max_approach_m))
-                probe_depths = [requested_probe_depth_m]
-                for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
-                    if 0.001 < depth_m < requested_probe_depth_m - 0.005:
-                        probe_depths.append(depth_m)
+                if is_nw_high_target:
+                    # Repeated NW high-cell 실기에서 110mm 이상 final endpoint는
+                    # 매번 IK_FAIL이었다. 90mm cuRobo + 90mm TOOL finish가
+                    # 검증된 직선진입 구조이므로 불가능한 깊은 후보부터
+                    # 두드리며 시간을 쓰지 않는다.
+                    probe_depths = [
+                        d for d in NW_HIGH_TARGET_PROBE_DEPTHS_M
+                        if d <= requested_probe_depth_m + 1e-6
+                    ]
+                else:
+                    probe_depths = [requested_probe_depth_m]
+                    for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
+                        if 0.001 < depth_m < requested_probe_depth_m - 0.005:
+                            probe_depths.append(depth_m)
                 if measured_best_depth_m >= MEASURED_TCP_MIN_PRUNE_DEPTH_M:
                     # If one orientation already proved that deeper endpoints fail,
                     # do not repeat those expensive IK_FAIL probes for every later
@@ -3112,7 +3124,34 @@ class CuroboPlanner(Node):
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and CRANE_Z_OFFSET_M > 0:
             open_stem_descent_m = CRANE_Z_OFFSET_M
-            if is_nw_high_target and self._nw_high_target_close_extra_down_m > 0.0:
+            used_variant_tilt_deg = (
+                abs(float(used_grasp_variant[2]))
+                if used_grasp_variant is not None and len(used_grasp_variant) >= 3
+                else 0.0
+            )
+            allow_nw_extra_down = (
+                not is_nw_high_target
+                or used_variant_tilt_deg <= NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG
+            )
+            if is_nw_high_target and not allow_nw_extra_down:
+                self.get_logger().warn(
+                    "NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_SKIPPED: selected "
+                    f"tilt={used_variant_tilt_deg:.1f}deg > "
+                    f"{NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG:.1f}deg; "
+                    "avoid pushing fruit during open tilted descent")
+                self.runtime_log.log(
+                    "nw_high_target_close_extra_down_skipped",
+                    target_z_m=float(raw_straw[2]),
+                    selected_variant=used_grasp_variant,
+                    selected_tilt_deg=used_variant_tilt_deg,
+                    max_tilt_deg=NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG,
+                    base_descent_m=CRANE_Z_OFFSET_M,
+                )
+            if (
+                is_nw_high_target
+                and allow_nw_extra_down
+                and self._nw_high_target_close_extra_down_m > 0.0
+            ):
                 open_stem_descent_m += self._nw_high_target_close_extra_down_m
                 self.get_logger().warn(
                     "NW_HIGH_TARGET_CLOSE_EXTRA_DOWN: open descent "
