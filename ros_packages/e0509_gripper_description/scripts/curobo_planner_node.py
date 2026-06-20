@@ -38,6 +38,7 @@ from curobo.types.math import Pose
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from curobo.geom.types import WorldConfig, Cuboid, Sphere
 from doosan_motion_client import DoosanMotionClient
+from gripper_client import HarvestGripperClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
 from harvest_math import (
     quat_from_axis_angle,
@@ -357,6 +358,21 @@ class CuroboPlanner(Node):
                 callback_group=self.service_cb_group)
         else:
             self._safe_grasp_cli = None
+        self.gripper_client = HarvestGripperClient(
+            node=self,
+            runtime_log=self.runtime_log,
+            cli_set_position=self.cli_set_position,
+            cli_get_state=self.cli_get_state,
+            safe_grasp_cli=self._safe_grasp_cli,
+            safe_grasp_action_type=_SafeGraspAction,
+            use_safe_grasp_action=self._use_safe_grasp_action,
+            safe_grasp_max_current=self._safe_grasp_max_current,
+            safe_grasp_current_delta_threshold=self._safe_grasp_current_delta_threshold,
+            safe_grasp_timeout_sec=self._safe_grasp_timeout_sec,
+            grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
+            set_position_type=_SetPosition,
+            get_state_type=_GetState,
+        )
         self.cli_change_op_speed = self.create_client(
             ChangeOperationSpeed, "/dsr01/motion/change_operation_speed",
             callback_group=self.service_cb_group)
@@ -479,33 +495,10 @@ class CuroboPlanner(Node):
             self._reset_gripper()
 
     def _reset_gripper(self):
-        """파지 완료/실패 후 그리퍼를 approach 위치(GRIPPER_APPROACH_POS)로 복귀."""
-        self._set_gripper_position(GRIPPER_APPROACH_POS, timeout_sec=5.0)
+        self.gripper_client.reset()
 
     def _set_gripper_position(self, position: int, timeout_sec: float = 5.0) -> bool:
-        """SetPosition 서비스 호출 (blocking). 서비스 미연결 시 warn 후 False 반환."""
-        if self.cli_set_position is None:
-            self.get_logger().warn("GRIPPER: cli_set_position unavailable (virtual?)")
-            return False
-        if not self.cli_set_position.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn("GRIPPER: /gripper_service/set_position not available")
-            return False
-        req = _SetPosition.Request()
-        req.position = int(position)
-        req.timeout_sec = float(timeout_sec)
-        future = self.cli_set_position.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < timeout_sec + 2.0:
-            time.sleep(0.05)
-        if not future.done():
-            self.get_logger().warn(f"GRIPPER: set_position({position}) timed out")
-            return False
-        res = future.result()
-        if res is None or not res.success:
-            self.get_logger().warn(
-                f"GRIPPER: set_position({position}) failed: {getattr(res, 'message', 'None')}")
-            return False
-        return True
+        return self.gripper_client.set_position(position, timeout_sec)
 
     # ── 콜백 ──────────────────────────────────────────────────────────────────
 
@@ -726,138 +719,13 @@ class CuroboPlanner(Node):
         return ("published_roll", candidate.candidate_quat_wxyz, candidate.roll_deg)
 
     def _verify_grasp(self):
-        """GetState 서비스로 접촉 판정. SafeGrasp fallback 경로에서만 호출됨."""
-        if self.cli_get_state is None:
-            return "GRASP_UNVERIFIED", -1, -1, "get_state unavailable (virtual?)"
-        if not self.cli_get_state.wait_for_service(timeout_sec=0.5):
-            return "GRASP_UNVERIFIED", -1, -1, "get_state service unavailable"
-        req = _GetState.Request()
-        req.force_read = True
-        future = self.cli_get_state.call_async(req)
-        t0 = time.time()
-        while not future.done() and (time.time() - t0) < GRASP_VERIFY_TIMEOUT_SEC:
-            time.sleep(0.05)
-        if not future.done():
-            return "GRASP_UNVERIFIED", -1, -1, "get_state timeout"
-        res = future.result()
-        if not res or not res.success:
-            return "GRASP_UNVERIFIED", -1, -1, "get_state service error"
-        position = res.state.present_position
-        current_raw = res.state.present_current
-        if position < 0 or current_raw < 0:
-            return (
-                "GRASP_UNVERIFIED", position, current_raw,
-                "hardware state read failed (virtual mode or serial error)")
-        if position >= GRASP_EMPTY_POSITION_THRESHOLD:
-            return "GRASP_EMPTY", position, current_raw, (
-                f"fully closed (pos={position} >= threshold={GRASP_EMPTY_POSITION_THRESHOLD})")
-        if (
-            self._grasp_current_contact_threshold_raw >= 0
-            and current_raw < self._grasp_current_contact_threshold_raw
-        ):
-            return "GRASP_UNVERIFIED", position, current_raw, (
-                f"position indicates contact but current={current_raw} below calibrated "
-                f"threshold={self._grasp_current_contact_threshold_raw}")
-        return "GRASP_CONTACT_DETECTED", position, current_raw, (
-            f"jaw stopped at pos={position} and current_raw={current_raw}; "
-            f"current threshold={'disabled' if self._grasp_current_contact_threshold_raw < 0 else self._grasp_current_contact_threshold_raw}")
+        return self.gripper_client.verify_grasp()
 
     def _close_and_verify_grasp(self):
-        """SafeGrasp action 시도 → 서버 없으면 SetPosition+GetState fallback.
-
-        Returns (grasp_result, present_pos, present_current_raw, grasp_reason).
-        grasp_result은 GRASP_CONTACT_DETECTED | GRASP_EMPTY | GRASP_UNVERIFIED |
-        GRIPPER_CLOSE_FAILED 중 하나.
-        """
-        if self._use_safe_grasp_action and self._safe_grasp_cli is not None:
-            if self._safe_grasp_cli.server_is_ready():
-                return self._close_via_safe_grasp_action()
-            self.get_logger().warn(
-                "SAFE_GRASP: action server not ready — fallback to set_position+get_state")
-        close_ok = self._set_gripper_position(700, timeout_sec=10.0)
-        if not close_ok:
-            return "GRIPPER_CLOSE_FAILED", -1, -1, "set_position(700) failed"
-        time.sleep(GRIPPER_CLOSE_SETTLE_SEC)
-        return self._verify_grasp()
+        return self.gripper_client.close_and_verify_grasp()
 
     def _close_via_safe_grasp_action(self):
-        """SafeGrasp action으로 close + current 감지를 단일 원자 동작으로 수행."""
-        goal = _SafeGraspAction.Goal()
-        goal.target_position = 700
-        goal.max_current = self._safe_grasp_max_current
-        goal.current_delta_threshold = self._safe_grasp_current_delta_threshold
-        goal.timeout_sec = self._safe_grasp_timeout_sec
-
-        feedback_samples = []
-
-        def _on_feedback(fb_msg):
-            fb = fb_msg.feedback
-            feedback_samples.append({
-                "present_position": fb.present_position,
-                "present_current": fb.present_current,
-                "current_delta": fb.current_delta,
-                "grasp_detected": fb.grasp_detected,
-            })
-
-        send_future = self._safe_grasp_cli.send_goal_async(
-            goal, feedback_callback=_on_feedback)
-        deadline = time.time() + self._safe_grasp_timeout_sec + 5.0
-        while not send_future.done() and time.time() < deadline:
-            time.sleep(0.05)
-        if not send_future.done():
-            return "GRASP_UNVERIFIED", -1, -1, "SafeGrasp: goal send timeout"
-
-        goal_handle = send_future.result()
-        if goal_handle is None or not goal_handle.accepted:
-            return "GRASP_UNVERIFIED", -1, -1, "SafeGrasp: goal rejected"
-
-        result_future = goal_handle.get_result_async()
-        while not result_future.done() and time.time() < deadline:
-            time.sleep(0.05)
-        if not result_future.done():
-            return "GRASP_UNVERIFIED", -1, -1, "SafeGrasp: result timeout"
-
-        wrapped = result_future.result()
-        if wrapped is None:
-            return "GRASP_UNVERIFIED", -1, -1, "SafeGrasp: result None"
-
-        res = wrapped.result
-        final_pos = res.final_position
-        final_cur = res.final_current
-
-        self.runtime_log.log(
-            "safe_grasp_action",
-            grasp_detected=res.grasp_detected,
-            object_lost=res.object_lost,
-            final_position=final_pos,
-            final_current=final_cur,
-            message=res.message,
-            max_current=self._safe_grasp_max_current,
-            current_delta_threshold=self._safe_grasp_current_delta_threshold,
-            feedback_samples=feedback_samples,
-        )
-
-        if final_pos < 0 or final_cur < 0:
-            return (
-                "GRASP_UNVERIFIED", final_pos, final_cur,
-                f"SafeGrasp: invalid state (virtual/serial error) — {res.message}")
-
-        if res.grasp_detected:
-            if final_pos >= GRASP_EMPTY_POSITION_THRESHOLD:
-                # current spike but jaw fully closed — treat as empty
-                return "GRASP_EMPTY", final_pos, final_cur, (
-                    f"SafeGrasp: current spike but jaw fully closed "
-                    f"pos={final_pos} >= {GRASP_EMPTY_POSITION_THRESHOLD}")
-            return "GRASP_CONTACT_DETECTED", final_pos, final_cur, (
-                f"SafeGrasp detected: pos={final_pos} current={final_cur} — {res.message}")
-
-        if final_pos >= GRASP_EMPTY_POSITION_THRESHOLD:
-            return "GRASP_EMPTY", final_pos, final_cur, (
-                f"SafeGrasp: jaw fully closed pos={final_pos} >= "
-                f"{GRASP_EMPTY_POSITION_THRESHOLD} — {res.message}")
-
-        return "GRASP_UNVERIFIED", final_pos, final_cur, (
-            f"SafeGrasp: no detection, pos={final_pos} below threshold — {res.message}")
+        return self.gripper_client.close_via_safe_grasp_action()
 
     # ── 플래닝 ────────────────────────────────────────────────────────────────
 
