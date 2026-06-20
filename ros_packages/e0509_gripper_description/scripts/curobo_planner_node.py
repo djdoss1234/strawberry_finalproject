@@ -2942,13 +2942,39 @@ class CuroboPlanner(Node):
                             tool_finish_m=remaining_tool_line_m,
                             requested_total_m=requested_final_approach_distance,
                         )
-                        if not self.execute_tool_z_line(
-                            remaining_tool_line_m,
-                            motion_label="FINAL_APPROACH_TOOL_FINISH",
-                            vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                            acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                            min_distance_m=0.005,
-                        ):
+                        # 2026-06-20 실기 확인: NW high target은 틸트(+15deg 등)가 있는
+                        # 채로 TOOL+Z 직선을 쓰면 이 마지막 구간 전체가 대각선으로
+                        # 같이 떠올라서(사용자 직접 관찰: "수평이 아니라 대각선으로
+                        # 살짝 위로 올라감"), crane_z_offset을 아무리 낮춰도 깊이를
+                        # 늘릴수록 다시 높아지는 문제가 반복됐다. 이 구간만 BASE
+                        # 기준 수평(XY) 방향으로 이동시켜 깊이와 높이를 분리한다.
+                        # 그리퍼 자세(틸트)는 그대로 유지되고 이동 방향만 바뀐다.
+                        if is_nw_high_target:
+                            horiz_dir = np.array(used_approach_dir, dtype=float)
+                            horiz_dir[2] = 0.0
+                            horiz_norm = float(np.linalg.norm(horiz_dir))
+                            if horiz_norm > 1e-6:
+                                horiz_dir = horiz_dir / horiz_norm
+                            else:
+                                horiz_dir = np.array(used_approach_dir, dtype=float)
+                            tool_finish_ok = self.execute_base_relative_line(
+                                remaining_tool_line_m * horiz_dir,
+                                "FINAL_APPROACH_TOOL_FINISH",
+                                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                            )
+                            tool_finish_delta = remaining_tool_line_m * horiz_dir
+                        else:
+                            tool_finish_ok = self.execute_tool_z_line(
+                                remaining_tool_line_m,
+                                motion_label="FINAL_APPROACH_TOOL_FINISH",
+                                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                                min_distance_m=0.005,
+                            )
+                            tool_finish_delta = remaining_tool_line_m * np.array(
+                                used_approach_dir, dtype=float)
+                        if not tool_finish_ok:
                             self.get_logger().error(
                                 "FINAL_APPROACH_TOOL_FINISH failed after "
                                 "precomputed cuRobo final approach")
@@ -2957,11 +2983,11 @@ class CuroboPlanner(Node):
                             final_approach_distance = (
                                 selected_curobo_depth_m + remaining_tool_line_m)
                             used_grasp_ee_pos = (
-                                used_grasp_ee_pos
-                                + remaining_tool_line_m * used_approach_dir)
+                                used_grasp_ee_pos + tool_finish_delta)
                             self.runtime_log.log(
                                 "final_approach_tool_finish_success",
                                 executed_total_m=final_approach_distance,
+                                horizontal_only=is_nw_high_target,
                             )
                 else:
                     self.get_logger().warn(
@@ -3048,13 +3074,34 @@ class CuroboPlanner(Node):
                                     tool_finish_m=remaining_tool_line_m,
                                     requested_total_m=requested_final_approach_distance,
                                 )
-                                if not self.execute_tool_z_line(
-                                    remaining_tool_line_m,
-                                    motion_label="FINAL_APPROACH_TOOL_FINISH",
-                                    vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                                    acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                                    min_distance_m=0.005,
-                                ):
+                                # see horizontal-only rationale at the other
+                                # FINAL_APPROACH_TOOL_FINISH call site above.
+                                if is_nw_high_target:
+                                    horiz_dir = np.array(used_approach_dir, dtype=float)
+                                    horiz_dir[2] = 0.0
+                                    horiz_norm = float(np.linalg.norm(horiz_dir))
+                                    if horiz_norm > 1e-6:
+                                        horiz_dir = horiz_dir / horiz_norm
+                                    else:
+                                        horiz_dir = np.array(used_approach_dir, dtype=float)
+                                    tool_finish_ok = self.execute_base_relative_line(
+                                        remaining_tool_line_m * horiz_dir,
+                                        "FINAL_APPROACH_TOOL_FINISH",
+                                        vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                                        acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                                    )
+                                    tool_finish_delta = remaining_tool_line_m * horiz_dir
+                                else:
+                                    tool_finish_ok = self.execute_tool_z_line(
+                                        remaining_tool_line_m,
+                                        motion_label="FINAL_APPROACH_TOOL_FINISH",
+                                        vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                                        acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                                        min_distance_m=0.005,
+                                    )
+                                    tool_finish_delta = remaining_tool_line_m * np.array(
+                                        used_approach_dir, dtype=float)
+                                if not tool_finish_ok:
                                     self.get_logger().error(
                                         "FINAL_APPROACH_TOOL_FINISH failed after "
                                         "cuRobo shallow fallback")
@@ -3063,11 +3110,11 @@ class CuroboPlanner(Node):
                                 final_approach_distance = (
                                     depth_m + remaining_tool_line_m)
                                 used_grasp_ee_pos = (
-                                    used_grasp_ee_pos
-                                    + remaining_tool_line_m * used_approach_dir)
+                                    used_grasp_ee_pos + tool_finish_delta)
                                 self.runtime_log.log(
                                     "final_approach_tool_finish_success",
                                     executed_total_m=final_approach_distance,
+                                    horizontal_only=is_nw_high_target,
                                 )
                             break
                 if not fallback_ok:
