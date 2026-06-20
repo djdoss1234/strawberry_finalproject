@@ -265,9 +265,20 @@ def quat_multiply_wxyz(q1, q2):
     ]
 
 
+def quat_normalize_wxyz(q):
+    q = np.array(q, dtype=float)
+    n = float(np.linalg.norm(q))
+    if n < 1e-9 or not np.all(np.isfinite(q)):
+        return None
+    return (q / n).tolist()
+
+
 def quat_from_axis_angle(axis, angle_rad):
     axis = np.array(axis, dtype=float)
-    axis = axis / np.linalg.norm(axis)
+    n = np.linalg.norm(axis)
+    if n < 1e-9:
+        return [1.0, 0.0, 0.0, 0.0]
+    axis = axis / n
     s = np.sin(angle_rad / 2.0)
     return [np.cos(angle_rad / 2.0), axis[0] * s, axis[1] * s, axis[2] * s]
 
@@ -279,6 +290,14 @@ def quat_rotate_vec(q_wxyz, v):
     v = np.array(v, dtype=float)
     t = 2.0 * np.cross(qvec, v)
     return v + w * t + np.cross(qvec, t)
+
+
+def normalized_vec(v, min_norm=1e-9):
+    v = np.array(v, dtype=float)
+    n = float(np.linalg.norm(v))
+    if n < min_norm or not np.all(np.isfinite(v)):
+        return None
+    return v / n
 
 
 def load_environment_cuboids():
@@ -414,6 +433,9 @@ class CuroboPlanner(Node):
         self.declare_parameter(
             "measured_tcp_tool_line_after_curobo_fallback",
             True)
+        self.declare_parameter("use_published_grasp_orientation", False)
+        self.declare_parameter("published_grasp_roll_align_axis", "x")
+        self.declare_parameter("published_grasp_roll_max_abs_deg", 75.0)
         self.declare_parameter("pick_target_x_bias_m", 0.0)
         self.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
         self.declare_parameter(
@@ -485,6 +507,16 @@ class CuroboPlanner(Node):
         self._measured_tcp_tool_line_after_curobo_fallback = bool(
             self.get_parameter(
                 "measured_tcp_tool_line_after_curobo_fallback").value)
+        self._use_published_grasp_orientation = bool(
+            self.get_parameter("use_published_grasp_orientation").value)
+        self._published_grasp_roll_align_axis = str(
+            self.get_parameter("published_grasp_roll_align_axis").value
+        ).strip().lower()
+        if self._published_grasp_roll_align_axis not in {"x", "y"}:
+            raise ValueError("published_grasp_roll_align_axis must be 'x' or 'y'")
+        self._published_grasp_roll_max_abs_deg = max(
+            0.0, float(
+                self.get_parameter("published_grasp_roll_max_abs_deg").value))
         self._pick_target_x_bias_m = float(
             self.get_parameter("pick_target_x_bias_m").value)
         self._pick_target_z_bias_m = float(
@@ -593,6 +625,9 @@ class CuroboPlanner(Node):
             allow_generated_tray_slot_release=self._allow_generated_tray_slot_release,
             allow_unverified_grasp_place=self._allow_unverified_grasp_place,
             grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
+            use_published_grasp_orientation=self._use_published_grasp_orientation,
+            published_grasp_roll_align_axis=self._published_grasp_roll_align_axis,
+            published_grasp_roll_max_abs_deg=self._published_grasp_roll_max_abs_deg,
             marker_place_max_age_sec=self._marker_place_max_age_sec,
         )
         base_approach_dir = np.array(quat_rotate_vec(WALL_QUAT_WXYZ, [0.0, 0.0, 1.0]))
@@ -627,6 +662,11 @@ class CuroboPlanner(Node):
                 f"max={self._measured_tcp_max_approach_m*1000:.0f}mm "
                 f"tool_line_after_fallback="
                 f"{self._measured_tcp_tool_line_after_curobo_fallback}")
+            self.get_logger().info(
+                "  PUBLISHED_GRASP_ORIENTATION "
+                f"enabled={self._use_published_grasp_orientation} "
+                f"roll_align_tool_{self._published_grasp_roll_align_axis} "
+                f"max_abs_roll={self._published_grasp_roll_max_abs_deg:.0f}deg")
             self.get_logger().info(
                 f"  OPEN_STEM_DESCENT={CRANE_Z_OFFSET_M*1000:.0f}mm: "
                 "horizontal approach above KP1 -> open BASE -Z descent -> close at KP1")
@@ -856,6 +896,108 @@ class CuroboPlanner(Node):
         if self._measured_tcp_model:
             return MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS
         return GRASP_QUAT_RETRY_VARIANTS
+
+    def _published_roll_grasp_variant(self, input_quat_wxyz):
+        """Return a wall-normal approach quaternion with roll aligned to published stem direction.
+
+        strawberry_fusion_node publishes a per-target orientation whose TOOL Z
+        axis follows the local stem direction. Using it directly would also
+        change the wall approach vector. For this pick pipeline keep TOOL Z on
+        the proven wall-normal approach, and only rotate around that approach
+        axis so the configured gripper axis follows the projected stem.
+        """
+        if not self._use_published_grasp_orientation:
+            return None
+        q_in = quat_normalize_wxyz(input_quat_wxyz)
+        if q_in is None:
+            self.runtime_log.log(
+                "published_grasp_orientation_rejected",
+                reason="invalid_input_quaternion",
+                input_quat_wxyz=input_quat_wxyz,
+            )
+            return None
+
+        wall_q = quat_normalize_wxyz(WALL_QUAT_WXYZ)
+        wall_approach = normalized_vec(quat_rotate_vec(wall_q, [0.0, 0.0, 1.0]))
+        stem_dir = normalized_vec(quat_rotate_vec(q_in, [0.0, 0.0, 1.0]))
+        if wall_approach is None or stem_dir is None:
+            self.runtime_log.log(
+                "published_grasp_orientation_rejected",
+                reason="invalid_rotated_axis",
+                input_quat_wxyz=q_in,
+            )
+            return None
+
+        align_axis_local = (
+            [1.0, 0.0, 0.0]
+            if self._published_grasp_roll_align_axis == "x"
+            else [0.0, 1.0, 0.0]
+        )
+        ref_axis = np.array(quat_rotate_vec(wall_q, align_axis_local), dtype=float)
+        ref_axis = ref_axis - np.dot(ref_axis, wall_approach) * wall_approach
+        stem_axis = stem_dir - np.dot(stem_dir, wall_approach) * wall_approach
+        ref_axis = normalized_vec(ref_axis)
+        stem_axis = normalized_vec(stem_axis)
+        if ref_axis is None or stem_axis is None:
+            self.runtime_log.log(
+                "published_grasp_orientation_rejected",
+                reason="stem_projection_too_small",
+                input_quat_wxyz=q_in,
+                stem_dir_base=stem_dir.tolist(),
+                wall_approach_dir=wall_approach.tolist(),
+            )
+            return None
+
+        sin_v = float(np.dot(wall_approach, np.cross(ref_axis, stem_axis)))
+        cos_v = float(np.dot(ref_axis, stem_axis))
+        roll_rad = float(np.arctan2(sin_v, cos_v))
+        roll_deg = float(np.degrees(roll_rad))
+        if abs(roll_deg) > self._published_grasp_roll_max_abs_deg:
+            self.get_logger().warn(
+                "PUBLISHED_GRASP_ORIENTATION rejected: "
+                f"roll={roll_deg:+.1f}deg exceeds "
+                f"{self._published_grasp_roll_max_abs_deg:.1f}deg")
+            self.runtime_log.log(
+                "published_grasp_orientation_rejected",
+                reason="roll_exceeds_limit",
+                roll_deg=roll_deg,
+                max_abs_roll_deg=self._published_grasp_roll_max_abs_deg,
+                stem_dir_base=stem_dir.tolist(),
+                wall_approach_dir=wall_approach.tolist(),
+            )
+            return None
+
+        q_roll = quat_from_axis_angle(wall_approach, roll_rad)
+        q_candidate = quat_normalize_wxyz(quat_multiply_wxyz(q_roll, wall_q))
+        if q_candidate is None:
+            self.runtime_log.log(
+                "published_grasp_orientation_rejected",
+                reason="candidate_quaternion_invalid",
+                roll_deg=roll_deg,
+            )
+            return None
+
+        candidate_approach = normalized_vec(
+            quat_rotate_vec(q_candidate, [0.0, 0.0, 1.0]))
+        approach_error_deg = 0.0
+        if candidate_approach is not None:
+            approach_error_deg = float(np.degrees(np.arccos(np.clip(
+                np.dot(candidate_approach, wall_approach), -1.0, 1.0))))
+        self.get_logger().info(
+            "PUBLISHED_GRASP_ORIENTATION candidate: "
+            f"align_tool_{self._published_grasp_roll_align_axis} "
+            f"roll={roll_deg:+.1f}deg approach_error={approach_error_deg:.2f}deg")
+        self.runtime_log.log(
+            "published_grasp_orientation_candidate",
+            input_quat_wxyz=q_in,
+            candidate_quat_wxyz=q_candidate,
+            stem_dir_base=stem_dir.tolist(),
+            wall_approach_dir=wall_approach.tolist(),
+            roll_align_axis=self._published_grasp_roll_align_axis,
+            roll_deg=roll_deg,
+            approach_error_deg=approach_error_deg,
+        )
+        return ("published_roll", q_candidate, roll_deg)
 
     def _verify_grasp(self):
         """GetState 서비스로 접촉 판정. SafeGrasp fallback 경로에서만 호출됨."""
@@ -2411,6 +2553,12 @@ class CuroboPlanner(Node):
 
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
+        input_quat_wxyz = quat_normalize_wxyz([
+            msg.pose.orientation.w,
+            msg.pose.orientation.x,
+            msg.pose.orientation.y,
+            msg.pose.orientation.z,
+        ])
         # 같은 셀의 다음 target을 계속 처리할 수 있도록 이번 pick이 시작된
         # taught scan pose를 저장한다. overview 복귀는 scan_executor가 담당한다.
         pick_start_joints = list(self.current_joints)
@@ -2424,6 +2572,7 @@ class CuroboPlanner(Node):
                 msg.pose.orientation.z,
                 msg.pose.orientation.w,
             ],
+            input_quat_wxyz=input_quat_wxyz,
             start_joints_rad=pick_start_joints,
         )
 
@@ -2532,6 +2681,17 @@ class CuroboPlanner(Node):
             NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS
             if is_nw_high_target else self.grasp_quat_variants()
         )
+        grasp_quat_variants = list(grasp_quat_variants)
+        published_roll_variant = self._published_roll_grasp_variant(input_quat_wxyz)
+        if published_roll_variant is not None:
+            grasp_quat_variants = [published_roll_variant] + grasp_quat_variants
+
+        def variant_label(variant):
+            frame, axis, deg = variant
+            if frame == "published_roll":
+                return f"published_roll({deg:+.0f}deg)"
+            return f"{deg:+.0f}deg"
+
         n_offsets = len(grasp_retry_offsets)
         n_quats   = len(grasp_quat_variants)
         self.get_logger().info(
@@ -2542,7 +2702,7 @@ class CuroboPlanner(Node):
         if is_nw_high_target:
             self.get_logger().warn(
                 "NW_HIGH_TARGET_VARIANT_ORDER: "
-                + ", ".join(f"{v[2]:+.0f}deg" for v in grasp_quat_variants)
+                + ", ".join(variant_label(v) for v in grasp_quat_variants)
                 + " (prefer flatter branch over +15deg side-drift)")
         ret_pre   = None
         ret_grasp = None
@@ -2576,11 +2736,14 @@ class CuroboPlanner(Node):
         measured_best_alignment_deg = None
         grasp_attempt = 0
         for quat_frame, axis, quat_deg in grasp_quat_variants:
-            q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
-            if quat_frame == "base":
-                q_retry = quat_multiply_wxyz(q_delta, WALL_QUAT_WXYZ)
+            if quat_frame == "published_roll":
+                q_retry = axis
             else:
-                q_retry = quat_multiply_wxyz(WALL_QUAT_WXYZ, q_delta)
+                q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
+                if quat_frame == "base":
+                    q_retry = quat_multiply_wxyz(q_delta, WALL_QUAT_WXYZ)
+                else:
+                    q_retry = quat_multiply_wxyz(WALL_QUAT_WXYZ, q_delta)
             approach_dir = np.array(quat_rotate_vec(q_retry, [0.0, 0.0, 1.0]))
             ee_pre = straw - (
                 PRE_APPROACH_OFFSET + self._ee_to_tcp_offset_m
@@ -2654,7 +2817,9 @@ class CuroboPlanner(Node):
                     if r_final_probe is None:
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
-                    candidate_alignment_deg = abs(float(quat_deg))
+                    candidate_alignment_deg = (
+                        0.0 if quat_frame == "published_roll" else abs(float(quat_deg))
+                    )
                     is_deeper = depth_m > measured_best_depth_m + 1e-6
                     is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
                     if is_nw_high_target and is_tied:

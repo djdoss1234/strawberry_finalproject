@@ -106,6 +106,52 @@ pick이 동일한 `+15deg` variant를 선택한 것(아래 1번 항목과 동일
   타겟에서 "publish된 orientation의 azimuth"와 "현재 선택된 variant"를 나란히 찍어서 상관
   관계를 먼저 눈으로 확인한 뒤 실제 보정 로직을 넣을 것 ([[feedback_debug_before_fix]]).
 
+#### 2026-06-20 Codex 추가 구현: published orientation roll 후보
+
+사용자 요청으로 바로 실기 검증할 수 있게 `curobo_planner_node.py`에 gated feature를 추가했다.
+
+- 기본값은 `use_published_grasp_orientation:=false`라 기존 SW/NW 동작은 파라미터를 켜지 않으면
+  그대로다.
+- `true`로 켜면 fusion이 보낸 `PoseStamped.orientation`을 버리지 않고 읽는다.
+- 단, published orientation을 그대로 쓰지는 않는다. fusion 쪽 orientation은 TOOL Z를 줄기 방향에
+  맞추는 의미인데, 그걸 그대로 쓰면 벽 방향 직선 진입 자체가 바뀌어 위험하다.
+- 그래서 이번 구현은 기존 `WALL_QUAT_WXYZ`의 벽-normal 접근 방향은 유지하고, published orientation의
+  TOOL Z(=줄기 방향)를 벽-normal 평면에 투영한 뒤, 그 방향에 gripper `tool_x` 또는 `tool_y`를 맞추는
+  **roll-only 후보**를 기존 variant 목록 맨 앞에 추가한다.
+- 기존 `+15/+10/+5/0/-5/-10deg` 후보는 fallback으로 그대로 남아 있다.
+- runtime log 이벤트:
+  - `published_grasp_orientation_candidate`
+  - `published_grasp_orientation_rejected`
+- 관련 파라미터:
+  - `use_published_grasp_orientation` (bool, default `false`)
+  - `published_grasp_roll_align_axis` (`x` 또는 `y`, default `x`)
+  - `published_grasp_roll_max_abs_deg` (default `75.0`)
+
+실기 실행 예:
+
+```bash
+ros2 run e0509_gripper_description curobo_planner_node.py --ros-args \
+  -p measured_tcp_plan_only:=false \
+  -p direct_curobo_final_approach_for_measured_tcp:=true \
+  -p measured_tcp_max_approach_m:=0.200 \
+  -p measured_tcp_tool_line_after_curobo_fallback:=true \
+  -p debug_dump_plan_calls:=true \
+  -p use_published_grasp_orientation:=true \
+  -p published_grasp_roll_align_axis:=x
+```
+
+확인할 로그:
+
+```text
+PUBLISHED_GRASP_ORIENTATION candidate: align_tool_x roll=... approach_error=0.00deg
+NW_HIGH_TARGET_VARIANT_ORDER: published_roll(...deg), +15deg, ...
+MEASURED_TCP_FINAL_PROBE_BEST ... variant=('published_roll', ...)
+```
+
+만약 `tool_x`로 켰는데 여전히 줄기와 그리퍼가 90도 어긋난 느낌이면, 같은 조건에서
+`published_grasp_roll_align_axis:=y`로 한 번만 A/B 비교한다. 둘 다 실패하면 published orientation의
+축 의미를 fusion 쪽에서 다시 확인해야 한다.
+
 ### 1. J2 한도 초과가 "특정 타겟"에서는 여전히 재발함 (안전 이슈, 최우선)
 
 `ff5c083`(retreat 2단계 분리) 적용 후에도, x=-318mm/z=696mm 타겟에서 final_extra 적용 후
