@@ -101,6 +101,7 @@ NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
 NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
+NW_HIGH_TARGET_OPEN_DESCENT_M = 0.015
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -624,7 +625,8 @@ class CuroboPlanner(Node):
                 f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
                 f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm "
                 f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
-                f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm")
+                f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm "
+                f"open_descent={NW_HIGH_TARGET_OPEN_DESCENT_M*1000:.0f}mm")
         else:
             self.get_logger().warn(
                 "  TOOL_GEOMETRY_LEGACY: planner offset="
@@ -3141,7 +3143,20 @@ class CuroboPlanner(Node):
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and CRANE_Z_OFFSET_M > 0:
-            open_stem_descent_m = CRANE_Z_OFFSET_M
+            open_stem_descent_m = (
+                NW_HIGH_TARGET_OPEN_DESCENT_M if is_nw_high_target else CRANE_Z_OFFSET_M)
+            if is_nw_high_target:
+                self.get_logger().warn(
+                    "NW_HIGH_TARGET_OPEN_DESCENT: "
+                    f"{CRANE_Z_OFFSET_M*1000:.0f}mm -> "
+                    f"{open_stem_descent_m*1000:.0f}mm "
+                    "(shorter open descent to avoid sweeping adjacent stems)")
+                self.runtime_log.log(
+                    "nw_high_target_open_descent",
+                    base_descent_m=CRANE_Z_OFFSET_M,
+                    executed_descent_m=open_stem_descent_m,
+                    reason="avoid_adjacent_stem_overlap",
+                )
             used_variant_tilt_deg = (
                 abs(float(used_grasp_variant[2]))
                 if used_grasp_variant is not None and len(used_grasp_variant) >= 3

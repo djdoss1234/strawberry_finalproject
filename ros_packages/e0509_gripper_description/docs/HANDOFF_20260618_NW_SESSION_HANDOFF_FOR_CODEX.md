@@ -339,6 +339,21 @@ ERROR: ABORT: 직선 진입 실패
      - `NW_HIGH_TARGET_VARIANT_ORDER: +15deg, +0deg, +5deg, -5deg, +10deg, -10deg`
    - 주의: 이것도 장기적으로는 calibration/perception target 정의로 해결해야 한다. 다만
      최종 MoveLine에 후처리 오프셋을 붙이는 것보다 원인에 가까운 target-plane 보정이다.
+17. 2026-06-20 16:09 run: 깊이는 개선, open descent가 주변 줄기와 겹침
+   - 로그: `curobo_planner_node_20260620T160902-deba2eb6.jsonl`
+   - `NW_HIGH_TARGET_Y_PLANE_RELAX` 이후 사용자가 "더 깊이 들어갔다, 깊이는 괜찮다"고 판단.
+   - 남은 문제는 열린 그리퍼로 내려오는 구간이 아직 길어, 주변 줄기가 같이 겹치며
+     그리퍼가 헐렁하게 닫히는 느낌이 있다는 점.
+   - SW에서 좋았던 느낌은 접근 위치가 파지점보다 과하게 높지 않았기 때문일 가능성이 있다.
+   - 수정:
+     - `NW_HIGH_TARGET_OPEN_DESCENT_M = 0.015`
+     - NW high에서만 열린 하강을 기본 30mm에서 15mm로 줄인다.
+     - 전역 `CRANE_Z_OFFSET_M`은 SW/다른 셀 회귀를 피하려고 건드리지 않는다.
+   - 기대 로그:
+     - `NW_HIGH_TARGET_OPEN_DESCENT: 30mm -> 15mm`
+     - `OPEN_STEM_DESCENT BASE REL xyz=[0.0, 0.0, -15.0]mm`
+   - 목적: 깊이는 유지하되, 열린 상태로 줄기/딸기를 쓸고 내려오는 거리를 줄여 주변 줄기
+     동시 파지와 fruit push를 줄인다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
