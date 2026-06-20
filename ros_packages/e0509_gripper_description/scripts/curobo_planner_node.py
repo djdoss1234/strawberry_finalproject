@@ -11,7 +11,6 @@ import torch
 import numpy as np
 import json
 import yaml
-import glob
 from scipy.spatial.transform import Rotation as SciR
 
 import rclpy
@@ -48,6 +47,7 @@ from harvest_math import (
 )
 from harvest_motion_params import *  # noqa: F403 - experiment constants
 from runtime_jsonl_logger import RuntimeJsonlLogger
+from tray_place_policy import TrayPlacePolicy
 
 
 def resolve_environment_yaml():
@@ -372,6 +372,14 @@ class CuroboPlanner(Node):
             grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
             set_position_type=_SetPosition,
             get_state_type=_GetState,
+        )
+        self.tray_place_policy = TrayPlacePolicy(
+            node=self,
+            runtime_log=self.runtime_log,
+            tray_cells_json=self._tray_cells_json,
+            marker_place_max_age_sec=self._marker_place_max_age_sec,
+            marker_place_above_clearance_m=self._marker_place_above_clearance_m,
+            measured_tcp_model=self._measured_tcp_model,
         )
         self.cli_change_op_speed = self.create_client(
             ChangeOperationSpeed, "/dsr01/motion/change_operation_speed",
@@ -1209,175 +1217,18 @@ class CuroboPlanner(Node):
         return False, start_joints
 
     def _latest_tray_cells_json(self):
-        if self._tray_cells_json:
-            return self._tray_cells_json
-        files = sorted(
-            glob.glob(DEFAULT_TRAY_CELLS_GLOB),
-            key=os.path.getmtime,
-            reverse=True,
-        )
-        return files[0] if files else None
+        return self.tray_place_policy.latest_tray_cells_json()
 
     def _marker_cell_with_taught_grid_pitch(self, cells, slot_index):
-        """마커의 위치/회전 방향에 Slot0·1·3 실측 tray pitch를 적용한다."""
-        by_index = {int(cell.get("index", idx)): cell for idx, cell in enumerate(cells)}
-        if not all(index in by_index for index in (0, 1, 3, slot_index)):
-            raise ValueError("marker JSON missing required slot0/1/3/target cells")
-
-        cell0 = by_index[0]
-        selected = dict(by_index[slot_index])
-        contact0 = np.array([
-            float(cell0["position_contact_mm"][axis]) for axis in ("x", "y", "z")
-        ])
-        contact1 = np.array([
-            float(by_index[1]["position_contact_mm"][axis]) for axis in ("x", "y", "z")
-        ])
-        contact3 = np.array([
-            float(by_index[3]["position_contact_mm"][axis]) for axis in ("x", "y", "z")
-        ])
-        marker_vertical = contact1 - contact0
-        marker_horizontal = contact3 - contact0
-        marker_vertical_norm = float(np.linalg.norm(marker_vertical))
-        marker_horizontal_norm = float(np.linalg.norm(marker_horizontal))
-        if marker_vertical_norm < 1e-6 or marker_horizontal_norm < 1e-6:
-            raise ValueError("invalid marker tray grid axis")
-
-        taught_slot0 = np.array(TAUGHT_SLOT0_PLACE_REFERENCE_POSX_MM_DEG[:3])
-        taught_vertical_pitch = float(np.linalg.norm(
-            np.array(TAUGHT_SLOT1_PLACE_REFERENCE_POSX_MM_DEG[:3]) - taught_slot0))
-        taught_horizontal_pitch = float(np.linalg.norm(
-            np.array(TAUGHT_SLOT3_PLACE_REFERENCE_POSX_MM_DEG[:3]) - taught_slot0))
-        horizontal_idx, vertical_idx = divmod(slot_index, 3)
-        calibrated_contact = (
-            contact0
-            + vertical_idx * taught_vertical_pitch * marker_vertical / marker_vertical_norm
-            + horizontal_idx * taught_horizontal_pitch * marker_horizontal / marker_horizontal_norm
-        )
-
-        original_contact = np.array([
-            float(selected["position_contact_mm"][axis]) for axis in ("x", "y", "z")
-        ])
-        correction = calibrated_contact - original_contact
-        selected["position_contact_mm"] = {
-            axis: float(calibrated_contact[idx])
-            for idx, axis in enumerate(("x", "y", "z"))
-        }
-        if "position_tcp_mm" in selected:
-            selected["position_tcp_mm"] = {
-                axis: float(selected["position_tcp_mm"][axis]) + float(correction[idx])
-                for idx, axis in enumerate(("x", "y", "z"))
-            }
-        return selected, {
-            "marker_vertical_pitch_mm": marker_vertical_norm,
-            "marker_horizontal_pitch_mm": marker_horizontal_norm,
-            "taught_vertical_pitch_mm": taught_vertical_pitch,
-            "taught_horizontal_pitch_mm": taught_horizontal_pitch,
-            "position_correction_mm": correction.tolist(),
-        }
+        return self.tray_place_policy.marker_cell_with_taught_grid_pitch(
+            cells, slot_index)
 
     def _load_marker_place_target(self):
-        path = self._latest_tray_cells_json()
-        if not path or not os.path.isfile(path):
-            self.get_logger().error("MARKER_PLACE_BLOCKED: tray cells JSON not found")
-            return None
-        age_sec = time.time() - os.path.getmtime(path)
-        if age_sec > self._marker_place_max_age_sec:
-            self.get_logger().error(
-                f"MARKER_PLACE_BLOCKED: tray localization stale "
-                f"age={age_sec:.0f}s > {self._marker_place_max_age_sec:.0f}s")
-            return None
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            cells = data.get("cells", [])
-            if not cells:
-                raise ValueError("no cells")
-            slot_index = self._marker_place_slot_idx % len(cells)
-            cell, grid_calibration = self._marker_cell_with_taught_grid_pitch(
-                cells, slot_index)
-            orient = cell["task_orientation_deg"]
-            if self._measured_tcp_model and "position_contact_mm" in cell:
-                # share_tray의 position_tcp_mm는 기존 Robotis TCP에서 연장 파츠
-                # 120mm를 보정한 좌표다. measured grasp_tcp_link는 이미 물리 파지
-                # 중심(파츠 끝보다 약 10mm 뒤)을 ee_link로 사용하므로 중복 보정을
-                # 피하고 contact point에서 TOOL +Z 반대 방향 10mm만 이동한다.
-                contact = cell["position_contact_mm"]
-                rotation = SciR.from_euler(
-                    "ZYZ",
-                    [
-                        float(orient["rx"]),
-                        float(orient["ry"]),
-                        float(orient["rz"]),
-                    ],
-                    degrees=True,
-                )
-                tool_z = rotation.apply([0.0, 0.0, 1.0])
-                tcp = {
-                    axis: float(contact[axis]) - 10.0 * float(tool_z[idx])
-                    for idx, axis in enumerate(("x", "y", "z"))
-                }
-                target_source = "measured_grasp_center_from_contact_minus_10mm"
-            else:
-                tcp = cell["position_tcp_mm"]
-                target_source = "legacy_position_tcp_mm"
-            release = [
-                float(tcp["x"]), float(tcp["y"]), float(tcp["z"]),
-                float(orient["rx"]), float(orient["ry"]), float(orient["rz"]),
-            ]
-            if not (
-                -800.0 <= release[0] <= 800.0
-                and -800.0 <= release[1] <= 800.0
-                and 250.0 <= release[2] <= 1200.0
-            ):
-                raise ValueError(f"target outside guarded workspace: {release[:3]}")
-        except Exception as exc:
-            self.get_logger().error(f"MARKER_PLACE_BLOCKED: invalid tray JSON ({exc})")
-            return None
-
-        above = list(release)
-        above[2] += self._marker_place_above_clearance_m * 1000.0
-        gripper_offset = data.get("gripper_offset") or {}
-        self.runtime_log.log(
-            "marker_place_target_loaded",
-            path=path,
-            age_sec=age_sec,
-            slot_index=cell.get("index"),
-            row=cell.get("row"),
-            col=cell.get("col"),
-            release_posx_mm_deg=release,
-            above_posx_mm_deg=above,
-            source_standoff_mm=gripper_offset.get("fingertip_standoff_mm"),
-            target_source=target_source,
-            source_contact_mm=cell.get("position_contact_mm"),
-            source_legacy_tcp_mm=cell.get("position_tcp_mm"),
-            grid_calibration=grid_calibration,
-        )
-        self.get_logger().info(
-            f"MARKER_TRAY_GRID slot={cell.get('index')} "
-            f"marker_pitch(vertical/horizontal)="
-            f"{grid_calibration['marker_vertical_pitch_mm']:.1f}/"
-            f"{grid_calibration['marker_horizontal_pitch_mm']:.1f}mm -> "
-            f"taught_pitch="
-            f"{grid_calibration['taught_vertical_pitch_mm']:.1f}/"
-            f"{grid_calibration['taught_horizontal_pitch_mm']:.1f}mm "
-            f"correction={np.round(grid_calibration['position_correction_mm'], 1).tolist()}mm")
-        return {
-            "path": path,
-            "slot_index": int(cell.get("index", self._marker_place_slot_idx)),
-            "release": release,
-            "above": above,
-            "target_source": target_source,
-            "contact_mm": cell.get("position_contact_mm"),
-        }
+        return self.tray_place_policy.load_marker_place_target(
+            self._marker_place_slot_idx)
 
     def _taught_grid_slot_offset_m(self, slot_index: int):
-        """Slot0/1/3 실측 위치로부터 지정 슬롯의 BASE 위치 오프셋을 계산한다."""
-        slot0 = np.array(TAUGHT_SLOT0_PLACE_REFERENCE_POSX_MM_DEG[:3], dtype=float)
-        slot1 = np.array(TAUGHT_SLOT1_PLACE_REFERENCE_POSX_MM_DEG[:3], dtype=float)
-        slot3 = np.array(TAUGHT_SLOT3_PLACE_REFERENCE_POSX_MM_DEG[:3], dtype=float)
-        horizontal_idx, vertical_idx = divmod(slot_index, 3)
-        offset_mm = horizontal_idx * (slot3 - slot0) + vertical_idx * (slot1 - slot0)
-        return (offset_mm / 1000.0).tolist()
+        return self.tray_place_policy.taught_grid_slot_offset_m(slot_index)
 
     def _execute_taught_slot0_place_reference_after_retreat(self, retreat_joints):
         """Slot0 FK와 실측 격자 벡터로 생성한 슬롯에 수직 Place한다."""
