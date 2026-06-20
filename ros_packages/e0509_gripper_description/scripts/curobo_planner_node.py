@@ -91,27 +91,22 @@ NEIGHBOR_SPHERE_RADIUS_M = 0.030
 CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 거리
 CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
 CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
-# NW high cell: 2026-06-18 실기에서 Z≈825mm target은 +15deg branch로 접근하면서
-# 실제 파지점보다 약 30mm 위에서 닿았다. 깊이는 10~20mm 얕게 보였지만,
-# +15mm final_extra는 +15deg 접근 방향을 따라가며 옆으로 빗겨가는 부작용이
-# 확인됐다. 기본값은 깊이 추가 없이 open descent만 유지한다.
+# NW high cell (target z >= NW_HIGH_TARGET_Z_THRESHOLD_M): SW와 같은
+# measured_tcp_260mm 모델을 쓰지만, 이 구간은 IK가 +15deg 틸트 branch에서만
+# 안정적으로 풀려서(NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS 참고) SW 기본값
+# 그대로는 깊이/접근 높이가 안 맞았다. 2026-06-20 실기로 확정된 값:
+#   - final_extra=15mm: SW 공통 baseline(180mm)보다 15mm 더 깊이 들어가야 함
+#   - crane_z_offset=5mm: KP1 위 진입 높이/open descent 거리(SW는 30mm 그대로)
+#   - open descent는 고정값이 아니라 "실제 도달 Z - 목표 KP1 Z" 동적 계산
+#     (아래 open descent 블록) + FINAL_APPROACH_TOOL_FINISH를 수평 이동으로
+#     바꾼 것(아래 horiz_dir)까지 셋이 합쳐져야 깊이를 늘려도 높이가 안 뜬다.
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
-NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
-NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
+NW_HIGH_TARGET_FINAL_EXTRA_M = 0.015
 NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
-# 2026-06-20: KP1 진입 높이(pre-approach 위 오프셋)와 open descent 거리는 둘 다
-# CRANE_Z_OFFSET_M 하나로 묶여 있었는데, SW도 measured_tcp_model을 쓰므로 그 상수를
-# 직접 줄이면 SW까지 같이 바뀐다. NW high target에서만 이 높이를 30->25->20mm처럼
-# 작게 줄여보기 위해 별도 NW-only 파라미터로 분리한다. 기본값은 기존 동작 보존.
-NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.030
-# 2026-06-20 실기 로그(curobo_planner_node_20260620T174712-e152e86f.jsonl) 분석:
-# +15deg variant는 180mm 접근 동안 Z가 sin(15deg)*180mm≈47mm 같이 올라간다.
-# 기존 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M(고정 mm 보정)은 tilt가 크면(>10deg) 통째로
-# 스킵되어 보정이 전혀 안 됐고, close 지점이 실제 KP1보다 30~56mm 위에서 닫혀 옆
-# 줄기를 잡는 문제가 재현됨. 그래서 "고정 보정값" 대신 "실제 도달한 Z - 목표 KP1 Z"
-# 차이를 그대로 하강 거리로 쓰도록 바꾼다 (아래 open descent 블록). tilt/depth가
-# 달라져도 항상 KP1에 정확히 도달한다. 이 상수는 KP1보다 추가로 더 내려갈 여유(mm).
+NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.005
+# open descent 동적 계산("실제 도달 Z - 목표 KP1 Z") 이후, KP1보다 추가로 더
+# 내려갈 여유(mm). 2026-06-20 검증된 조합에서는 0으로도 충분했다.
 NW_HIGH_TARGET_DESCENT_EXTRA_BELOW_KP1_M = 0.000
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
@@ -426,9 +421,6 @@ class CuroboPlanner(Node):
         self.declare_parameter(
             "nw_high_target_final_extra_m", NW_HIGH_TARGET_FINAL_EXTRA_M)
         self.declare_parameter(
-            "nw_high_target_close_extra_down_m",
-            NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M)
-        self.declare_parameter(
             "nw_high_target_base_y_nudge_m", NW_HIGH_TARGET_BASE_Y_NUDGE_M)
         self.declare_parameter(
             "nw_high_target_crane_z_offset_m", NW_HIGH_TARGET_CRANE_Z_OFFSET_M)
@@ -501,9 +493,6 @@ class CuroboPlanner(Node):
             self.get_parameter("nw_high_target_z_threshold_m").value)
         self._nw_high_target_final_extra_m = max(
             0.0, float(self.get_parameter("nw_high_target_final_extra_m").value))
-        self._nw_high_target_close_extra_down_m = max(
-            0.0, float(
-                self.get_parameter("nw_high_target_close_extra_down_m").value))
         self._nw_high_target_base_y_nudge_m = max(
             0.0, float(
                 self.get_parameter("nw_high_target_base_y_nudge_m").value))
@@ -645,7 +634,6 @@ class CuroboPlanner(Node):
                 "  NW_HIGH_TARGET_CORRECTION "
                 f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
                 f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
-                f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm "
                 f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
                 f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm "
                 f"crane_z_offset={self._nw_high_target_crane_z_offset_m*1000:.0f}mm "
