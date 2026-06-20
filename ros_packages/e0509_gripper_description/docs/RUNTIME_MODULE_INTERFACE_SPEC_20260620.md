@@ -25,6 +25,7 @@ RealSense RGB-D
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
 | `scripts/gripper_client.py` | `/gripper_service/set_position`, `/get_state`, `/safe_grasp` 호출과 grasp result 판정 | 신규 분리 모듈. SafeGrasp + position fallback 동작 보존 |
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
+| `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
 | `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
 | `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
@@ -172,12 +173,13 @@ RealSense RGB-D
 - `doosan_motion_client.py` 분리: MoveSplineJoint/MoveJoint/MoveLine service wrapper
 - `gripper_client.py` 분리: SetPosition/GetState/SafeGrasp wrapper와 grasp result 판정
 - `tray_place_policy.py` 분리: marker tray target 로딩, taught grid pitch 보정, slot offset 계산
-- `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 850줄 감소
+- `trajectory_guards.py` 분리: operational limit, J4/J6 equivalent normalization, spline jump/swing reject
+- `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 950줄 감소
 
 다음 분리 후보:
 
-1. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리
-2. `curobo_planning_adapter.py`: `plan()`, joint limit rewrite, plan dump, collision diagnostics 분리
+1. `curobo_planning_adapter.py`: `plan()`, `plan_js`, plan dump, collision diagnostics 분리
+2. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리
 3. `pick_sequence.py`: `_pick()` state machine 분리
 
 주의:

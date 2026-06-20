@@ -48,6 +48,7 @@ from harvest_math import (
 from harvest_motion_params import *  # noqa: F403 - experiment constants
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from tray_place_policy import TrayPlacePolicy
+from trajectory_guards import TrajectoryGuards
 
 
 def resolve_environment_yaml():
@@ -380,6 +381,10 @@ class CuroboPlanner(Node):
             marker_place_max_age_sec=self._marker_place_max_age_sec,
             marker_place_above_clearance_m=self._marker_place_above_clearance_m,
             measured_tcp_model=self._measured_tcp_model,
+        )
+        self.trajectory_guards = TrajectoryGuards(
+            logger=self.get_logger(),
+            joint_names=self.JOINT_NAMES,
         )
         self.cli_change_op_speed = self.create_client(
             ChangeOperationSpeed, "/dsr01/motion/change_operation_speed",
@@ -738,98 +743,21 @@ class CuroboPlanner(Node):
     # ── 플래닝 ────────────────────────────────────────────────────────────────
 
     def trajectory_in_operational_limits(self, traj_rad, label):
-        traj_deg = np.rad2deg(traj_rad)
-        for joint_idx, (lo, hi) in enumerate(OPERATIONAL_JOINT_LIMITS_DEG):
-            vals = traj_deg[:, joint_idx]
-            if np.any(vals < lo) or np.any(vals > hi):
-                self.get_logger().warn(
-                    f"{label} rejected: J{joint_idx+1} out of [{lo:.0f}°, {hi:.0f}°] "
-                    f"(range {vals.min():.1f}°..{vals.max():.1f}°)")
-                return False
-        return True
+        return self.trajectory_guards.in_operational_limits(traj_rad, label)
 
     def trajectory_has_reasonable_swing(
             self, traj_rad, start_joints, label,
             max_joint_delta_deg=None):
-        traj_deg = np.rad2deg(traj_rad)
-        start_deg = np.rad2deg(start_joints)
-        limits = max_joint_delta_deg or MAX_HARVEST_JOINT_DELTA_DEG
-        if isinstance(limits, (int, float)):
-            limits = [float(limits)] * len(self.JOINT_NAMES)
-        for joint_idx, max_delta in enumerate(limits):
-            vals = traj_deg[:, joint_idx]
-            if joint_idx in WRAP_EQUIVALENT_JOINT_IDX:
-                # endpoint 등가 거리가 아닌 trajectory 실제 range 검사:
-                # normalize가 "돌아가는 방향"을 따라붙어도 310° 스윙을 탐지
-                delta_vals = np.abs(vals - float(vals[0]))
-            else:
-                delta_vals = np.abs(vals - start_deg[joint_idx])
-            delta = float(np.max(delta_vals))
-            if delta > max_delta:
-                end_deg = traj_deg[-1, joint_idx]
-                self.get_logger().warn(
-                    f"{label} rejected: J{joint_idx+1} swing {delta:.1f}° > {max_delta:.1f}° "
-                    f"(start={start_deg[joint_idx]:.1f}° → end={end_deg:.1f}°)")
-                return False
-        return True
+        return self.trajectory_guards.has_reasonable_swing(
+            traj_rad, start_joints, label, max_joint_delta_deg)
 
     def normalize_trajectory_equivalents(self, traj_rad, label, robot_start_joints_rad=None):
-        traj_deg = np.rad2deg(traj_rad).astype(float)
-        robot_start_deg = (
-            np.rad2deg(robot_start_joints_rad).tolist()
-            if robot_start_joints_rad is not None
-            else None
-        )
-        rewritten = []
-        for joint_idx in WRAP_EQUIVALENT_JOINT_IDX:
-            lo, hi = OPERATIONAL_JOINT_LIMITS_DEG[joint_idx]
-            original = traj_deg[:, joint_idx].copy()
-            # Seed from the actual robot state so the entire trajectory is anchored
-            # to the same ±360° representation the controller is tracking.
-            # Without this, when CuRobo's first IK waypoint uses a different
-            # equivalent (e.g. -54.5° vs 305.5°), the Doosan spline executor
-            # physically rotates J4/J6 a full turn to reach the plan's start point.
-            prev = float(robot_start_deg[joint_idx]) if robot_start_deg is not None else None
-            for row_idx, value in enumerate(original):
-                candidates = [value + 360.0 * k for k in range(-2, 3)]
-                valid = [c for c in candidates if lo <= c <= hi]
-                if not valid:
-                    continue
-                reference = prev if prev is not None else value
-                best = min(valid, key=lambda c: abs(c - reference))
-                traj_deg[row_idx, joint_idx] = best
-                prev = best
-            if np.max(np.abs(traj_deg[:, joint_idx] - original)) > 1e-6:
-                rewritten.append(
-                    f"J{joint_idx+1} {float(np.min(original)):.1f}~{float(np.max(original)):.1f}"
-                    f" -> {float(np.min(traj_deg[:, joint_idx])):.1f}~{float(np.max(traj_deg[:, joint_idx])):.1f}"
-                )
-        if rewritten:
-            self.get_logger().info(
-                f"{label} joint equivalent rewrite: " + "; ".join(rewritten))
-        return np.deg2rad(traj_deg)
+        return self.trajectory_guards.normalize_equivalents(
+            traj_rad, label, robot_start_joints_rad)
 
     def trajectory_has_no_spline_jumps(self, traj_rad, label, max_jump_deg=270.0):
-        """normalize 후 연속 waypoint 간 대형 각도 점프 검사.
-
-        J4/J6가 ±한계 경계를 넘으면 normalize가 강제로 반대 부호로 바꾸면서
-        직전 waypoint와 357° 차이가 생기고 Doosan 스플라인이 360° 스핀함.
-        이를 실행 전에 탐지해서 plan 자체를 reject.
-        """
-        traj_deg = np.rad2deg(traj_rad)
-        for joint_idx in WRAP_EQUIVALENT_JOINT_IDX:
-            diffs = np.abs(np.diff(traj_deg[:, joint_idx]))
-            if len(diffs) == 0:
-                continue
-            max_diff = float(np.max(diffs))
-            if max_diff > max_jump_deg:
-                bad_idx = int(np.argmax(diffs))
-                self.get_logger().warn(
-                    f"{label} rejected: J{joint_idx+1} spline jump {max_diff:.1f}° "
-                    f"> {max_jump_deg:.1f}° at waypoint {bad_idx} "
-                    f"(limit boundary crossing — normalize 불연속)")
-                return False
-        return True
+        return self.trajectory_guards.has_no_spline_jumps(
+            traj_rad, label, max_jump_deg)
 
     def plan(self, start_joints, target_pos, target_quat_wxyz, num_ik_seeds=32,
              max_attempts=None, timeout_sec=None, max_joint_delta_deg=None):

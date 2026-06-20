@@ -67,6 +67,7 @@ install(PROGRAMS
   scripts/harvest_math.py
   scripts/harvest_motion_params.py
   scripts/tray_place_policy.py
+  scripts/trajectory_guards.py
   scripts/pick_place_node.py
   scripts/marker_tracking_node.py
   scripts/strawberry_yolo_node.py
