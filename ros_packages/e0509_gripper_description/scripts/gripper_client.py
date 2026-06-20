@@ -43,6 +43,18 @@ class HarvestGripperClient:
         """Return gripper to the approach/open position."""
         self.set_position(GRIPPER_APPROACH_POS, timeout_sec=5.0)
 
+    def open_for_stem_descent(self):
+        """Open gripper before horizontal approach and open-stem descent."""
+        self._log().info(
+            f"1 open gripper for stem descent: set_position={GRIPPER_APPROACH_POS}")
+        self.runtime_log.log(
+            "gripper_command",
+            command="set_position",
+            position=GRIPPER_APPROACH_POS,
+            purpose="open_during_horizontal_approach_and_stem_descent",
+        )
+        return self.set_position(GRIPPER_APPROACH_POS, timeout_sec=3.0)
+
     def set_position(self, position: int, timeout_sec: float = 5.0) -> bool:
         if self.cli_set_position is None or self.set_position_type is None:
             self._log().warn("GRIPPER: cli_set_position unavailable (virtual?)")

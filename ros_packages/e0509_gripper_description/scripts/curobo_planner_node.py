@@ -1417,15 +1417,7 @@ class CuroboPlanner(Node):
 
         # 접근 중 잎/과실을 집게로 미는 것을 줄이기 위해 수평 진입 전에
         # 파지 파츠를 600으로 명시적으로 열어 둔다.
-        self.get_logger().info(
-            f"1 open gripper for stem descent: set_position={GRIPPER_APPROACH_POS}")
-        self.runtime_log.log(
-            "gripper_command",
-            command="set_position",
-            position=GRIPPER_APPROACH_POS,
-            purpose="open_during_horizontal_approach_and_stem_descent",
-        )
-        self._set_gripper_position(GRIPPER_APPROACH_POS, timeout_sec=3.0)
+        self.gripper_client.open_for_stem_descent()
 
         self._register_neighbor_obstacles(straw)
         self.motion_gen.detach_object_from_robot()
