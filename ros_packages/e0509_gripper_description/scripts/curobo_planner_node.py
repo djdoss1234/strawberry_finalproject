@@ -42,10 +42,11 @@ from runtime_jsonl_logger import RuntimeJsonlLogger
 
 # ── 파지 파라미터 ──────────────────────────────────────────────────────────────
 GRASP_RETRY_OFFSETS  = [0.015, 0.030, 0.040, 0.050, 0.070]
-# Measured-TCP 모델의 최종 파지 중심. 2026-06-18 NW 실기에서 높이는 맞고
-# 깊이만 약 10mm 얕게 관찰되어 -120mm -> -130mm로 재보정했다. post-move
-# nudge가 아니라 pre/final geometry 전체에 반영되는 TCP 파지 중심 보정이다.
-MEASURED_TCP_FINAL_STANDOFF_M = -0.130
+# Measured-TCP 모델의 최종 파지 중심. -130mm로 10mm 더 깊게 잡으면
+# cuRobo는 여전히 90mm까지만 도달하고 TOOL finish가 100mm로 늘어나
+# Doosan MoveLine success/no-motion이 재발했다. 직선진입 신뢰 한계 때문에
+# 검증된 180mm 총 진입(-120mm)을 유지한다.
+MEASURED_TCP_FINAL_STANDOFF_M = -0.120
 Y_DETECTION_BIAS_M = 0.000  # 보정값 0: raw detection Y를 그대로 접근 거리 계산에 사용
                               # (단일 데이터 포인트 기반 23mm 추정은 신뢰 부족 → 실측 후 재조정)
 LEFTMOST_GRASP_RETRY_OFFSETS = [0.030, 0.035, 0.040, 0.045, 0.050, 0.070]
@@ -76,7 +77,7 @@ MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
 # worse than one already found. NW-only (measured_tcp_model path).
 MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
 NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
-NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 25.0
+NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 20.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -2765,7 +2766,7 @@ class CuroboPlanner(Node):
             # clamp 전 detection_raw_y를 쓰면 FK drift가 final approach를 벽 뒤로
             # 밀어 넣어 cuRobo fallback goal이 Y>wall로 튄다.
             # baseline(180mm)보다 깊은 딸기만 추가 진입; baseline 미만으로 줄이지 않음
-            baseline_approach = PRE_APPROACH_OFFSET - MEASURED_TCP_FINAL_STANDOFF_M  # 0.190m
+            baseline_approach = PRE_APPROACH_OFFSET - MEASURED_TCP_FINAL_STANDOFF_M  # 0.180m
             pre_approach_y_m = WALL_SURFACE_Y_M - PRE_APPROACH_OFFSET  # 0.612m
             effective_detection_y = raw_straw[1]
             adaptive_dist = (effective_detection_y - Y_DETECTION_BIAS_M) - pre_approach_y_m

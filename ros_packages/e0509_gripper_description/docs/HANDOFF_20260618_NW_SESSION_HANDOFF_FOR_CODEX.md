@@ -252,7 +252,7 @@ ERROR: ABORT: 직선 진입 실패
    - 깊이 extra를 거리로 더 밀면 같은 방향으로 더 빗겨가므로 기본값에서 끈다.
    - NW high target 전용 variant order:
      `0deg -> +5deg -> -5deg -> +10deg -> -10deg -> +15deg`
-   - 같은 final depth에서 여러 branch가 성공하면, J3가 최소 안전선(25deg)을 넘는 후보 중
+   - 같은 final depth에서 여러 branch가 성공하면, J3가 최소 안전선(20deg)을 넘는 후보 중
      더 수평에 가까운 branch를 우선한다. 이전처럼 무조건 J3가 더 큰 branch를 고르면
      접근선이 위/옆으로 빗겨갈 수 있기 때문이다.
 12. 19:36 실기 결과: +10deg branch로 바뀌었지만 깊이는 크게 개선되지 않음
@@ -266,21 +266,26 @@ ERROR: ABORT: 직선 진입 실패
      90mm이고 총 접근 깊이도 180mm라서, 깊이 부족 자체는 해결되지 않았다.
    - 즉 현재 병목은 "branch 각도"보다 **target depth / TCP frame / final straight segment**
      쪽에 더 가깝다.
-13. 다음 실험용: post-move nudge 대신 TCP final standoff 재보정
+13. -130mm TCP final standoff 실험은 실패 → -120mm로 복귀
    - 19:36 run 이후 관찰은 "높이는 대체로 맞고 깊이만 10~20mm 부족"이었다.
    - `nw_high_target_final_extra_m`처럼 approach distance를 늘리면 TOOL 방향의 기울기 때문에
      옆으로 빗겨가거나 MoveLine 무동작이 생겼다.
-   - 9fed0dd에서 닫기 직전 BASE +Y 10mm nudge를 추가했지만, 이는 사용자가 지적한 것처럼
-     후처리 오프셋에 가깝다. 이번 수정에서는 기본값을 다시 0mm로 끄고, measured-TCP 모델의
-     최종 파지 중심 자체를 -120mm에서 -130mm로 10mm 재보정했다.
+   - 37fefe8에서 measured-TCP final standoff를 -120mm에서 -130mm로 바꿔 총 진입을
+     180mm→190mm로 늘렸지만, cuRobo는 여전히 90mm까지만 도달했고 남은 TOOL finish가
+     90mm→100mm로 증가했다.
+   - 2026-06-20 15:40 run 결과, 100mm TOOL finish에서 Doosan MoveLine이 다시
+     "success but joints barely moved"로 실패했다.
+   - 결론: 깊이를 TCP standoff로 10mm 늘리는 방식도 현재 직선진입 신뢰 한계를 넘긴다.
+     따라서 -120mm로 복귀하고, 깊이 문제는 target definition/perception/TCP 실측 검증으로
+     분리한다.
    - 기본값:
-     - `MEASURED_TCP_FINAL_STANDOFF_M = -0.130`
+     - `MEASURED_TCP_FINAL_STANDOFF_M = -0.120`
      - `nw_high_target_base_y_nudge_m:=0.000`
    - 기대 로그:
      - `NW_HIGH_TARGET_VARIANT_ORDER: +0deg, +5deg, -5deg, +10deg, -10deg, +15deg`
-     - `GRASP_POSE_REACHED ... pre=6cm+190mm+0mm ...`
-   - 이것은 "추가로 한 번 더 미는" 방식이 아니라, 파츠 장착 후 실제 줄기 파지 중심이
-     코드의 measured-TCP 모델보다 약 10mm 앞에 있다는 관찰을 모델에 반영한 것이다.
+     - `GRASP_POSE_REACHED ... pre=6cm+180mm+0mm ...`
+   - 실행 커맨드에서 `-p nw_high_target_base_y_nudge_m:=0.010`를 넘기면 다시 후처리
+     10mm nudge가 켜지므로, 다음 테스트에서는 반드시 빼야 한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
