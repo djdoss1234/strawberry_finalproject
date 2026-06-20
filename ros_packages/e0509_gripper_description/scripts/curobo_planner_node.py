@@ -58,6 +58,7 @@ from harvest_result_policy import (
     pick_sequence_result_code,
     place_gate_block_reason,
 )
+from open_stem_descent_policy import compute_open_stem_descent_m
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from scene_obstacle_manager import SceneObstacleManager
 from tray_place_policy import TrayPlacePolicy
@@ -2231,39 +2232,29 @@ class CuroboPlanner(Node):
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and crane_z_offset_m > 0:
-            if used_grasp_ee_pos is not None:
-                # 2026-06-20: 고정 mm 보정 대신, 실제 도달한 그리퍼 Z와 목표
-                # KP1 Z의 차이를 그대로 하강 거리로 쓴다. +15deg variant처럼
-                # 접근 중 Z가 같이 올라가는 경우에도 tilt 각도와 무관하게
-                # KP1에 정확히 도달한다. 원래 is_nw_high_target에만 적용했는데,
-                # z<750mm 타겟도 같은 틸트 variant를 고르면 똑같이 어긋나는 게
-                # 확인돼서 모든 measured_tcp 타겟에 적용한다 — 틸트가 0이면
-                # overshoot이 정확히 기존 crane_z_offset_m과 같아져서(아래 식)
-                # SW처럼 평평한 접근은 결과가 전혀 안 바뀐다.
-                target_kp1_z_m = float(straw[2])
-                reached_z_m = float(used_grasp_ee_pos[2])
-                overshoot_above_kp1_m = max(0.0, reached_z_m - target_kp1_z_m)
-                open_stem_descent_m = (
-                    overshoot_above_kp1_m
-                    + self._nw_high_target_descent_extra_below_kp1_m
-                )
+            open_stem_descent_m, descent_info = compute_open_stem_descent_m(
+                crane_z_offset_m,
+                float(straw[2]),
+                None if used_grasp_ee_pos is None else float(used_grasp_ee_pos[2]),
+                self._nw_high_target_descent_extra_below_kp1_m,
+            )
+            if descent_info["mode"] == "dynamic":
                 self.get_logger().warn(
                     "OPEN_DESCENT_DYNAMIC: kp1_z="
-                    f"{target_kp1_z_m*1000:.0f}mm reached_z={reached_z_m*1000:.0f}mm "
-                    f"overshoot={overshoot_above_kp1_m*1000:.0f}mm "
-                    f"extra_below_kp1={self._nw_high_target_descent_extra_below_kp1_m*1000:.0f}mm "
+                    f"{descent_info['target_kp1_z_m']*1000:.0f}mm "
+                    f"reached_z={descent_info['reached_z_m']*1000:.0f}mm "
+                    f"overshoot={descent_info['overshoot_above_kp1_m']*1000:.0f}mm "
+                    f"extra_below_kp1={descent_info['extra_below_kp1_m']*1000:.0f}mm "
                     f"-> descent={open_stem_descent_m*1000:.0f}mm")
                 self.runtime_log.log(
                     "nw_high_target_open_descent_dynamic",
-                    target_kp1_z_m=target_kp1_z_m,
-                    reached_z_m=reached_z_m,
-                    overshoot_above_kp1_m=overshoot_above_kp1_m,
-                    extra_below_kp1_m=self._nw_high_target_descent_extra_below_kp1_m,
-                    executed_descent_m=open_stem_descent_m,
+                    target_kp1_z_m=descent_info["target_kp1_z_m"],
+                    reached_z_m=descent_info["reached_z_m"],
+                    overshoot_above_kp1_m=descent_info["overshoot_above_kp1_m"],
+                    extra_below_kp1_m=descent_info["extra_below_kp1_m"],
+                    executed_descent_m=descent_info["executed_descent_m"],
                     selected_variant=used_grasp_variant,
                 )
-            else:
-                open_stem_descent_m = crane_z_offset_m
             self.get_logger().info(
                 f"OPEN_STEM_DESCENT — gripper={GRIPPER_APPROACH_POS}, "
                 f"BASE -Z {open_stem_descent_m*1000:.0f}mm to KP1")
