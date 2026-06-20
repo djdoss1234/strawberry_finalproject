@@ -80,7 +80,6 @@ NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
 NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 20.0
 MEASURED_TCP_MIN_PRUNE_DEPTH_M = 0.090
 NW_HIGH_TARGET_PROBE_DEPTHS_M = [0.090, 0.070, 0.060]
-NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG = 10.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -106,6 +105,14 @@ NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
 # 직접 줄이면 SW까지 같이 바뀐다. NW high target에서만 이 높이를 30->25->20mm처럼
 # 작게 줄여보기 위해 별도 NW-only 파라미터로 분리한다. 기본값은 기존 동작 보존.
 NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.030
+# 2026-06-20 실기 로그(curobo_planner_node_20260620T174712-e152e86f.jsonl) 분석:
+# +15deg variant는 180mm 접근 동안 Z가 sin(15deg)*180mm≈47mm 같이 올라간다.
+# 기존 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M(고정 mm 보정)은 tilt가 크면(>10deg) 통째로
+# 스킵되어 보정이 전혀 안 됐고, close 지점이 실제 KP1보다 30~56mm 위에서 닫혀 옆
+# 줄기를 잡는 문제가 재현됨. 그래서 "고정 보정값" 대신 "실제 도달한 Z - 목표 KP1 Z"
+# 차이를 그대로 하강 거리로 쓰도록 바꾼다 (아래 open descent 블록). tilt/depth가
+# 달라져도 항상 KP1에 정확히 도달한다. 이 상수는 KP1보다 추가로 더 내려갈 여유(mm).
+NW_HIGH_TARGET_DESCENT_EXTRA_BELOW_KP1_M = 0.000
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -425,6 +432,9 @@ class CuroboPlanner(Node):
             "nw_high_target_base_y_nudge_m", NW_HIGH_TARGET_BASE_Y_NUDGE_M)
         self.declare_parameter(
             "nw_high_target_crane_z_offset_m", NW_HIGH_TARGET_CRANE_Z_OFFSET_M)
+        self.declare_parameter(
+            "nw_high_target_descent_extra_below_kp1_m",
+            NW_HIGH_TARGET_DESCENT_EXTRA_BELOW_KP1_M)
         self.declare_parameter("debug_dump_plan_calls", False)
         self._debug_dump_plan_calls = bool(
             self.get_parameter("debug_dump_plan_calls").value)
@@ -500,6 +510,9 @@ class CuroboPlanner(Node):
         self._nw_high_target_crane_z_offset_m = max(
             0.0, float(
                 self.get_parameter("nw_high_target_crane_z_offset_m").value))
+        self._nw_high_target_descent_extra_below_kp1_m = max(
+            0.0, float(self.get_parameter(
+                "nw_high_target_descent_extra_below_kp1_m").value))
         self._leftmost_extra_advance_request_m = max(
             0.0, float(self.get_parameter("leftmost_extra_advance_request_m").value))
         self._leftmost_wall_safety_margin_m = float(
@@ -3159,48 +3172,36 @@ class CuroboPlanner(Node):
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and crane_z_offset_m > 0:
-            open_stem_descent_m = crane_z_offset_m
-            used_variant_tilt_deg = (
-                abs(float(used_grasp_variant[2]))
-                if used_grasp_variant is not None and len(used_grasp_variant) >= 3
-                else 0.0
-            )
-            allow_nw_extra_down = (
-                not is_nw_high_target
-                or used_variant_tilt_deg <= NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG
-            )
-            if is_nw_high_target and not allow_nw_extra_down:
-                self.get_logger().warn(
-                    "NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_SKIPPED: selected "
-                    f"tilt={used_variant_tilt_deg:.1f}deg > "
-                    f"{NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG:.1f}deg; "
-                    "avoid pushing fruit during open tilted descent")
-                self.runtime_log.log(
-                    "nw_high_target_close_extra_down_skipped",
-                    target_z_m=float(raw_straw[2]),
-                    selected_variant=used_grasp_variant,
-                    selected_tilt_deg=used_variant_tilt_deg,
-                    max_tilt_deg=NW_HIGH_TARGET_EXTRA_DOWN_MAX_TILT_DEG,
-                    base_descent_m=crane_z_offset_m,
+            if is_nw_high_target and used_grasp_ee_pos is not None:
+                # 2026-06-20: 고정 mm 보정 대신, 실제 도달한 그리퍼 Z와 목표
+                # KP1 Z의 차이를 그대로 하강 거리로 쓴다. +15deg variant처럼
+                # 접근 중 Z가 같이 올라가는 경우에도 tilt 각도와 무관하게
+                # KP1에 정확히 도달한다 (기존 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M은
+                # tilt>10deg면 스킵되어 보정이 전혀 안 되는 문제가 있었음).
+                target_kp1_z_m = float(straw[2])
+                reached_z_m = float(used_grasp_ee_pos[2])
+                overshoot_above_kp1_m = max(0.0, reached_z_m - target_kp1_z_m)
+                open_stem_descent_m = (
+                    overshoot_above_kp1_m
+                    + self._nw_high_target_descent_extra_below_kp1_m
                 )
-            if (
-                is_nw_high_target
-                and allow_nw_extra_down
-                and self._nw_high_target_close_extra_down_m > 0.0
-            ):
-                open_stem_descent_m += self._nw_high_target_close_extra_down_m
                 self.get_logger().warn(
-                    "NW_HIGH_TARGET_CLOSE_EXTRA_DOWN: open descent "
-                    f"{crane_z_offset_m*1000:.0f}mm -> "
-                    f"{open_stem_descent_m*1000:.0f}mm "
-                    "(observed close point high by ~30mm)")
+                    "NW_HIGH_TARGET_OPEN_DESCENT_DYNAMIC: kp1_z="
+                    f"{target_kp1_z_m*1000:.0f}mm reached_z={reached_z_m*1000:.0f}mm "
+                    f"overshoot={overshoot_above_kp1_m*1000:.0f}mm "
+                    f"extra_below_kp1={self._nw_high_target_descent_extra_below_kp1_m*1000:.0f}mm "
+                    f"-> descent={open_stem_descent_m*1000:.0f}mm")
                 self.runtime_log.log(
-                    "nw_high_target_close_extra_down",
-                    target_z_m=float(raw_straw[2]),
-                    base_descent_m=crane_z_offset_m,
-                    extra_down_m=self._nw_high_target_close_extra_down_m,
+                    "nw_high_target_open_descent_dynamic",
+                    target_kp1_z_m=target_kp1_z_m,
+                    reached_z_m=reached_z_m,
+                    overshoot_above_kp1_m=overshoot_above_kp1_m,
+                    extra_below_kp1_m=self._nw_high_target_descent_extra_below_kp1_m,
                     executed_descent_m=open_stem_descent_m,
+                    selected_variant=used_grasp_variant,
                 )
+            else:
+                open_stem_descent_m = crane_z_offset_m
             self.get_logger().info(
                 f"OPEN_STEM_DESCENT — gripper={GRIPPER_APPROACH_POS}, "
                 f"BASE -Z {open_stem_descent_m*1000:.0f}mm to KP1")
