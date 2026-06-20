@@ -415,6 +415,26 @@ ERROR: ABORT: 직선 진입 실패
      - 0deg에서 직선진입이 실패하면 이제 옆 접근으로 억지 fallback하지 않는다.
      - 그 경우 다음 문제는 orientation sampling이 아니라 target Y/Z, TCP, 또는 scan pose 기반
        접근 가능성 자체로 분리해서 봐야 한다.
+21. 2026-06-20 17:18 run: 0deg 강제 후 cuRobo70 + TOOL110 split에서 직선진입 실패
+   - 로그: `curobo_planner_node_20260620T171813-79de703a.jsonl`
+   - 선택 branch: `variant=('base', [1,0,0], 0.0)`.
+   - final path: cuRobo 70mm + TOOL finish 110mm.
+   - 결과: `FINAL_APPROACH_TOOL_FINISH MoveLine reported success but joints barely moved`.
+   - 원인:
+     - 코드상 "TOOL finish like SW baseline"이라고 되어 있었지만 실제 SW 모션과 다르다.
+     - 현재 구조는 pre-approach에서 바로 직선진입하는 것이 아니라, 먼저 cuRobo spline으로
+       70mm 들어간 뒤 바뀐 관절 자세에서 남은 110mm TOOL line을 수행한다.
+     - 이 split 자세에서 Doosan MoveLine이 무동작 처리된다.
+   - 수정:
+     - NW high + 0deg에서는 direct cuRobo final split을 건너뛴다.
+     - `FINAL_APPROACH_SW_STYLE_TOOL_LINE`으로 pre-approach에서 바로 TOOL +Z 전체 거리
+       (`180mm`)를 실행한다.
+     - 실패 시 +5/+15 tilted fallback으로 도망가지 않고 abort한다.
+   - 기대 로그:
+     - `NW_HIGH_TARGET_SW_STYLE_FINAL_APPROACH: skip cuRobo split final approach ...`
+     - `FINAL_APPROACH_SW_STYLE_TOOL_LINE TOOL +Z 180.0mm`
+   - 목적: "계산상 가능한 중간 spline + 남은 직선"이 아니라, SW에서 사용자가 좋다고 본
+     파지 모션 형상 자체를 재현한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

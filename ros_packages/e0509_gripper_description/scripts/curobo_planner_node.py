@@ -2901,7 +2901,48 @@ class CuroboPlanner(Node):
         if final_approach_distance > 0.001:
             requested_final_approach_distance = final_approach_distance
             precomputed_final_attempted = False
+            used_variant_tilt_deg_for_approach = (
+                abs(float(used_grasp_variant[2]))
+                if used_grasp_variant is not None and len(used_grasp_variant) >= 3
+                else 0.0
+            )
+            force_sw_style_tool_line = (
+                self._measured_tcp_model
+                and is_nw_high_target
+                and used_variant_tilt_deg_for_approach <= 1e-6
+            )
             if (
+                force_sw_style_tool_line
+            ):
+                precomputed_final_attempted = True
+                self.get_logger().warn(
+                    "NW_HIGH_TARGET_SW_STYLE_FINAL_APPROACH: "
+                    f"skip cuRobo split final approach and execute TOOL +Z "
+                    f"{final_approach_distance*1000:.0f}mm directly from pre-approach "
+                    "(match proven SW motion; no tilted fallback)")
+                self.runtime_log.log(
+                    "nw_high_target_sw_style_final_approach",
+                    requested_distance_m=final_approach_distance,
+                    reason="avoid_curobo70_plus_tool110_split_and_tilted_fallback",
+                    grasp_variant=used_grasp_variant,
+                    approach_dir=used_approach_dir,
+                )
+                approach_ok = self.execute_tool_z_line(
+                    final_approach_distance,
+                    motion_label="FINAL_APPROACH_SW_STYLE_TOOL_LINE",
+                    vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                    acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                    min_distance_m=0.005,
+                )
+                if approach_ok:
+                    used_grasp_ee_pos = (
+                        used_pre_ee_pos
+                        + final_approach_distance * used_approach_dir)
+                    self.runtime_log.log(
+                        "nw_high_target_sw_style_final_approach_success",
+                        executed_total_m=final_approach_distance,
+                    )
+            elif (
                 self._measured_tcp_model
                 and self._direct_curobo_final_approach_for_measured_tcp
             ):
