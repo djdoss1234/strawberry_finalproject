@@ -952,15 +952,28 @@ class CuroboPlanner(Node):
         cos_v = float(np.dot(ref_axis, stem_axis))
         roll_rad = float(np.arctan2(sin_v, cos_v))
         roll_deg = float(np.degrees(roll_rad))
+        raw_roll_deg = roll_deg
+        # The gripper alignment axis is axial, not directional: aligning tool_x
+        # with +stem or -stem puts the jaws on the same line. Fold 180deg
+        # equivalents into the smallest absolute roll; otherwise real tilted
+        # stems often appear as +/-160deg and get rejected even though the
+        # physically equivalent correction is only about 20deg.
+        if roll_deg > 90.0:
+            roll_deg -= 180.0
+        elif roll_deg < -90.0:
+            roll_deg += 180.0
+        roll_rad = float(np.deg2rad(roll_deg))
         if abs(roll_deg) > self._published_grasp_roll_max_abs_deg:
             self.get_logger().warn(
                 "PUBLISHED_GRASP_ORIENTATION rejected: "
-                f"roll={roll_deg:+.1f}deg exceeds "
+                f"roll={roll_deg:+.1f}deg "
+                f"(raw={raw_roll_deg:+.1f}deg) exceeds "
                 f"{self._published_grasp_roll_max_abs_deg:.1f}deg")
             self.runtime_log.log(
                 "published_grasp_orientation_rejected",
                 reason="roll_exceeds_limit",
                 roll_deg=roll_deg,
+                raw_roll_deg=raw_roll_deg,
                 max_abs_roll_deg=self._published_grasp_roll_max_abs_deg,
                 stem_dir_base=stem_dir.tolist(),
                 wall_approach_dir=wall_approach.tolist(),
@@ -986,7 +999,8 @@ class CuroboPlanner(Node):
         self.get_logger().info(
             "PUBLISHED_GRASP_ORIENTATION candidate: "
             f"align_tool_{self._published_grasp_roll_align_axis} "
-            f"roll={roll_deg:+.1f}deg approach_error={approach_error_deg:.2f}deg")
+            f"roll={roll_deg:+.1f}deg raw={raw_roll_deg:+.1f}deg "
+            f"approach_error={approach_error_deg:.2f}deg")
         self.runtime_log.log(
             "published_grasp_orientation_candidate",
             input_quat_wxyz=q_in,
@@ -995,6 +1009,7 @@ class CuroboPlanner(Node):
             wall_approach_dir=wall_approach.tolist(),
             roll_align_axis=self._published_grasp_roll_align_axis,
             roll_deg=roll_deg,
+            raw_roll_deg=raw_roll_deg,
             approach_error_deg=approach_error_deg,
         )
         return ("published_roll", q_candidate, roll_deg)
