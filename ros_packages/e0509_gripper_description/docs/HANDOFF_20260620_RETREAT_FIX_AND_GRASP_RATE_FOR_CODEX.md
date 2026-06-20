@@ -71,6 +71,41 @@
 
 ## 미해결 — 우선순위 순
 
+### 0. (세션2 종료 직전 발견, 최우선 후보) grasp orientation이 실제 줄기 방향을 완전히 무시함
+
+`curobo_planner_node.py`의 `_pick(self, msg: PoseStamped)` (line 2412~)는 `msg.pose.position`
+(x,y,z)만 꺼내 쓰고, `msg.pose.orientation`은 `runtime_log.log("pick_sequence_start",
+input_quat_xyzw=[...])`로 로그만 남기고 **그 뒤로 한 번도 안 씀**. 실제 그리퍼 방향은 항상
+`WALL_QUAT_WXYZ`(벽 기준 고정) + `grasp_quat_variants()`/`NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS`
+(전부 같은 BASE-X축 기준 피치 틸트, `+15,+10,+5,0,-5,-10deg`)에서만 선택됨.
+
+근데 `strawberry_fusion_node.py`는 `stem_grasp_direction_mode: kp0_to_kp1` 파라미터로 **그
+타겟의 실제 줄기(kp0→kp1) 방향**을 계산해서 publish하는 PoseStamped의 orientation에 담아
+보냄. 줄기가 꺾여있거나 옆으로 기울어진(대각선) 딸기는 이 orientation도 그만큼 회전돼서
+오는데, planner가 그걸 버리기 때문에 **줄기 방향과 무관하게 항상 똑같은 wall-relative 틸트
+라이브러리에서만 골라 접근**함. 사용자 직접 관찰(2026-06-20 세션2 종료 직전): "꺾여있거나
+좀 대각선인 딸기들은 옆으로 접근함... 그냥 다 옆으로 접근하네." — 이번 세션 내내 거의 모든
+pick이 동일한 `+15deg` variant를 선택한 것(아래 1번 항목과 동일 로그 패턴)도 이 구조적
+누락이 원인일 가능성이 큼. depth-tie + `MEASURED_TCP_J3_GOOD_ENOUGH_DEG`(40-45°) early-exit
+때문에 +15deg가 거의 항상 첫 시도에서 채택되는 것도 사실이지만(2026-06-18에 +15deg가
+가장 건강한 J3를 준다는 게 별도로 확인된 적 있음), **그 발견 자체가 "줄기 방향을 아예 안
+보고 고른 결과"였다는 점이 이번에 새로 드러남** — 즉 기존의 "+15deg가 항상 최선"이라는
+전제 자체를 재검토해야 할 수 있음.
+
+**다음 작업 제안 (검증 안 됨, 신중히 설계할 것 — SW 포함 모든 measured_tcp pick에 영향
+미치는 범위라 blast radius 큼)**:
+- `msg.pose.orientation`에서 실제 줄기의 azimuth(벽 normal 기준 좌우 기울기) 성분을 추출해서,
+  기존 `WALL_QUAT_WXYZ + pitch_variant` 합성에 azimuth 보정 회전을 추가하는 방식 고려.
+  기존 pitch-variant 라이브러리(IK 탐색 fallback)는 그대로 유지하고 그 위에 azimuth만 얹는
+  쪽이 SW 회귀 위험이 적을 것으로 보임(SW 타겟은 줄기가 거의 똑바르다고 가정하면 azimuth
+  보정이 0에 가까워 무변화).
+- 구현 전에: 실제 publish되는 orientation이 어떤 축 기준으로 azimuth를 인코딩하는지
+  `strawberry_fusion_node.py`의 `kp0_to_kp1` 계산부 코드를 먼저 읽고 정확한 회전 성분을
+  파악할 것. 추측으로 축 매핑하면 위험.
+- 한 번에 다 고치지 말고, 먼저 디버그 로그만 추가해서(실제 코드 동작은 안 바꾸고) 여러
+  타겟에서 "publish된 orientation의 azimuth"와 "현재 선택된 variant"를 나란히 찍어서 상관
+  관계를 먼저 눈으로 확인한 뒤 실제 보정 로직을 넣을 것 ([[feedback_debug_before_fix]]).
+
 ### 1. J2 한도 초과가 "특정 타겟"에서는 여전히 재발함 (안전 이슈, 최우선)
 
 `ff5c083`(retreat 2단계 분리) 적용 후에도, x=-318mm/z=696mm 타겟에서 final_extra 적용 후
