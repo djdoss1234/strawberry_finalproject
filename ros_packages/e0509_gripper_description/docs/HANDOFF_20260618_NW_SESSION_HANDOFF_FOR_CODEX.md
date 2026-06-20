@@ -380,6 +380,23 @@ ERROR: ABORT: 직선 진입 실패
      - tilted branch에서만 성공한 경우:
        `MEASURED_TCP_VARIANT_SEARCH_CONTINUES ... keep searching for SW-like flatter approach`
    - 목적: 실패 로그를 조금 줄이는 것보다 SW에서 검증된 파지 모션 형상을 우선한다.
+19. 2026-06-20 17:08 run: 0deg는 수평이지만 긴 TOOL finish에서 직선진입 실패
+   - 로그: `curobo_planner_node_20260620T170836-9a74a763.jsonl`
+   - 선택 branch: `variant=('base', [1,0,0], 0.0)`, cuRobo 70mm + TOOL finish 110mm.
+   - 결과: `FINAL_APPROACH_TOOL_FINISH MoveLine reported success but joints barely moved`.
+   - 원인:
+     - +15deg 옆 접근을 막기 위해 0deg를 우선했지만, 이 target에서는 0deg final endpoint가
+       70mm까지만 가능했고 남은 110mm TOOL line이 Doosan에서 무동작 처리됐다.
+     - 같은 70mm depth에서 +5deg branch는 J3가 더 건강했다. 5deg는 SW식 수평 접근과
+       크게 다르지 않으므로, 0deg만 고집하는 것보다 좋은 타협점이다.
+   - 수정:
+     - NW high tie-break에서 alignment가 `<=5deg`인 SW-like branch끼리는 더 건강한 J3를
+       우선하도록 변경.
+     - 즉 0deg와 +5deg가 같은 깊이로 성공하면 +5deg가 J3/실행 여유가 좋을 때 선택될 수 있다.
+     - +10/+15deg처럼 5deg보다 큰 tilted branch는 여전히 마지막 fallback 성격이다.
+   - 기대 로그:
+     - `MEASURED_TCP_FINAL_PROBE_BEST ... align=5.0deg ... (tie-break: SW-like healthy branch)`
+   - 목적: +15deg 옆 접근을 피하면서도, 0deg의 긴 TOOL finish 무동작 실패를 줄인다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

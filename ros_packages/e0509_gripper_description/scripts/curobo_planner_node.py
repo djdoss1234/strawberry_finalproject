@@ -2653,10 +2653,21 @@ class CuroboPlanner(Node):
                         best_flat_safe = (
                             measured_best_j3_deg is not None
                             and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
+                        candidate_sw_like = (
+                            candidate_alignment_deg <= NW_HIGH_TARGET_STOP_ALIGNMENT_DEG)
+                        best_sw_like = (
+                            measured_best_alignment_deg is not None
+                            and measured_best_alignment_deg <= NW_HIGH_TARGET_STOP_ALIGNMENT_DEG)
                         is_tied_but_better = (
                             candidate_flat_safe
                             and (
                                 not best_flat_safe
+                                or (
+                                    candidate_sw_like
+                                    and best_sw_like
+                                    and measured_best_j3_deg is not None
+                                    and candidate_j3_deg > measured_best_j3_deg + 1e-6
+                                )
                                 or measured_best_alignment_deg is None
                                 or candidate_alignment_deg < measured_best_alignment_deg - 1e-6
                                 or (
@@ -2695,7 +2706,7 @@ class CuroboPlanner(Node):
                             f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
                             f"align={candidate_alignment_deg:.1f}deg "
                             f"variant={(quat_frame, axis, quat_deg)}"
-                            + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
+                            + (" (tie-break: SW-like healthy branch)" if is_tied_but_better else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
                 if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
