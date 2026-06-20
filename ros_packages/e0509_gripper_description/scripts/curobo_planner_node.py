@@ -2841,7 +2841,18 @@ class CuroboPlanner(Node):
                 0.0,
                 min(uncapped_distance, self._measured_tcp_max_approach_m),
             )
-            if is_nw_high_target and self._nw_high_target_final_extra_m > 0.0:
+            # 2026-06-20 실기 확인: z=717mm 타겟(is_nw_high_target=False, 750mm
+            # 미달)도 동일한 +15deg 틸트 variant를 골랐는데, wall_y_clamped로
+            # adaptive_dist가 baseline(180mm)에 floor-lock되면서 final_extra가
+            # 전혀 안 붙어 깊이가 그대로 얕았다(measured_tcp_max_approach_m을
+            # 200mm로 올려도 효과 없음 — uncapped_distance 자체가 180mm라
+            # max approach cap이 발동할 일이 없었음). 다른 두 틸트 보정과
+            # 동일하게 높이 대신 실제 틸트로 게이팅한다. 틸트가 0이면
+            # (SW) 동작 변화 없음.
+            if (
+                abs(float(used_approach_dir[2])) > 1e-3
+                and self._nw_high_target_final_extra_m > 0.0
+            ):
                 before_extra_m = final_approach_distance
                 final_approach_distance = min(
                     MEASURED_TCP_MAX_APPROACH_CEILING_M,
