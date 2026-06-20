@@ -61,6 +61,7 @@ from harvest_result_policy import (
 from open_stem_descent_policy import compute_open_stem_descent_m
 from place_sequence_policy import classify_place_outcome
 from runtime_jsonl_logger import RuntimeJsonlLogger
+from row2_place_policy import row2_line_check_result
 from scene_obstacle_manager import SceneObstacleManager
 from tray_place_policy import TrayPlacePolicy
 from trajectory_guards import TrajectoryGuards
@@ -1022,23 +1023,27 @@ class CuroboPlanner(Node):
             row2_traj, _ = row2_descent_plan
             line_deviation_mm, deviation_index = self._trajectory_line_deviation_mm(
                 row2_traj, above_pos_m, release_pos_m)
+            line_check = row2_line_check_result(
+                "descent",
+                slot_index,
+                line_deviation_mm,
+                self._row2_max_line_deviation_mm,
+                deviation_index,
+            )
             self.get_logger().info(
-                f"ROW2_DESCENT_LINE_CHECK max_deviation={line_deviation_mm:.1f}mm "
-                f"limit={self._row2_max_line_deviation_mm:.1f}mm "
-                f"waypoint={deviation_index}")
+                f"ROW2_DESCENT_LINE_CHECK "
+                f"max_deviation={line_check['max_deviation_mm']:.1f}mm "
+                f"limit={line_check['limit_mm']:.1f}mm "
+                f"waypoint={line_check['max_deviation_waypoint']}")
             self.runtime_log.log(
                 "row2_cartesian_line_check",
-                phase="descent",
-                slot_index=slot_index,
-                max_deviation_mm=line_deviation_mm,
-                limit_mm=self._row2_max_line_deviation_mm,
-                max_deviation_waypoint=deviation_index,
+                **line_check,
             )
-            if line_deviation_mm > self._row2_max_line_deviation_mm:
+            if not line_check["ok"]:
                 self.get_logger().error(
                     f"TAUGHT_TRAY_SLOT{slot_index}_PLACE_BLOCKED: row2 descent "
-                    f"deviates {line_deviation_mm:.1f}mm from Cartesian line "
-                    f"(limit {self._row2_max_line_deviation_mm:.1f}mm)")
+                    f"deviates {line_check['max_deviation_mm']:.1f}mm from Cartesian "
+                    f"line (limit {line_check['limit_mm']:.1f}mm)")
                 return "failed", list(self.current_joints or above_joints)
 
         self.runtime_log.log(
@@ -1124,23 +1129,27 @@ class CuroboPlanner(Node):
             asc_traj, asc_time = ascent_plan
             line_deviation_mm, deviation_index = self._trajectory_line_deviation_mm(
                 asc_traj, release_pos_m, above_pos_m)
+            line_check = row2_line_check_result(
+                "ascent",
+                slot_index,
+                line_deviation_mm,
+                self._row2_max_line_deviation_mm,
+                deviation_index,
+            )
             self.get_logger().info(
-                f"ROW2_ASCENT_LINE_CHECK max_deviation={line_deviation_mm:.1f}mm "
-                f"limit={self._row2_max_line_deviation_mm:.1f}mm "
-                f"waypoint={deviation_index}")
+                f"ROW2_ASCENT_LINE_CHECK "
+                f"max_deviation={line_check['max_deviation_mm']:.1f}mm "
+                f"limit={line_check['limit_mm']:.1f}mm "
+                f"waypoint={line_check['max_deviation_waypoint']}")
             self.runtime_log.log(
                 "row2_cartesian_line_check",
-                phase="ascent",
-                slot_index=slot_index,
-                max_deviation_mm=line_deviation_mm,
-                limit_mm=self._row2_max_line_deviation_mm,
-                max_deviation_waypoint=deviation_index,
+                **line_check,
             )
-            if line_deviation_mm > self._row2_max_line_deviation_mm:
+            if not line_check["ok"]:
                 self.get_logger().error(
                     f"TAUGHT_TRAY_SLOT{slot_index}_RELEASED_BUT_ASCEND_FAILED: "
-                    f"row2 ascent deviates {line_deviation_mm:.1f}mm from Cartesian "
-                    f"line (limit {self._row2_max_line_deviation_mm:.1f}mm)")
+                    f"row2 ascent deviates {line_check['max_deviation_mm']:.1f}mm "
+                    f"from Cartesian line (limit {line_check['limit_mm']:.1f}mm)")
                 return "failed_after_release", list(self.current_joints or release_joints)
             if not self.execute_spline(asc_traj, asc_time):
                 self.get_logger().error(
