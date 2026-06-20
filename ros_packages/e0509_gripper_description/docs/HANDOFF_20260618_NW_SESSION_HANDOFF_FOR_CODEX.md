@@ -317,6 +317,28 @@ ERROR: ABORT: 직선 진입 실패
      - +15deg 선택 시 `NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_SKIPPED`가 뜬다.
    - 목적: 직선진입은 유지하되, tilted open descent가 딸기를 밀어 파지 실패로 이어지는
      문제를 줄인다.
+16. 2026-06-20 16:04 run: 여전히 얕음, 실패 로그 과다
+   - 로그: `curobo_planner_node_20260620T160401-7a81cb4e.jsonl`
+   - 직선진입은 성공했고, `close_extra_down`은 의도대로 skip되어 open descent가 30mm로 줄었다.
+   - 하지만 결과는 여전히 `GRASP_UNVERIFIED`, 사용자는 "너무 얕다"고 판단.
+   - 실패 로그가 많은 이유:
+     - NW high에서 +15deg가 사실상 90mm depth를 만드는 유일한 branch인데, 기존 순서가
+       `0,+5,-5,+10,-10,+15`라서 실패 branch를 다 지나간 뒤에야 성공 branch를 찾았다.
+   - 얕음의 원인 가설:
+     - `Detection Y≈800mm`를 `wall_y=672mm`로 clamp하면서 target depth가 지나치게 앞쪽으로
+       고정된다.
+     - final move 끝에서 더 밀면 MoveLine 한계 또는 side-drift가 생기므로, motion 끝단 보정이
+       아니라 target plane 정의를 제한적으로 보정한다.
+   - 수정:
+     - NW high variant order를 `+15deg -> 0deg -> +5deg -> -5deg -> +10deg -> -10deg`로 변경.
+       +15deg를 먼저 시도해 반복 IK_FAIL 시간을 줄인다.
+     - `NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010` 추가.
+       wall clamp된 NW high target의 Y를 계획 전에 10mm만 안쪽으로 이동한다.
+   - 기대 로그:
+     - `NW_HIGH_TARGET_Y_PLANE_RELAX: clamped target Y 672mm -> 682mm`
+     - `NW_HIGH_TARGET_VARIANT_ORDER: +15deg, +0deg, +5deg, -5deg, +10deg, -10deg`
+   - 주의: 이것도 장기적으로는 calibration/perception target 정의로 해결해야 한다. 다만
+     최종 MoveLine에 후처리 오프셋을 붙이는 것보다 원인에 가까운 target-plane 보정이다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

@@ -100,6 +100,7 @@ NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
 NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
 NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
+NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -142,14 +143,15 @@ MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base", [1, 0, 0], -10.0),
 ]
 NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # +15/+10deg는 J3가 건강했지만 접근선이 위/옆으로 빗겼다. NW high
-    # target에서는 실제 줄기 방향과 맞는 수평 branch를 먼저 검증한다.
+    # NW high 실기에서 +15deg만 90mm cuRobo final depth를 안정적으로
+    # 만들었다. 먼저 시도해 반복 IK_FAIL을 줄이고, tilted open descent는
+    # 별도 guard로 제한한다.
+    ("base", [1, 0, 0], +15.0),
     ("base", [1, 0, 0],   0.0),
     ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0],  -5.0),
     ("base", [1, 0, 0], +10.0),
     ("base", [1, 0, 0], -10.0),
-    ("base", [1, 0, 0], +15.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1
@@ -621,7 +623,8 @@ class CuroboPlanner(Node):
                 f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
                 f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
                 f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm "
-                f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm")
+                f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
+                f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm")
         else:
             self.get_logger().warn(
                 "  TOOL_GEOMETRY_LEGACY: planner offset="
@@ -2431,6 +2434,21 @@ class CuroboPlanner(Node):
             self._measured_tcp_model
             and float(raw_straw[2]) >= self._nw_high_target_z_threshold_m
         )
+        if is_nw_high_target and wall_y_clamped and NW_HIGH_TARGET_Y_PLANE_RELAX_M > 0.0:
+            before_y = float(straw[1])
+            straw[1] += NW_HIGH_TARGET_Y_PLANE_RELAX_M
+            self.get_logger().warn(
+                "NW_HIGH_TARGET_Y_PLANE_RELAX: clamped target Y "
+                f"{before_y*1000:.0f}mm -> {straw[1]*1000:.0f}mm "
+                "(limited stem-depth correction before planning)")
+            self.runtime_log.log(
+                "nw_high_target_y_plane_relax",
+                raw_detection_y_m=detection_raw_y,
+                clamped_wall_y_m=WALL_SURFACE_Y_M,
+                before_target_y_m=before_y,
+                after_target_y_m=float(straw[1]),
+                relax_m=NW_HIGH_TARGET_Y_PLANE_RELAX_M,
+            )
 
         x_min, x_max = DIRECT_GRASP_TARGET_X_RANGE_M
         if not (x_min <= float(raw_straw[0]) <= x_max):
