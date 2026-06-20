@@ -32,10 +32,10 @@ except ImportError:
     _GetState = None
 
 from curobo.types.base import TensorDeviceType
-from curobo.types.robot import JointState as CuroboJointState, RobotConfig
-from curobo.types.math import Pose
-from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
+from curobo.types.robot import RobotConfig
+from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 from curobo.geom.types import WorldConfig, Cuboid, Sphere
+from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
 from gripper_client import HarvestGripperClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
@@ -386,6 +386,20 @@ class CuroboPlanner(Node):
             logger=self.get_logger(),
             joint_names=self.JOINT_NAMES,
         )
+        self.planning_adapter = CuroboPlanningAdapter(
+            node=self,
+            runtime_log=self.runtime_log,
+            motion_gen=self.motion_gen,
+            joint_names=self.JOINT_NAMES,
+            joint_limits=self.JOINT_LIMITS,
+            trajectory_guards=self.trajectory_guards,
+            world_state_getter=lambda: (
+                self.static_cuboids,
+                self.dynamic_cuboids,
+                self.neighbor_spheres,
+            ),
+            debug_dump_plan_calls=self._debug_dump_plan_calls,
+        )
         self.cli_change_op_speed = self.create_client(
             ChangeOperationSpeed, "/dsr01/motion/change_operation_speed",
             callback_group=self.service_cb_group)
@@ -605,62 +619,20 @@ class CuroboPlanner(Node):
     # ── 충돌 진단 ──────────────────────────────────────────────────────────────
 
     def _check_state_feasible_with_world(self, joints, cuboids):
-        try:
-            self.motion_gen.update_world(WorldConfig(cuboid=cuboids))
-            state = CuroboJointState.from_position(
-                position=torch.tensor([self._clamp_joints(joints)], device="cuda:0", dtype=torch.float32),
-                joint_names=self.JOINT_NAMES,
-            )
-            valid, status = self.motion_gen.check_start_state(state)
-            return bool(valid), status
-        finally:
-            try:
-                self.motion_gen.rollout_fn.primitive_collision_constraint.enable_cost()
-                self.motion_gen.rollout_fn.robot_self_collision_constraint.enable_cost()
-            except Exception:
-                pass
+        return self.planning_adapter.check_state_feasible_with_world(
+            joints, cuboids)
 
     def diagnose_start_world_collision(self, joints, label):
-        if not DEBUG_START_COLLISION:
-            return
-        full_world = self.static_cuboids + self.dynamic_cuboids
-        far_dummy = Cuboid(
-            name="debug_far_dummy",
-            pose=[10.0, 10.0, 10.0, 1.0, 0.0, 0.0, 0.0],
-            dims=[0.01, 0.01, 0.01],
-        )
-        tests = [("empty_world", [far_dummy])]
-        tests += [(f"static:{c.name}", [c]) for c in self.static_cuboids]
-        tests += [(f"dynamic:{c.name}", [c]) for c in self.dynamic_cuboids]
-        bad = []
-        try:
-            for name, cuboids in tests:
-                feasible, status = self._check_state_feasible_with_world(joints, cuboids)
-                self.get_logger().warn(
-                    f"{label} collision diag {name}: "
-                    f"{'OK' if feasible else 'COLLISION'} status={status}")
-                if not feasible:
-                    bad.append(f"{name}:{status}")
-        except Exception as e:
-            self.get_logger().warn(f"{label} collision diag failed: {e}")
-        finally:
-            self.motion_gen.update_world(WorldConfig(cuboid=full_world))
-        if bad:
-            self.get_logger().error(f"{label} start collision suspects: {bad}")
-        else:
-            self.get_logger().warn(f"{label} no single obstacle reproduced the collision")
+        return self.planning_adapter.diagnose_start_world_collision(joints, label)
 
     def diagnose_js_endpoint_collision(self, start_joints, target_joints, label):
-        if not DEBUG_START_COLLISION:
-            return
-        self.get_logger().warn(f"{label} endpoint collision diagnostic")
-        self.diagnose_start_world_collision(start_joints, f"{label} start")
-        self.diagnose_start_world_collision(target_joints, f"{label} goal")
+        return self.planning_adapter.diagnose_js_endpoint_collision(
+            start_joints, target_joints, label)
 
     # ── 유틸 ──────────────────────────────────────────────────────────────────
 
     def _clamp_joints(self, joints):
-        return [float(np.clip(j, lo, hi)) for j, (lo, hi) in zip(joints, self.JOINT_LIMITS)]
+        return self.planning_adapter.clamp_joints(joints)
 
     def grasp_candidates_for_target(self, straw):
         if self._measured_tcp_model:
@@ -761,210 +733,25 @@ class CuroboPlanner(Node):
 
     def plan(self, start_joints, target_pos, target_quat_wxyz, num_ik_seeds=32,
              max_attempts=None, timeout_sec=None, max_joint_delta_deg=None):
-        t0 = time.time()
-        start_joints = self._clamp_joints(start_joints)
-        start_state = CuroboJointState.from_position(
-            position=torch.tensor([start_joints], device="cuda:0", dtype=torch.float32),
-            joint_names=self.JOINT_NAMES,
+        return self.planning_adapter.plan(
+            start_joints,
+            target_pos,
+            target_quat_wxyz,
+            num_ik_seeds=num_ik_seeds,
+            max_attempts=max_attempts,
+            timeout_sec=timeout_sec,
+            max_joint_delta_deg=max_joint_delta_deg,
         )
-        target_pose = Pose(
-            position=torch.tensor([target_pos], device="cuda:0", dtype=torch.float32),
-            quaternion=torch.tensor([target_quat_wxyz], device="cuda:0", dtype=torch.float32),
-        )
-        if self._debug_dump_plan_calls:
-            # 2026-06-18: offline replay of (start_joints, target, world) with
-            # identical inputs consistently found a healthy-J3 branch while the
-            # live node converged to a near-singular one for the same logged
-            # values — root cause still unknown. Dump the exact live inputs
-            # (including world state) so a replay script can find the real
-            # divergence instead of guessing. Off by default; zero cost to SW.
-            self.runtime_log.log(
-                "plan_call_debug_dump",
-                start_joints_rad=start_joints,
-                target_pos_m=target_pos,
-                target_quat_wxyz=target_quat_wxyz,
-                num_ik_seeds=num_ik_seeds,
-                max_attempts=(
-                    max_attempts if max_attempts is not None else CARTESIAN_PLAN_MAX_ATTEMPTS
-                ),
-                timeout_sec=(
-                    timeout_sec if timeout_sec is not None else CARTESIAN_PLAN_TIMEOUT_SEC
-                ),
-                max_joint_delta_deg=max_joint_delta_deg,
-                static_cuboids=[
-                    {"name": c.name, "pose": c.pose, "dims": c.dims} for c in self.static_cuboids
-                ],
-                dynamic_cuboids=[
-                    {"name": c.name, "pose": c.pose, "dims": c.dims} for c in self.dynamic_cuboids
-                ],
-                neighbor_spheres=[
-                    {"name": s.name, "pose": s.pose, "radius": s.radius}
-                    for s in self.neighbor_spheres
-                ],
-            )
-        result = self.motion_gen.plan_single(
-            start_state, target_pose,
-            MotionGenPlanConfig(
-                num_ik_seeds=num_ik_seeds,
-                max_attempts=(
-                    max_attempts
-                    if max_attempts is not None
-                    else CARTESIAN_PLAN_MAX_ATTEMPTS
-                ),
-                timeout=(
-                    timeout_sec
-                    if timeout_sec is not None
-                    else CARTESIAN_PLAN_TIMEOUT_SEC
-                ),
-                enable_graph_attempt=None,
-            ),
-        )
-        dt = (time.time() - t0) * 1000
-
-        if result.success.item():
-            traj = result.get_interpolated_plan().position.cpu().numpy()
-            traj = self.normalize_trajectory_equivalents(traj, "Cartesian plan")
-            if not self.trajectory_in_operational_limits(traj, "Cartesian plan"):
-                self.runtime_log.log(
-                    "curobo_plan_rejected",
-                    planner="cartesian",
-                    reason="operational_joint_limits",
-                    start_joints_rad=start_joints,
-                    target_pos_m=target_pos,
-                    target_quat_wxyz=target_quat_wxyz,
-                    trajectory_rad=traj,
-                )
-                return None
-            if not self.trajectory_has_no_spline_jumps(traj, "Cartesian plan"):
-                self.runtime_log.log(
-                    "curobo_plan_rejected",
-                    planner="cartesian",
-                    reason="spline_jump",
-                    start_joints_rad=start_joints,
-                    target_pos_m=target_pos,
-                    target_quat_wxyz=target_quat_wxyz,
-                    trajectory_rad=traj,
-                )
-                return None
-            if not self.trajectory_has_reasonable_swing(
-                    traj, start_joints, "Cartesian plan",
-                    max_joint_delta_deg=max_joint_delta_deg):
-                self.runtime_log.log(
-                    "curobo_plan_rejected",
-                    planner="cartesian",
-                    reason="joint_swing",
-                    start_joints_rad=start_joints,
-                    target_pos_m=target_pos,
-                    target_quat_wxyz=target_quat_wxyz,
-                    trajectory_rad=traj,
-                )
-                return None
-            motion_time = float(result.motion_time.item())
-            end_deg = [f"{np.rad2deg(v):.1f}" for v in traj[-1]]
-            self.get_logger().info(
-                f"Plan OK {dt:.0f}ms {traj.shape[0]}pts {motion_time:.2f}s | "
-                f"goal={[f'{v*1000:.0f}' for v in target_pos]}mm | "
-                f"end_J=[{', '.join(end_deg)}]°")
-            self.runtime_log.log(
-                "curobo_plan_success",
-                planner="cartesian",
-                planning_latency_ms=dt,
-                motion_time_sec=motion_time,
-                start_joints_rad=start_joints,
-                target_pos_m=target_pos,
-                target_quat_wxyz=target_quat_wxyz,
-                trajectory_rad=traj,
-            )
-            return traj, motion_time
-        else:
-            status = str(getattr(result, "status", "UNKNOWN"))
-            start_deg = [f"{np.rad2deg(v):.1f}" for v in start_joints]
-            self.get_logger().error(
-                f"Plan FAIL {dt:.0f}ms | status={status} | "
-                f"goal={[f'{v*1000:.0f}' for v in target_pos]}mm | "
-                f"start_J=[{', '.join(start_deg)}]°")
-            if "INVALID_START_STATE_WORLD_COLLISION" in status:
-                self.diagnose_start_world_collision(start_joints, "Cartesian plan")
-            self.runtime_log.log(
-                "curobo_plan_fail",
-                planner="cartesian",
-                status=status,
-                planning_latency_ms=dt,
-                start_joints_rad=start_joints,
-                target_pos_m=target_pos,
-                target_quat_wxyz=target_quat_wxyz,
-            )
-            return None
 
     def plan_js(self, start_joints, target_joints_rad, label, skip_swing_check=False,
                 max_joint_delta_deg=None):
-        t0 = time.time()
-        start_joints = self._clamp_joints(start_joints)
-        target_joints_rad = self._clamp_joints(target_joints_rad)
-        start_state = CuroboJointState.from_position(
-            position=torch.tensor([start_joints], device="cuda:0", dtype=torch.float32),
-            joint_names=self.JOINT_NAMES,
+        return self.planning_adapter.plan_js(
+            start_joints,
+            target_joints_rad,
+            label,
+            skip_swing_check=skip_swing_check,
+            max_joint_delta_deg=max_joint_delta_deg,
         )
-        goal_state = CuroboJointState.from_position(
-            position=torch.tensor([target_joints_rad], device="cuda:0", dtype=torch.float32),
-            joint_names=self.JOINT_NAMES,
-        )
-        result = self.motion_gen.plan_single_js(
-            start_state, goal_state, MotionGenPlanConfig(enable_graph=True)
-        )
-        dt = (time.time() - t0) * 1000
-
-        if result.success.item():
-            traj = result.get_interpolated_plan().position.cpu().numpy()
-            traj = self.normalize_trajectory_equivalents(traj, label)
-            if not self.trajectory_in_operational_limits(traj, label):
-                self.runtime_log.log(
-                    "curobo_plan_rejected", planner="joint_space", label=label,
-                    reason="operational_joint_limits", trajectory_rad=traj)
-                return None
-            if not self.trajectory_has_no_spline_jumps(traj, label):
-                self.runtime_log.log(
-                    "curobo_plan_rejected", planner="joint_space", label=label,
-                    reason="spline_jump", trajectory_rad=traj)
-                return None
-            if not skip_swing_check and not self.trajectory_has_reasonable_swing(
-                    traj, start_joints, label, max_joint_delta_deg):
-                self.runtime_log.log(
-                    "curobo_plan_rejected", planner="joint_space", label=label,
-                    reason="joint_swing", trajectory_rad=traj)
-                return None
-            motion_time = float(result.motion_time.item())
-            self.get_logger().info(
-                f"{label} JS Plan OK {dt:.0f}ms {traj.shape[0]}pts {motion_time:.2f}s | "
-                f"goal={[f'{v:.1f}' for v in np.rad2deg(target_joints_rad)]}°")
-            self.runtime_log.log(
-                "curobo_plan_success",
-                planner="joint_space",
-                label=label,
-                planning_latency_ms=dt,
-                motion_time_sec=motion_time,
-                start_joints_rad=start_joints,
-                target_joints_rad=target_joints_rad,
-                trajectory_rad=traj,
-            )
-            return traj, motion_time
-
-        status = getattr(result, "status", "?")
-        self.get_logger().error(
-            f"{label} JS Plan FAIL {dt:.0f}ms | status={status} | "
-            f"goal={[f'{v:.1f}' for v in np.rad2deg(target_joints_rad)]}°")
-        if "INVALID_START_STATE_WORLD_COLLISION" in str(status) or "GRAPH_FAIL" in str(status):
-            self.diagnose_js_endpoint_collision(start_joints, target_joints_rad, label)
-        self.runtime_log.log(
-            "curobo_plan_fail",
-            planner="joint_space",
-            label=label,
-            status=str(status),
-            planning_latency_ms=dt,
-            start_joints_rad=start_joints,
-            target_joints_rad=target_joints_rad,
-        )
-        return None
 
     def _ensure_operation_speed(self, speed: int = 30) -> bool:
         """컨트롤러 operation speed를 강제 설정한다.
