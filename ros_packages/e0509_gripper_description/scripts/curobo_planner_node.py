@@ -37,204 +37,15 @@ from curobo.types.robot import JointState as CuroboJointState, RobotConfig
 from curobo.types.math import Pose
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig, MotionGenPlanConfig
 from curobo.geom.types import WorldConfig, Cuboid, Sphere
-from runtime_jsonl_logger import RuntimeJsonlLogger
-
-
-# ── 파지 파라미터 ──────────────────────────────────────────────────────────────
-GRASP_RETRY_OFFSETS  = [0.015, 0.030, 0.040, 0.050, 0.070]
-# Measured-TCP 모델의 최종 파지 중심. -130mm로 10mm 더 깊게 잡으면
-# cuRobo는 여전히 90mm까지만 도달하고 TOOL finish가 100mm로 늘어나
-# Doosan MoveLine success/no-motion이 재발했다. 직선진입 신뢰 한계 때문에
-# 검증된 180mm 총 진입(-120mm)을 유지한다.
-MEASURED_TCP_FINAL_STANDOFF_M = -0.120
-Y_DETECTION_BIAS_M = 0.000  # 보정값 0: raw detection Y를 그대로 접근 거리 계산에 사용
-                              # (단일 데이터 포인트 기반 23mm 추정은 신뢰 부족 → 실측 후 재조정)
-LEFTMOST_GRASP_RETRY_OFFSETS = [0.030, 0.035, 0.040, 0.045, 0.050, 0.070]
-LEFTMOST_GRASP_X_CORR_M = 0.005   # x < -300mm: +X 보정 (ELBOW_UP 드리프트 보정)
-LEFTMOST_EXTRA_ADVANCE_REQUEST_M = 0.065  # 실기 요청값; wall safety gate가 실제 실행량을 제한
-LEFTMOST_WALL_SAFETY_MARGIN_M = -0.030   # 실기 확인: 줄기가 모델 벽 30mm 안쪽 → 음수로 80mm extra 허용
-# 근거: 2026-06-09 x=-345mm target, 210mm 진입 성공, 역진 정상
-# available_extra = grasp_offset(50mm) - margin(-30mm) = 80mm → override 불필요
-LEFTMOST_EXTRA_ADVANCE_VEL_MM_S = 20.0    # NW 실기 안정화 후 30% 증속
-GRASP_Z_BIAS             = 0.000    # fusion이 생성한 KP1 근처 목표를 중복 상승시키지 않음
-PRE_APPROACH_OFFSET      = 0.06     # 6cm 접근 재검증: 직전 측방 편차가 줄기 형상 영향인지 분리
-PRE_APPROACH_SETTLE_SEC  = 0.3      # NW 실기 안정화 후 단축 (0.5 -> 0.3)
-FINAL_APPROACH_VEL_MM_S  = 26.0    # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0). SW도 공유.
-FINAL_APPROACH_ACC_MM_S2 = 31.0    # NW 실기 안정화 후 30% 증속 (24.0 -> 31.0). SW도 공유.
-DIRECT_CUROBO_FINAL_APPROACH_FOR_MEASURED_TCP = False
-ENABLE_CUROBO_FINAL_APPROACH_FALLBACK = True
-MEASURED_TCP_TARGET_Z_MAX_M = 1.050
-MEASURED_TCP_MAX_APPROACH_M = 0.180
-# 2026-06-18: hard ceiling for measured_tcp_max_approach_m. Was 0.180, which
-# silently clamped the parameter even when a deeper approach was requested
-# and real-world testing showed grasp-empty (gripper closed on nothing,
-# ~20-30mm short). Raised so the existing parameter can actually be tuned
-# deeper without another code change.
-MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
-# 2026-06-18: stop probing further grasp_quat_variants once a "healthy enough"
-# elbow (J3) branch is found at the best depth so far — trying all 6 variants
-# every pick wastes ~15-20s of GPU planning on variants that are strictly
-# worse than one already found. NW-only (measured_tcp_model path).
-MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
-NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
-NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 20.0
-MEASURED_TCP_MIN_PRUNE_DEPTH_M = 0.090
-NW_HIGH_TARGET_PROBE_DEPTHS_M = [0.090, 0.070, 0.060]
-NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
-RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
-RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
-STRAIGHT_RETREAT_SETTLE_SEC = 0.3   # NW 실기 안정화 후 단축 (0.5 -> 0.3)
-NEIGHBOR_SPHERE_RADIUS_M = 0.030
-# ── 열린 그리퍼 줄기 하강 ─────────────────────────────────────────────────────
-# 수평 접근은 유지하되 KP1보다 위에서 진입을 끝낸 뒤, 그리퍼를 연 상태로
-# BASE -Z 하강하여 KP1에서 닫는다. 이후 추가 BASE -Z detach pull로 분리한다.
-CRANE_Z_OFFSET_M      = 0.030   # KP1 위 수평 진입 높이 및 open descent 거리
-CRANE_DESCENT_VEL_MM_S = 15.6   # NW 실기 안정화 후 30% 증속 (12.0 -> 15.6)
-CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26.0)
-# NW high cell (target z >= NW_HIGH_TARGET_Z_THRESHOLD_M): SW와 같은
-# measured_tcp_260mm 모델을 쓰지만, 이 구간은 IK가 +15deg 틸트 branch에서만
-# 안정적으로 풀려서(NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS 참고) SW 기본값
-# 그대로는 깊이/접근 높이가 안 맞았다. 2026-06-20 실기로 확정된 값:
-#   - final_extra=15mm: SW 공통 baseline(180mm)보다 15mm 더 깊이 들어가야 함
-#   - crane_z_offset=5mm: KP1 위 진입 높이/open descent 거리(SW는 30mm 그대로)
-#   - open descent는 고정값이 아니라 "실제 도달 Z - 목표 KP1 Z" 동적 계산
-#     (아래 open descent 블록) + FINAL_APPROACH_TOOL_FINISH를 수평 이동으로
-#     바꾼 것(아래 horiz_dir)까지 셋이 합쳐져야 깊이를 늘려도 높이가 안 뜬다.
-NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
-NW_HIGH_TARGET_FINAL_EXTRA_M = 0.015
-NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
-NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
-NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.005
-# open descent 동적 계산("실제 도달 Z - 목표 KP1 Z") 이후, KP1보다 추가로 더
-# 내려갈 여유(mm). 2026-06-20 검증된 조합에서는 0으로도 충분했다.
-NW_HIGH_TARGET_DESCENT_EXTRA_BELOW_KP1_M = 0.000
-DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
-DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
-
-# Tool geometry measured on 2026-06-11.
-# Physical grasp center is about 10mm behind the part tips:
-#   flange -> original gripper: 160mm
-#   flange -> part tips:        270mm
-#   flange -> grasp center:     260mm
-#
-# The current cuRobo URDF still places gripper_rh_p12_rn_base at link_6 and the
-# proven SW baseline was tuned with a 160mm software offset plus extra advance.
-# Keep that legacy offset until an explicit grasp_tcp_link and collision model
-# are validated; changing it directly would shift physical motion by about 100mm.
-LEGACY_EE_TO_TCP_OFFSET_M = 0.160
-MEASURED_FLANGE_TO_GRIPPER_M = 0.160
-MEASURED_FLANGE_TO_PART_TIP_M = 0.270
-MEASURED_FLANGE_TO_GRASP_CENTER_M = 0.260
-TCP_MODEL_SHORTFALL_M = (
-    MEASURED_FLANGE_TO_GRASP_CENTER_M - LEGACY_EE_TO_TCP_OFFSET_M
+from harvest_grasp_orientation import published_roll_grasp_candidate
+from harvest_math import (
+    quat_from_axis_angle,
+    quat_multiply_wxyz,
+    quat_normalize_wxyz,
+    quat_rotate_vec,
 )
-WALL_SURFACE_Y_M = 0.672       # whiteboard 전면 Y — berry Y 클램핑 상한 (FK drift 보정)
-WALL_QUAT_WXYZ   = [0.497, -0.497, 0.503, 0.503]   # approach_dir = [0, 1, 0] 정확히 수직
-# 유도: [0.488, -0.506, 0.494, 0.512] (elevation 0°) 에 world-Z -2.06° 추가 보정
-# → approach_dir X 성분(-0.036) 제거, 130mm 직선 접근 시 횡방향 오차 0mm
-# 롤백: [0.548415, -0.439294, 0.424628, 0.570923] (원본 측정값)
-GRASP_QUAT_RETRY_VARIANTS: list = [
-    ("base",  [1, 0, 0], -10.0),  # 10° 아래 — 잎 위에서 진입, 잎 회피 1차 시도
-    ("base",  [1, 0, 0],  -5.0),  # 5° 아래 (2차)
-    ("base",  [1, 0, 0],   0.0),  # 수평 (3차 — 잎 많은 경우 밀릴 수 있음)
-    ("base",  [1, 0, 0],  +5.0),  # 5° 위 (4차)
-]
-MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # NW 실기 로그(2026-06-18): +15deg가 같은 90mm 도달 깊이에서 J3=53.6deg로
-    # 가장 건강한 branch였다. 먼저 시도해 불필요한 IK_FAIL probing을 줄인다.
-    ("base", [1, 0, 0], +15.0),
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0],  +5.0),
-    ("base", [1, 0, 0],   0.0),
-    ("base", [1, 0, 0],  -5.0),
-    ("base", [1, 0, 0], -10.0),
-]
-NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # NW high 실기에서 +15deg만 90mm cuRobo final depth를 안정적으로
-    # 만들었다. 먼저 시도해 반복 IK_FAIL을 줄이고, tilted open descent는
-    # 별도 guard로 제한한다.
-    ("base", [1, 0, 0], +15.0),
-    ("base", [1, 0, 0],   0.0),
-    ("base", [1, 0, 0],  +5.0),
-    ("base", [1, 0, 0],  -5.0),
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0], -10.0),
-]
-
-CARTESIAN_PLAN_MAX_ATTEMPTS = 1
-CARTESIAN_PLAN_TIMEOUT_SEC  = 0.8
-DIRECT_GRASP_TARGET_X_RANGE_M = (-0.45, 0.45)
-
-GRIPPER_APPROACH_POS        = 600  # 접근 시 개도 (스캔 이동 중 미리 설정됨)
-GRIPPER_PLACE_RELEASE_POS   = 600  # place 시 완전 개방 대신 제한 개방
-TAUGHT_SLOT0_ABOVE_CLEARANCE_M = 0.120  # release 자세 바로 위 수직 진입 여유
-TAUGHT_SLOT0_VERTICAL_VEL_MM_S = 40.0   # 계란판 근처 하강/상승 속도
-
-# ── 파지 검증 ─────────────────────────────────────────────────────────────────
-# RH-P12-RN-A: 0=fully open, 700=fully closed (target)
-# 줄기가 잡히면 670~671에서 멈춤. 얇은 줄기는 699까지 닫혀도 실제 파지됨(실기 확인).
-# target=700 도달 시에만 GRASP_EMPTY 판정. 699 이하는 GRASP_UNVERIFIED로 처리.
-GRASP_EMPTY_POSITION_THRESHOLD = 700   # pos >= 700 → jaw at target → nothing grabbed
-GRASP_VERIFY_TIMEOUT_SEC       = 5.0   # read_state 응답만 짧게 확인
-GRASP_UNVERIFIED_CLOSE_RETRY   = 0     # 상태 읽기 실패만으로 이미 수행한 close를 반복하지 않음
-GRIPPER_CLOSE_SETTLE_SEC       = 0.3   # close 서비스가 동기 완료되므로 짧은 안정화만 적용
-
-# ── 고정 자세 ──────────────────────────────────────────────────────────────────
-HOME_JOINTS_DEG     = [88.0,  -80.0, 130.0,   0.0, 20.0,  -90.0]
-OVERVIEW_JOINTS_DEG = [87.98, -94.92, 129.89, 175.94, -31.34, 93.42]  # 스캔 기준 포즈
-TRAY_VIEW_JOINTS_DEG = [-1.02, 0.11, 97.09, 175.94, -31.34, 93.42]
-TRAY_VIEW_POSX_MM_DEG = [
-    505.56, -15.35, 423.49, 176.29, -128.45, 88.27,
-]
-TAUGHT_SLOT0_PLACE_REFERENCE_JOINTS_DEG = [
-    4.43, 51.79, 119.38, 175.95, 80.84, 93.42,
-]
-TAUGHT_SLOT0_PLACE_REFERENCE_POSX_MM_DEG = [
-    519.95, 52.39, 65.58, 8.43, 90.35, -87.20,
-]
-# Tray indexing confirmed on 2026-06-14:
-#   0  3  6  9 12
-#   1  4  7 10 13
-#   2  5  8 11 14
-# Use taught positions only to derive the physical grid vectors. All generated
-# slots keep the verified Slot0 FK orientation; Slot1's taught wrist orientation
-# differs and must not be propagated across the tray.
-TAUGHT_SLOT1_PLACE_REFERENCE_POSX_MM_DEG = [
-    460.24, 55.83, 66.47, 8.43, 90.36, 87.20,
-]
-TAUGHT_SLOT3_PLACE_REFERENCE_POSX_MM_DEG = [
-    511.91, 1.83, 63.12, 8.43, 90.37, -87.20,
-]
-TAUGHT_TRAY_SLOT_COUNT = 15
-DEFAULT_TRAY_CELLS_GLOB = os.path.expanduser(
-    "~/Downloads/share_tray/output/tray_cells_*.json")
-
-# ── cuRobo 운용 한계 ───────────────────────────────────────────────────────────
-OPERATIONAL_JOINT_LIMITS_DEG = [
-    (-225.0, 225.0),   # J1
-    (-95.0,   95.0),
-    (-135.0, 135.0),   # J3: 실측 확인 ±135° (2026-06-15)
-    (-360.0, 360.0),   # J4: NW scan/pick can validly use 305~340°; do not rewrite to -55° branch
-    (-130.0, 130.0),
-    (-225.0, 225.0),
-]
-WRAP_EQUIVALENT_JOINT_IDX = {3, 5}   # J1은 정규화 금지 (반대 branch로 스윙)
-MAX_HARVEST_JOINT_DELTA_DEG = [75.0, 90.0, 120.0, 150.0, 130.0, 180.0]
-# SW pick 영역에서 고정 slot0까지의 transfer는 J1 약 148° 회전이 필수다.
-# 수확 접근용 75° 제한은 유지하고, 이 고정 place transfer에만 별도 한계를 쓴다.
-MAX_TAUGHT_PLACE_TRANSFER_JOINT_DELTA_DEG = [
-    170.0, 100.0, 120.0, 150.0, 130.0, 180.0,
-]
-
-# ── Spline 실행 ────────────────────────────────────────────────────────────────
-MAX_SPLINE_POINTS = 12
-SPLINE_TIME_SCALE = 0.87    # 기존 1.125 대비 약 30% 증속
-SPLINE_MIN_TIME   = 0.58
-SPLINE_VEL_DEG_S  = 47.0    # 기존 36deg/s 대비 약 30% 증속
-SPLINE_ACC_DEG_S2 = 70.0    # 기존 54deg/s^2 대비 약 30% 증속
-
-USE_CUROBO_SELF_COLLISION = False   # coarse sphere 모델이 정상 자세도 오검출
-DEBUG_START_COLLISION     = True    # INVALID_START_STATE_WORLD_COLLISION 원인 로그
+from harvest_motion_params import *  # noqa: F403 - experiment constants
+from runtime_jsonl_logger import RuntimeJsonlLogger
 
 
 def resolve_environment_yaml():
@@ -252,52 +63,6 @@ def resolve_environment_yaml():
 
 
 ENVIRONMENT_YAML = resolve_environment_yaml()
-
-
-def quat_multiply_wxyz(q1, q2):
-    w1, x1, y1, z1 = q1
-    w2, x2, y2, z2 = q2
-    return [
-        w1*w2 - x1*x2 - y1*y2 - z1*z2,
-        w1*x2 + x1*w2 + y1*z2 - z1*y2,
-        w1*y2 - x1*z2 + y1*w2 + z1*x2,
-        w1*z2 + x1*y2 - y1*x2 + z1*w2,
-    ]
-
-
-def quat_normalize_wxyz(q):
-    q = np.array(q, dtype=float)
-    n = float(np.linalg.norm(q))
-    if n < 1e-9 or not np.all(np.isfinite(q)):
-        return None
-    return (q / n).tolist()
-
-
-def quat_from_axis_angle(axis, angle_rad):
-    axis = np.array(axis, dtype=float)
-    n = np.linalg.norm(axis)
-    if n < 1e-9:
-        return [1.0, 0.0, 0.0, 0.0]
-    axis = axis / n
-    s = np.sin(angle_rad / 2.0)
-    return [np.cos(angle_rad / 2.0), axis[0] * s, axis[1] * s, axis[2] * s]
-
-
-def quat_rotate_vec(q_wxyz, v):
-    """쿼터니언 q_wxyz=[w,x,y,z]으로 벡터 v를 회전."""
-    w, x, y, z = q_wxyz
-    qvec = np.array([x, y, z])
-    v = np.array(v, dtype=float)
-    t = 2.0 * np.cross(qvec, v)
-    return v + w * t + np.cross(qvec, t)
-
-
-def normalized_vec(v, min_norm=1e-9):
-    v = np.array(v, dtype=float)
-    n = float(np.linalg.norm(v))
-    if n < min_norm or not np.all(np.isfinite(v)):
-        return None
-    return v / n
 
 
 def load_environment_cuboids():
@@ -898,121 +663,58 @@ class CuroboPlanner(Node):
         return GRASP_QUAT_RETRY_VARIANTS
 
     def _published_roll_grasp_variant(self, input_quat_wxyz):
-        """Return a wall-normal approach quaternion with roll aligned to published stem direction.
-
-        strawberry_fusion_node publishes a per-target orientation whose TOOL Z
-        axis follows the local stem direction. Using it directly would also
-        change the wall approach vector. For this pick pipeline keep TOOL Z on
-        the proven wall-normal approach, and only rotate around that approach
-        axis so the configured gripper axis follows the projected stem.
-        """
+        """Return a wall-normal approach quaternion with roll aligned to published stem direction."""
         if not self._use_published_grasp_orientation:
             return None
-        q_in = quat_normalize_wxyz(input_quat_wxyz)
-        if q_in is None:
-            self.runtime_log.log(
-                "published_grasp_orientation_rejected",
-                reason="invalid_input_quaternion",
-                input_quat_wxyz=input_quat_wxyz,
-            )
-            return None
-
-        wall_q = quat_normalize_wxyz(WALL_QUAT_WXYZ)
-        wall_approach = normalized_vec(quat_rotate_vec(wall_q, [0.0, 0.0, 1.0]))
-        stem_dir = normalized_vec(quat_rotate_vec(q_in, [0.0, 0.0, 1.0]))
-        if wall_approach is None or stem_dir is None:
-            self.runtime_log.log(
-                "published_grasp_orientation_rejected",
-                reason="invalid_rotated_axis",
-                input_quat_wxyz=q_in,
-            )
-            return None
-
-        align_axis_local = (
-            [1.0, 0.0, 0.0]
-            if self._published_grasp_roll_align_axis == "x"
-            else [0.0, 1.0, 0.0]
+        candidate = published_roll_grasp_candidate(
+            input_quat_wxyz,
+            WALL_QUAT_WXYZ,
+            align_axis=self._published_grasp_roll_align_axis,
+            max_abs_roll_deg=self._published_grasp_roll_max_abs_deg,
         )
-        ref_axis = np.array(quat_rotate_vec(wall_q, align_axis_local), dtype=float)
-        ref_axis = ref_axis - np.dot(ref_axis, wall_approach) * wall_approach
-        stem_axis = stem_dir - np.dot(stem_dir, wall_approach) * wall_approach
-        ref_axis = normalized_vec(ref_axis)
-        stem_axis = normalized_vec(stem_axis)
-        if ref_axis is None or stem_axis is None:
+        if not candidate.accepted:
+            log_kwargs = {
+                "reason": candidate.reason,
+                "input_quat_wxyz": input_quat_wxyz,
+            }
+            if candidate.roll_deg is not None:
+                log_kwargs["roll_deg"] = candidate.roll_deg
+            if candidate.raw_roll_deg is not None:
+                log_kwargs["raw_roll_deg"] = candidate.raw_roll_deg
+            if candidate.stem_dir_base is not None:
+                log_kwargs["stem_dir_base"] = candidate.stem_dir_base
+            if candidate.wall_approach_dir is not None:
+                log_kwargs["wall_approach_dir"] = candidate.wall_approach_dir
+            if candidate.reason == "roll_exceeds_limit":
+                log_kwargs["max_abs_roll_deg"] = self._published_grasp_roll_max_abs_deg
+                self.get_logger().warn(
+                    "PUBLISHED_GRASP_ORIENTATION rejected: "
+                    f"roll={candidate.roll_deg:+.1f}deg "
+                    f"(raw={candidate.raw_roll_deg:+.1f}deg) exceeds "
+                    f"{self._published_grasp_roll_max_abs_deg:.1f}deg")
             self.runtime_log.log(
                 "published_grasp_orientation_rejected",
-                reason="stem_projection_too_small",
-                input_quat_wxyz=q_in,
-                stem_dir_base=stem_dir.tolist(),
-                wall_approach_dir=wall_approach.tolist(),
+                **log_kwargs,
             )
             return None
 
-        sin_v = float(np.dot(wall_approach, np.cross(ref_axis, stem_axis)))
-        cos_v = float(np.dot(ref_axis, stem_axis))
-        roll_rad = float(np.arctan2(sin_v, cos_v))
-        roll_deg = float(np.degrees(roll_rad))
-        raw_roll_deg = roll_deg
-        # The gripper alignment axis is axial, not directional: aligning tool_x
-        # with +stem or -stem puts the jaws on the same line. Fold 180deg
-        # equivalents into the smallest absolute roll; otherwise real tilted
-        # stems often appear as +/-160deg and get rejected even though the
-        # physically equivalent correction is only about 20deg.
-        if roll_deg > 90.0:
-            roll_deg -= 180.0
-        elif roll_deg < -90.0:
-            roll_deg += 180.0
-        roll_rad = float(np.deg2rad(roll_deg))
-        if abs(roll_deg) > self._published_grasp_roll_max_abs_deg:
-            self.get_logger().warn(
-                "PUBLISHED_GRASP_ORIENTATION rejected: "
-                f"roll={roll_deg:+.1f}deg "
-                f"(raw={raw_roll_deg:+.1f}deg) exceeds "
-                f"{self._published_grasp_roll_max_abs_deg:.1f}deg")
-            self.runtime_log.log(
-                "published_grasp_orientation_rejected",
-                reason="roll_exceeds_limit",
-                roll_deg=roll_deg,
-                raw_roll_deg=raw_roll_deg,
-                max_abs_roll_deg=self._published_grasp_roll_max_abs_deg,
-                stem_dir_base=stem_dir.tolist(),
-                wall_approach_dir=wall_approach.tolist(),
-            )
-            return None
-
-        q_roll = quat_from_axis_angle(wall_approach, roll_rad)
-        q_candidate = quat_normalize_wxyz(quat_multiply_wxyz(q_roll, wall_q))
-        if q_candidate is None:
-            self.runtime_log.log(
-                "published_grasp_orientation_rejected",
-                reason="candidate_quaternion_invalid",
-                roll_deg=roll_deg,
-            )
-            return None
-
-        candidate_approach = normalized_vec(
-            quat_rotate_vec(q_candidate, [0.0, 0.0, 1.0]))
-        approach_error_deg = 0.0
-        if candidate_approach is not None:
-            approach_error_deg = float(np.degrees(np.arccos(np.clip(
-                np.dot(candidate_approach, wall_approach), -1.0, 1.0))))
         self.get_logger().info(
             "PUBLISHED_GRASP_ORIENTATION candidate: "
             f"align_tool_{self._published_grasp_roll_align_axis} "
-            f"roll={roll_deg:+.1f}deg raw={raw_roll_deg:+.1f}deg "
-            f"approach_error={approach_error_deg:.2f}deg")
+            f"roll={candidate.roll_deg:+.1f}deg raw={candidate.raw_roll_deg:+.1f}deg "
+            f"approach_error={candidate.approach_error_deg:.2f}deg")
         self.runtime_log.log(
             "published_grasp_orientation_candidate",
-            input_quat_wxyz=q_in,
-            candidate_quat_wxyz=q_candidate,
-            stem_dir_base=stem_dir.tolist(),
-            wall_approach_dir=wall_approach.tolist(),
+            input_quat_wxyz=input_quat_wxyz,
+            candidate_quat_wxyz=candidate.candidate_quat_wxyz,
+            stem_dir_base=candidate.stem_dir_base,
+            wall_approach_dir=candidate.wall_approach_dir,
             roll_align_axis=self._published_grasp_roll_align_axis,
-            roll_deg=roll_deg,
-            raw_roll_deg=raw_roll_deg,
-            approach_error_deg=approach_error_deg,
+            roll_deg=candidate.roll_deg,
+            raw_roll_deg=candidate.raw_roll_deg,
+            approach_error_deg=candidate.approach_error_deg,
         )
-        return ("published_roll", q_candidate, roll_deg)
+        return ("published_roll", candidate.candidate_quat_wxyz, candidate.roll_deg)
 
     def _verify_grasp(self):
         """GetState 서비스로 접촉 판정. SafeGrasp fallback 경로에서만 호출됨."""

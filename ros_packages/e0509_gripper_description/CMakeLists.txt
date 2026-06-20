@@ -61,6 +61,9 @@ install(PROGRAMS
   scripts/robot_slider_control.py
   scripts/joint_jog_control.py
   scripts/curobo_planner_node.py
+  scripts/harvest_grasp_orientation.py
+  scripts/harvest_math.py
+  scripts/harvest_motion_params.py
   scripts/pick_place_node.py
   scripts/marker_tracking_node.py
   scripts/strawberry_yolo_node.py

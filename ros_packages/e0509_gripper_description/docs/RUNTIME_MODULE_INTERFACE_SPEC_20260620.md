@@ -1,0 +1,183 @@
+# 딸기 자동수확 런타임 모듈/인터페이스 명세 (2026-06-20)
+
+이 문서는 실기 자동수확에 실제로 관여하는 핵심 파일을 기준으로 작성한다.
+로그 분석/라벨링/회고 문서 등 실행 경로 밖의 파일은 별도 도구로 분류한다.
+
+## 1. 현재 주 실행 파이프라인
+
+```text
+RealSense RGB-D
+ -> strawberry_motion workspace scan / camera pose 이동
+ -> strawberry_fusion_node.py
+ -> /dsr01/curobo/pick_pose
+ -> curobo_planner_node.py
+ -> cuRobo plan + Doosan MoveSplineJoint/MoveLine
+ -> gripper_service SafeGrasp / SetPosition / GetState
+ -> /dsr01/curobo/pick_complete
+ -> scan executor가 다음 target 또는 재스캔 결정
+```
+
+## 2. 핵심 파일 책임
+
+| 파일 | 역할 | 현재 상태 |
+| --- | --- | --- |
+| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, Doosan motion execution, gripper close/verify, runtime JSONL | 여전히 비대함. 1차로 수학/방향 후보 로직 분리 완료 |
+| `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
+| `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
+| `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
+| `scripts/strawberry_fusion_node.py` | YOLO/keypoint/depth 기반 target fusion, stem direction orientation 생성, pick pose publish | NW 인식/깊이 실패가 많은 현재 병목 |
+| `scripts/strawberry_yolo_node.py` | 이전/단일 카메라 YOLO baseline, pick pose publish | 현재 주 NW 실험은 fusion node 우선 |
+| `scripts/joint_jog_control.py` | 수동 joint/pose 이동, TCP 확인, gripper 위치 테스트 | 실기 티칭/복구 도구 |
+| `scripts/runtime_jsonl_logger.py` | 각 노드 runtime JSONL 저장 | KPI/디버깅의 원자료 |
+| `scripts/summarize_runtime_kpis.py` | runtime JSONL 요약 | 자동 KPI 추출 |
+| `scripts/generate_harvest_kpi_report.py` | KPI 리포트/그래프 생성 | 반복 실험 후 사용 |
+| `scripts/prepare_harvest_label_sheet.py` | 수동 라벨 CSV 생성/갱신 | 사람이 실험 후 입력 |
+| `scripts/run_safe_grasp_trial.py` | SafeGrasp 단독 전류/position 테스트 | 그리퍼 파지 판정 threshold 보정용 |
+| `scripts/clean_robot_runtime.sh` | stale ROS/그리퍼 프로세스 정리 | gripper_service 재시작 전 사용 |
+| `config/environment.yaml` | whiteboard/table 등 cuRobo world obstacle source | 현재 wall cuboid 중심 |
+| `config/curobo/e0509_gripper_measured_tcp.yml` | measured TCP용 cuRobo robot config | 현재 planner 기본 모델 |
+| `config/place_slots.yaml` | 티칭/계산된 tray slot 정보 | place 실험용 |
+
+## 3. `curobo_planner_node.py` 인터페이스
+
+### Subscriptions
+
+| Topic | Type | 사용 |
+| --- | --- | --- |
+| `/dsr01/joint_states` | `sensor_msgs/JointState` | 현재 joint state, planning start state |
+| `/dsr01/curobo/target_pose` | `geometry_msgs/PoseStamped` | 일반 cuRobo target test |
+| `/dsr01/curobo/pick_pose` | `geometry_msgs/PoseStamped` | 수확 target. position은 grasp target, orientation은 per-target stem direction 후보 |
+| `/dsr01/curobo/obstacles` | `std_msgs/String` JSON | 동적 cuboid obstacle 갱신 |
+| `/strawberry/detection/scene_positions` | `std_msgs/Float64MultiArray` | 이웃 딸기 sphere obstacle 등록 |
+| `/strawberry/scan/status` | `std_msgs/String` | scan 상태 로그 |
+| `/strawberry/exploration/set_cell_state` | `std_msgs/String` | cell 상태 로그 |
+
+### Publishers
+
+| Topic | Type | 의미 |
+| --- | --- | --- |
+| `/dsr01/curobo/pick_complete` | `std_msgs/Empty` | pick sequence 종료 알림. 성공률이 아니라 “시퀀스 종료” 이벤트 |
+
+### Service Clients
+
+| Service | Type | 사용 |
+| --- | --- | --- |
+| `/dsr01/motion/move_spline_joint` | `dsr_msgs2/srv/MoveSplineJoint` | cuRobo trajectory 실행 |
+| `/dsr01/motion/move_joint` | `dsr_msgs2/srv/MoveJoint` | fixed joint pose 이동, place/scan 복귀 |
+| `/dsr01/motion/move_line` | `dsr_msgs2/srv/MoveLine` | TOOL/BASE 직선 진입, 하강, retreat |
+| `/dsr01/motion/change_operation_speed` | `dsr_msgs2/srv/ChangeOperationSpeed` | operation speed 변경 |
+| `/gripper_service/set_position` | `dsr_gripper_tcp_interfaces/srv/SetPosition` | gripper open/release position 명령 |
+| `/gripper_service/get_state` | `dsr_gripper_tcp_interfaces/srv/GetState` | fallback grasp state read |
+
+### Action Clients
+
+| Action | Type | 사용 |
+| --- | --- | --- |
+| `/gripper_service/safe_grasp` | `dsr_gripper_tcp_interfaces/action/SafeGrasp` | close 중 position/current 기반 파지 감지 |
+
+### 주요 ROS Parameters
+
+| Parameter | 의미 |
+| --- | --- |
+| `measured_tcp_plan_only` | true면 motion dispatch 없이 plan만 확인 |
+| `direct_curobo_final_approach_for_measured_tcp` | final approach 일부를 cuRobo로 먼저 계획 |
+| `measured_tcp_max_approach_m` | measured TCP final approach 최대 진입 거리 |
+| `measured_tcp_tool_line_after_curobo_fallback` | cuRobo가 일부 깊이까지만 풀리면 남은 구간을 직선 실행 |
+| `use_published_grasp_orientation` | fusion orientation 기반 roll 후보 사용 |
+| `published_grasp_roll_align_axis` | stem direction에 맞출 gripper axis (`x` 또는 `y`) |
+| `nw_high_target_final_extra_m` | NW high/tilted branch 깊이 추가 |
+| `enable_marker_place_sequence` | pick 후 marker/tray place 시퀀스 실행 |
+| `use_safe_grasp_action` | gripper close를 SafeGrasp action으로 수행 |
+
+## 4. `strawberry_fusion_node.py` 인터페이스
+
+### Inputs
+
+| 입력 | 의미 |
+| --- | --- |
+| RealSense color/depth stream | RGB-D detection source |
+| `/dsr01/joint_states` | eye-in-hand transform 계산용 현재 joint |
+
+### Outputs
+
+| Topic | Type | 의미 |
+| --- | --- | --- |
+| `/dsr01/curobo/pick_pose` | `geometry_msgs/PoseStamped` | 안정화된 수확 target. position은 base target, orientation은 stem direction 기반 |
+| `/strawberry/detection/scene_positions` | `std_msgs/Float64MultiArray` | 이웃 과실 위치, planner obstacle 등록용 |
+
+### 주요 Parameters
+
+| Parameter | 의미 |
+| --- | --- |
+| `stem_grasp_direction_mode` | `kp0_to_kp1` 등 줄기 방향 계산 기준 |
+| `stem_grasp_offset_from_kp0_m` | KP0 기준 grasp target offset |
+| `pick_target_min_z_m`, `pick_target_max_z_m` | leaf/top 후보 필터 |
+| `prefer_lower_z_target` | 낮은 줄기 후보 우선 |
+| `target_position_window_size` | target 안정화 window |
+| `target_position_max_spread_m` | 안정 target spread 제한 |
+
+## 5. Gripper 서비스 계층
+
+현재 권장 계층은 `dsr_gripper_tcp`의 `/gripper_service/*`다.
+
+| Interface | 의미 |
+| --- | --- |
+| `/gripper_service/state` | position/current/status 주기 publish |
+| `/gripper_service/set_position` | position 명령. 접근/놓기 시 600, 닫기 목표 700 |
+| `/gripper_service/get_state` | present_position/current read |
+| `/gripper_service/safe_grasp` | current delta/position 기반 close 중 grasp detect |
+
+현재 한계:
+
+- serial/DRL 초기화가 불안정하면 `set_position`/`SafeGrasp` timeout 발생.
+- 얇은 줄기는 current delta가 낮아서 threshold 보정이 필요.
+- `GRASP_EMPTY`는 jaw가 700까지 닫힌 상태를 의미하며, 실제 수확 실패에 가깝다.
+- `GRASP_UNVERIFIED`는 통신 실패 또는 current/position 판정 불확실 상태다.
+
+## 6. 런타임 로그/KPI
+
+| 파일/도구 | 역할 |
+| --- | --- |
+| `logs/runtime/YYYY-MM-DD/*.jsonl` | planner/fusion raw runtime events |
+| `reports/harvest_kpi/manual_labels_root_nw.csv` | 사람이 입력하는 최종 라벨 |
+| `scripts/summarize_runtime_kpis.py --cell root/nw` | plan, cycle, result 자동 요약 |
+| `scripts/generate_harvest_kpi_report.py --cell root/nw` | 표/그래프 리포트 생성 |
+
+자동 기록 가능:
+
+- plan latency
+- IK fail / plan OK count
+- selected grasp variant
+- final approach distance/depth
+- SafeGrasp result, present_position/current
+- pick cycle time
+
+사람 입력 필요:
+
+- 실제 딸기가 분리됐는지
+- 다른 줄기/잎을 같이 잡았는지
+- retreat 중 유지됐는지
+- tray place 성공 여부
+
+## 7. 현재 리팩토링 진행상황
+
+완료:
+
+- `harvest_math.py` 분리: quaternion/vector helpers
+- `harvest_grasp_orientation.py` 분리: published stem orientation -> roll-only candidate
+- `harvest_motion_params.py` 분리: planner 상단의 실험 상수/티칭 pose/속도/거리값
+- `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 340줄 이상 감소
+
+다음 분리 후보:
+
+1. `doosan_motion_client.py`: MoveSplineJoint/MoveJoint/MoveLine wrapper 분리
+2. `gripper_client.py`: SetPosition/GetState/SafeGrasp wrapper 분리
+3. `tray_place_policy.py`: taught tray grid/place sequence 분리
+4. `curobo_planning_adapter.py`: `plan()`, joint limit rewrite, plan dump, collision diagnostics 분리
+5. `pick_sequence.py`: `_pick()` state machine 분리
+
+주의:
+
+- `scripts/측정.py`는 절대 수정/커밋하지 않는다.
+- SW 회귀 검증 없이 `main` 머지는 금지.
+- 현재 debug branch는 NW motion debug용이다.
