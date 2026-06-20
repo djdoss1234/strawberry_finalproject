@@ -247,13 +247,14 @@ ERROR: ABORT: 직선 진입 실패
    - 이것은 장기적인 perception/KP target correction이 아니라, 현재 NW high-cell 실기
      편차를 흡수하는 제한적 보정이다. 실제 근본 해결은 KP1/KP2 stem target 정확도와
      eye-in-hand/depth drift를 별도로 줄여야 한다.
-11. NW high target은 +15deg 대신 더 수평에 가까운 branch 우선
+11. NW high target은 건강한 J3만 보지 말고 수평 branch 우선
    - +15deg는 J3가 건강하고 계산은 잘 되지만 접근선이 위/옆으로 빗겨가는 경향이 있다.
    - 깊이 extra를 거리로 더 밀면 같은 방향으로 더 빗겨가므로 기본값에서 끈다.
    - NW high target 전용 variant order:
-     `+10deg -> +5deg -> 0deg -> +15deg -> -5deg -> -10deg`
-   - NW high target에서는 J3 good-enough threshold를 40deg로 낮춰, +10deg branch가
-     충분히 건강하면 +15deg까지 가지 않고 멈춘다.
+     `0deg -> +5deg -> -5deg -> +10deg -> -10deg -> +15deg`
+   - 같은 final depth에서 여러 branch가 성공하면, J3가 최소 안전선(25deg)을 넘는 후보 중
+     더 수평에 가까운 branch를 우선한다. 이전처럼 무조건 J3가 더 큰 branch를 고르면
+     접근선이 위/옆으로 빗겨갈 수 있기 때문이다.
 12. 19:36 실기 결과: +10deg branch로 바뀌었지만 깊이는 크게 개선되지 않음
    - 로그: `curobo_planner_node_20260618T193657-7d510ad0.jsonl`
    - target: raw=(-248,672,819)mm
@@ -265,19 +266,21 @@ ERROR: ABORT: 직선 진입 실패
      90mm이고 총 접근 깊이도 180mm라서, 깊이 부족 자체는 해결되지 않았다.
    - 즉 현재 병목은 "branch 각도"보다 **target depth / TCP frame / final straight segment**
      쪽에 더 가깝다.
-13. 다음 실험용: close 직전 BASE +Y 10mm 깊이 보정 추가
+13. 다음 실험용: post-move nudge 대신 TCP final standoff 재보정
    - 19:36 run 이후 관찰은 "높이는 대체로 맞고 깊이만 10~20mm 부족"이었다.
    - `nw_high_target_final_extra_m`처럼 approach distance를 늘리면 TOOL 방향의 기울기 때문에
      옆으로 빗겨가거나 MoveLine 무동작이 생겼다.
-   - 그래서 열린 그리퍼로 BASE -Z 하강을 끝낸 뒤, 닫기 직전에 순수 BASE +Y로 10mm만
-     더 들어가는 실험 보정을 추가했다.
+   - 9fed0dd에서 닫기 직전 BASE +Y 10mm nudge를 추가했지만, 이는 사용자가 지적한 것처럼
+     후처리 오프셋에 가깝다. 이번 수정에서는 기본값을 다시 0mm로 끄고, measured-TCP 모델의
+     최종 파지 중심 자체를 -120mm에서 -130mm로 10mm 재보정했다.
    - 기본값:
-     - `nw_high_target_base_y_nudge_m:=0.010`
+     - `MEASURED_TCP_FINAL_STANDOFF_M = -0.130`
+     - `nw_high_target_base_y_nudge_m:=0.000`
    - 기대 로그:
-     - `NW_HIGH_TARGET_BASE_Y_NUDGE: BASE +Y 10mm before close`
-     - `NW_HIGH_TARGET_BASE_Y_NUDGE BASE REL xyz=[0.0, 10.0, 0.0]mm`
-   - 이것은 깊이 부족만 분리해서 보는 제한적 실험이다. 성공하면 10~20mm 범위에서
-     최적값을 찾고, 실패하면 perception/TCP target 자체를 다시 봐야 한다.
+     - `NW_HIGH_TARGET_VARIANT_ORDER: +0deg, +5deg, -5deg, +10deg, -10deg, +15deg`
+     - `GRASP_POSE_REACHED ... pre=6cm+190mm+0mm ...`
+   - 이것은 "추가로 한 번 더 미는" 방식이 아니라, 파츠 장착 후 실제 줄기 파지 중심이
+     코드의 measured-TCP 모델보다 약 10mm 앞에 있다는 관찰을 모델에 반영한 것이다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
@@ -322,7 +325,6 @@ ros2 run e0509_gripper_description curobo_planner_node.py --ros-args \
   -p direct_curobo_final_approach_for_measured_tcp:=true \
   -p measured_tcp_max_approach_m:=0.200 \
   -p measured_tcp_tool_line_after_curobo_fallback:=true \
-  -p nw_high_target_base_y_nudge_m:=0.010 \
   -p debug_dump_plan_calls:=true
 ```
 

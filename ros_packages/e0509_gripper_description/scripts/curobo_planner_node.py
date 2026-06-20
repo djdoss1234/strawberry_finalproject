@@ -42,7 +42,10 @@ from runtime_jsonl_logger import RuntimeJsonlLogger
 
 # ── 파지 파라미터 ──────────────────────────────────────────────────────────────
 GRASP_RETRY_OFFSETS  = [0.015, 0.030, 0.040, 0.050, 0.070]
-MEASURED_TCP_FINAL_STANDOFF_M = -0.120  # 실기 관찰: 30mm에서 15cm 부족 → 180mm 접근으로 조정 (추후 실측 후 수정)
+# Measured-TCP 모델의 최종 파지 중심. 2026-06-18 NW 실기에서 높이는 맞고
+# 깊이만 약 10mm 얕게 관찰되어 -120mm -> -130mm로 재보정했다. post-move
+# nudge가 아니라 pre/final geometry 전체에 반영되는 TCP 파지 중심 보정이다.
+MEASURED_TCP_FINAL_STANDOFF_M = -0.130
 Y_DETECTION_BIAS_M = 0.000  # 보정값 0: raw detection Y를 그대로 접근 거리 계산에 사용
                               # (단일 데이터 포인트 기반 23mm 추정은 신뢰 부족 → 실측 후 재조정)
 LEFTMOST_GRASP_RETRY_OFFSETS = [0.030, 0.035, 0.040, 0.045, 0.050, 0.070]
@@ -73,6 +76,7 @@ MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
 # worse than one already found. NW-only (measured_tcp_model path).
 MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
 NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
+NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 25.0
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -91,7 +95,7 @@ CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
 NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
-NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.010
+NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -134,14 +138,14 @@ MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base", [1, 0, 0], -10.0),
 ]
 NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # +15deg는 J3가 가장 건강했지만 접근선이 위/옆으로 빗겼다. NW high
-    # target에서는 더 수평에 가까운 +10/+5/0deg를 먼저 시도한다.
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0],  +5.0),
+    # +15/+10deg는 J3가 건강했지만 접근선이 위/옆으로 빗겼다. NW high
+    # target에서는 실제 줄기 방향과 맞는 수평 branch를 먼저 검증한다.
     ("base", [1, 0, 0],   0.0),
-    ("base", [1, 0, 0], +15.0),
+    ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0],  -5.0),
+    ("base", [1, 0, 0], +10.0),
     ("base", [1, 0, 0], -10.0),
+    ("base", [1, 0, 0], +15.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1
@@ -2519,6 +2523,7 @@ class CuroboPlanner(Node):
         # Track J3 health as a tiebreaker so an equally-deep but healthier
         # elbow from a later variant can replace it.
         measured_best_j3_deg = None
+        measured_best_alignment_deg = None
         grasp_attempt = 0
         for quat_frame, axis, quat_deg in grasp_quat_variants:
             q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
@@ -2583,14 +2588,42 @@ class CuroboPlanner(Node):
                     if r_final_probe is None:
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
+                    candidate_alignment_deg = abs(float(quat_deg))
                     is_deeper = depth_m > measured_best_depth_m + 1e-6
-                    is_tied_but_healthier = (
-                        abs(depth_m - measured_best_depth_m) <= 1e-6
-                        and (measured_best_j3_deg is None or candidate_j3_deg > measured_best_j3_deg)
-                    )
-                    if is_deeper or is_tied_but_healthier:
+                    is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
+                    if is_nw_high_target and is_tied:
+                        candidate_flat_safe = (
+                            candidate_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
+                        best_flat_safe = (
+                            measured_best_j3_deg is not None
+                            and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
+                        is_tied_but_better = (
+                            candidate_flat_safe
+                            and (
+                                not best_flat_safe
+                                or measured_best_alignment_deg is None
+                                or candidate_alignment_deg < measured_best_alignment_deg - 1e-6
+                                or (
+                                    abs(candidate_alignment_deg - measured_best_alignment_deg) <= 1e-6
+                                    and (
+                                        measured_best_j3_deg is None
+                                        or candidate_j3_deg > measured_best_j3_deg
+                                    )
+                                )
+                            )
+                        )
+                    else:
+                        is_tied_but_better = (
+                            is_tied
+                            and (
+                                measured_best_j3_deg is None
+                                or candidate_j3_deg > measured_best_j3_deg
+                            )
+                        )
+                    if is_deeper or is_tied_but_better:
                         measured_best_depth_m = depth_m
                         measured_best_j3_deg = candidate_j3_deg
+                        measured_best_alignment_deg = candidate_alignment_deg
                         measured_best = (
                             r_pre_for_variant,
                             r_final_probe,
@@ -2604,8 +2637,9 @@ class CuroboPlanner(Node):
                         self.get_logger().info(
                             "MEASURED_TCP_FINAL_PROBE_BEST "
                             f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
+                            f"align={candidate_alignment_deg:.1f}deg "
                             f"variant={(quat_frame, axis, quat_deg)}"
-                            + (" (tie-break: healthier elbow)" if is_tied_but_healthier else ""))
+                            + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
                 if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
@@ -2731,7 +2765,7 @@ class CuroboPlanner(Node):
             # clamp 전 detection_raw_y를 쓰면 FK drift가 final approach를 벽 뒤로
             # 밀어 넣어 cuRobo fallback goal이 Y>wall로 튄다.
             # baseline(180mm)보다 깊은 딸기만 추가 진입; baseline 미만으로 줄이지 않음
-            baseline_approach = PRE_APPROACH_OFFSET - MEASURED_TCP_FINAL_STANDOFF_M  # 0.180m
+            baseline_approach = PRE_APPROACH_OFFSET - MEASURED_TCP_FINAL_STANDOFF_M  # 0.190m
             pre_approach_y_m = WALL_SURFACE_Y_M - PRE_APPROACH_OFFSET  # 0.612m
             effective_detection_y = raw_straw[1]
             adaptive_dist = (effective_detection_y - Y_DETECTION_BIAS_M) - pre_approach_y_m
