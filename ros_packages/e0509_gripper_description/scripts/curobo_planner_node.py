@@ -835,17 +835,8 @@ class CuroboPlanner(Node):
 
     def _nearest_equivalent_joints(self, base_joints_deg):
         """J4/J6를 현재 위치에서 가장 가까운 360° equivalent로 조정."""
-        if self.current_joints is None:
-            return base_joints_deg
-        current_deg = np.rad2deg(self.current_joints)
-        joints = list(base_joints_deg)
-        for i in WRAP_EQUIVALENT_JOINT_IDX:
-            lo, hi = OPERATIONAL_JOINT_LIMITS_DEG[i]
-            candidates = [joints[i] + 360.0 * k for k in range(-2, 3)]
-            valid = [c for c in candidates if lo <= c <= hi]
-            if valid:
-                joints[i] = min(valid, key=lambda c: abs(c - current_deg[i]))
-        return joints
+        return self.trajectory_guards.nearest_equivalent_joints(
+            base_joints_deg, self.current_joints)
 
     def home_joints_near_current(self):
         return self._nearest_equivalent_joints(HOME_JOINTS_DEG)

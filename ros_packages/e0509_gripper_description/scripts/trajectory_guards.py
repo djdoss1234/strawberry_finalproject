@@ -83,6 +83,21 @@ class TrajectoryGuards:
             self.logger.info(f"{label} joint equivalent rewrite: " + "; ".join(rewritten))
         return np.deg2rad(traj_deg)
 
+    def nearest_equivalent_joints(self, base_joints_deg, current_joints_rad):
+        """Choose wrap-equivalent joints closest to the current robot joints."""
+        if current_joints_rad is None:
+            return base_joints_deg
+        current_deg = np.rad2deg(current_joints_rad)
+        joints = list(base_joints_deg)
+        for joint_idx in WRAP_EQUIVALENT_JOINT_IDX:
+            lo, hi = OPERATIONAL_JOINT_LIMITS_DEG[joint_idx]
+            candidates = [joints[joint_idx] + 360.0 * k for k in range(-2, 3)]
+            valid = [c for c in candidates if lo <= c <= hi]
+            if valid:
+                joints[joint_idx] = min(
+                    valid, key=lambda c: abs(c - current_deg[joint_idx]))
+        return joints
+
     def has_no_spline_jumps(self, traj_rad, label, max_jump_deg=270.0):
         traj_deg = np.rad2deg(traj_rad)
         for joint_idx in WRAP_EQUIVALENT_JOINT_IDX:
