@@ -22,6 +22,7 @@ RealSense RGB-D
 | 파일 | 역할 | 현재 상태 |
 | --- | --- | --- |
 | `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 여전히 비대함. 수학/방향 후보/Doosan motion/gripper wrapper 분리 완료 |
+| `scripts/approach_retreat_policy.py` | measured-TCP/legacy final approach 후퇴 step 계산 | 신규 분리 모듈. J2 한도초과 방지용 2단계 retreat 계산을 순수 함수로 분리 |
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
 | `scripts/gripper_client.py` | `/gripper_service/set_position`, `/get_state`, `/safe_grasp` 호출과 grasp result 판정 | 신규 분리 모듈. SafeGrasp + position fallback 동작 보존 |
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
@@ -175,6 +176,7 @@ RealSense RGB-D
 - `harvest_grasp_orientation.py` 분리: published stem orientation -> roll-only candidate
 - `harvest_motion_params.py` 분리: planner 상단의 실험 상수/티칭 pose/속도/거리값
 - `doosan_motion_client.py` 분리: MoveSplineJoint/MoveJoint/MoveLine service wrapper
+- `approach_retreat_policy.py` 분리: measured-TCP tool-finish undo 후 main approach reverse 계산
 - `gripper_client.py` 분리: SetPosition/GetState/SafeGrasp wrapper와 grasp result 판정
 - `tray_place_policy.py` 분리: marker tray target 로딩, taught grid pitch 보정, slot offset 계산
 - `trajectory_guards.py` 분리: operational limit, J4/J6 equivalent normalization, spline jump/swing reject

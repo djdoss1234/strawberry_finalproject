@@ -34,6 +34,7 @@ from curobo.types.base import TensorDeviceType
 from curobo.types.robot import RobotConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 from curobo.geom.types import WorldConfig, Cuboid
+from approach_retreat_policy import build_straight_retreat_steps
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
 from grasp_candidate_policy import (
@@ -776,6 +777,26 @@ class CuroboPlanner(Node):
 
     def _execute_pitch_detach(self) -> bool:
         return self.motion_client.execute_pitch_detach()
+
+    def _execute_retreat_steps(self, steps, vel_mm_s=None, acc_mm_s2=None) -> bool:
+        for step in steps:
+            if step["frame"] == "base":
+                ok = self.execute_base_relative_line(
+                    step["delta_m"],
+                    step["label"],
+                    vel_mm_s=vel_mm_s or RETREAT_VEL_MM_S,
+                    acc_mm_s2=acc_mm_s2 or RETREAT_ACC_MM_S2,
+                )
+            else:
+                ok = self.execute_tool_z_line(
+                    step["distance_m"],
+                    motion_label=step["label"],
+                    vel_mm_s=vel_mm_s or RETREAT_VEL_MM_S,
+                    acc_mm_s2=acc_mm_s2 or RETREAT_ACC_MM_S2,
+                )
+            if not ok:
+                return False
+        return True
 
     def execute_base_z_relative(self, distance_m: float, motion_label: str,
                                 vel_mm_s: float = 30.0) -> bool:
@@ -2293,35 +2314,17 @@ class CuroboPlanner(Node):
             )
             retreat_distance_m = (
                 final_approach_distance + extra_advance_m - tool_finish_executed_m)
-            if self._measured_tcp_model:
-                # 2026-06-20: tool_finish 다리가 틸트가 아닌 horiz_dir로 꺾여
-                # 들어갔으면 그 구간은 따로 되돌린다 — 안 그러면 retreat 전체를
-                # used_approach_dir(틸트)로만 되돌리면서 실제로 안 내려간
-                # 구간까지 Z를 더 내려버려 팔이 과도하게 펴진다(J2 한도 초과
-                # 실기로 확인). 틸트가 없으면 tool_finish_executed_m=0이라
-                # 기존과 동일하게 한 번에 되돌린다.
-                retreat_ok = True
-                if tool_finish_executed_m > 0.0 and tool_finish_executed_dir is not None:
-                    retreat_ok = self.execute_base_relative_line(
-                        -tool_finish_executed_m * tool_finish_executed_dir,
-                        "CLOSE_FAIL_RETREAT_TOOL_FINISH_UNDO",
-                        vel_mm_s=RETREAT_VEL_MM_S,
-                        acc_mm_s2=RETREAT_ACC_MM_S2,
-                    )
-                if retreat_ok and retreat_distance_m > 0.0:
-                    retreat_ok = self.execute_base_relative_line(
-                        -retreat_distance_m * used_approach_dir,
-                        "CLOSE_FAIL_RETREAT_BASE",
-                        vel_mm_s=RETREAT_VEL_MM_S,
-                        acc_mm_s2=RETREAT_ACC_MM_S2,
-                    )
-            else:
-                retreat_ok = self.execute_tool_z_line(
-                    -retreat_distance_m,
-                    motion_label="CLOSE_FAIL_RETREAT",
-                    vel_mm_s=RETREAT_VEL_MM_S,
-                    acc_mm_s2=RETREAT_ACC_MM_S2,
+            retreat_ok = self._execute_retreat_steps(
+                build_straight_retreat_steps(
+                    self._measured_tcp_model,
+                    retreat_distance_m,
+                    used_approach_dir,
+                    tool_finish_executed_m,
+                    tool_finish_executed_dir,
+                    "CLOSE_FAIL_RETREAT_BASE",
+                    "CLOSE_FAIL_RETREAT",
                 )
+            )
             self._clear_neighbor_obstacles()
             if retreat_ok:
                 self._reset_gripper()
@@ -2355,37 +2358,17 @@ class CuroboPlanner(Node):
         reverse_distance_m = extra_advance_m
         if self._measured_tcp_model:
             reverse_distance_m += final_approach_distance - tool_finish_executed_m
-        reverse_ok = True
-        if self._measured_tcp_model:
-            # 2026-06-20: 위 FINAL_APPROACH_TOOL_FINISH가 horiz_dir로 꺾여
-            # 들어간 구간이 있으면 그 다리를 먼저 따로 되돌린 다음, 남은
-            # 직선(curobo 진입 + extra_advance, 둘 다 used_approach_dir 방향)을
-            # 되돌린다. 한 번에 used_approach_dir로만 되돌리면 horiz 구간의
-            # 거리만큼 실제로 안 내려간 Z까지 같이 내려가버려 팔이 과신전되고
-            # J2가 한도(±95°)를 넘는 실기 사고가 있었음(-97.55°/-97.7° 확인).
-            # 틸트가 없으면 tool_finish_executed_m=0이라 기존과 동일하게
-            # 한 번의 직선으로 되돌아간다(SW no-op).
-            if tool_finish_executed_m > 0.0 and tool_finish_executed_dir is not None:
-                reverse_ok = self.execute_base_relative_line(
-                    -tool_finish_executed_m * tool_finish_executed_dir,
-                    "RETREAT_TOOL_FINISH_UNDO",
-                    vel_mm_s=RETREAT_VEL_MM_S,
-                    acc_mm_s2=RETREAT_ACC_MM_S2,
-                )
-            if reverse_ok and reverse_distance_m > 0.0:
-                reverse_ok = self.execute_base_relative_line(
-                    -reverse_distance_m * used_approach_dir,
-                    "RETREAT_BASE",
-                    vel_mm_s=RETREAT_VEL_MM_S,
-                    acc_mm_s2=RETREAT_ACC_MM_S2,
-                )
-        elif reverse_distance_m > 0.0:
-            reverse_ok = self.execute_tool_z_line(
-                -reverse_distance_m,
-                motion_label="RETREAT",
-                vel_mm_s=RETREAT_VEL_MM_S,
-                acc_mm_s2=RETREAT_ACC_MM_S2,
+        reverse_ok = self._execute_retreat_steps(
+            build_straight_retreat_steps(
+                self._measured_tcp_model,
+                reverse_distance_m,
+                used_approach_dir,
+                tool_finish_executed_m,
+                tool_finish_executed_dir,
+                "RETREAT_BASE",
+                "RETREAT",
             )
+        )
         if not reverse_ok:
             self.get_logger().error(
                 "ABORT: straight reverse retreat failed — holding current pose")
