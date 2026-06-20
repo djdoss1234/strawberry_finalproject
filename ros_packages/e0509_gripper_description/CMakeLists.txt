@@ -70,6 +70,7 @@ install(PROGRAMS
   scripts/harvest_math.py
   scripts/harvest_motion_params.py
   scripts/harvest_result_policy.py
+  scripts/marker_place_orientation_policy.py
   scripts/open_stem_descent_policy.py
   scripts/place_sequence_policy.py
   scripts/row2_place_policy.py

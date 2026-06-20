@@ -37,6 +37,7 @@ RealSense RGB-D
 | `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
 | `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
 | `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
+| `scripts/marker_place_orientation_policy.py` | marker place orientation 후보, clearance 후보, measured-TCP contact 보정 target 계산 | 신규 분리 모듈. place orientation 탐색의 순수 계산 분리 |
 | `scripts/strawberry_fusion_node.py` | YOLO/keypoint/depth 기반 target fusion, stem direction orientation 생성, pick pose publish | NW 인식/깊이 실패가 많은 현재 병목 |
 | `scripts/strawberry_yolo_node.py` | 이전/단일 카메라 YOLO baseline, pick pose publish | 현재 주 NW 실험은 fusion node 우선 |
 | `scripts/joint_jog_control.py` | 수동 joint/pose 이동, TCP 확인, gripper 위치 테스트 | 실기 티칭/복구 도구 |
@@ -190,6 +191,7 @@ RealSense RGB-D
 - `open_stem_descent_policy.py` 분리: reached TCP Z와 KP1 Z 차이 기반 open-stem descent 계산
 - `place_sequence_policy.py` 분리: place status에서 hold/skip/continue state-machine action 결정
 - `row2_place_policy.py` 분리: row2 place line deviation threshold 판정
+- `marker_place_orientation_policy.py` 분리: marker place orientation/clearance 후보와 measured-TCP contact 보정 target 계산
 - `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1200줄 감소
 
 다음 분리 후보:
