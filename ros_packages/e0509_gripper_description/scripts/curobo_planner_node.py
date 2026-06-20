@@ -59,6 +59,7 @@ from harvest_result_policy import (
     place_gate_block_reason,
 )
 from open_stem_descent_policy import compute_open_stem_descent_m
+from place_sequence_policy import classify_place_outcome
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from scene_obstacle_manager import SceneObstacleManager
 from tray_place_policy import TrayPlacePolicy
@@ -2404,60 +2405,65 @@ class CuroboPlanner(Node):
         if self._enable_marker_place and _allow_place:
             place_status, place_joints = self._execute_marker_place_after_retreat(
                 retreat_joints)
-            if place_status == "success":
+            outcome = classify_place_outcome(
+                place_status,
+                self._use_taught_slot0_place_reference,
+                self._hold_after_taught_slot0_place,
+                self._marker_place_slot_idx,
+            )
+            if outcome["action"] == "continue":
                 return_start_joints = place_joints
-                if (
-                    self._use_taught_slot0_place_reference
-                    and self._hold_after_taught_slot0_place
-                ):
-                    completed_slot_index = self._marker_place_slot_idx - 1
-                    self._clear_neighbor_obstacles()
-                    self.runtime_log.log(
-                        "pick_sequence_stopped",
-                        result_code="TAUGHT_TRAY_PLACE_COMPLETE_HOLD",
-                        slot_index=completed_slot_index,
-                        current_joints_rad=self.current_joints,
-                    )
-                    self.get_logger().warn(
-                        f"TAUGHT_TRAY_SLOT{completed_slot_index}_PLACE_COMPLETE_HOLD: "
-                        "release complete; "
-                        "automatic next pick blocked until planner restart")
-                    self._hold_pick_sequence("taught_tray_place_complete")
-                    return
-            elif place_status == "tray_complete":
+            elif (
+                outcome["action"] == "hold"
+                and outcome["result_code"] == "TAUGHT_TRAY_PLACE_COMPLETE_HOLD"
+            ):
+                completed_slot_index = outcome["completed_slot_index"]
                 self._clear_neighbor_obstacles()
                 self.runtime_log.log(
                     "pick_sequence_stopped",
-                    result_code="TAUGHT_TRAY_FULL",
+                    result_code=outcome["result_code"],
+                    slot_index=completed_slot_index,
+                    current_joints_rad=self.current_joints,
+                )
+                self.get_logger().warn(
+                    f"TAUGHT_TRAY_SLOT{completed_slot_index}_PLACE_COMPLETE_HOLD: "
+                    "release complete; "
+                    "automatic next pick blocked until planner restart")
+                self._hold_pick_sequence(outcome["hold_reason"])
+                return
+            elif (
+                outcome["action"] == "hold"
+                and outcome["result_code"] == "TAUGHT_TRAY_FULL"
+            ):
+                self._clear_neighbor_obstacles()
+                self.runtime_log.log(
+                    "pick_sequence_stopped",
+                    result_code=outcome["result_code"],
                     current_joints_rad=self.current_joints,
                 )
                 self.get_logger().warn(
                     "TAUGHT_TRAY_FULL: all 15 slots consumed; "
                     "automatic next pick blocked until tray reset")
-                self._hold_pick_sequence("taught_tray_full")
+                self._hold_pick_sequence(outcome["hold_reason"])
                 return
-            elif place_status == "skip":
+            elif outcome["action"] == "skip":
                 # tray 없음/stale — place 생략, scan 복귀
                 self.get_logger().warn("PLACE_SKIPPED: tray unavailable; returning to scan")
-                self.runtime_log.log("place_skipped", reason="tray_unavailable",
+                self.runtime_log.log("place_skipped", reason=outcome["reason"],
                                      grasp_result=grasp_result)
             else:
                 # 로봇이 이미 움직인 뒤 실패 or preview hold → latch
                 self._clear_neighbor_obstacles()
                 self.runtime_log.log(
                     "pick_sequence_stopped",
-                    result_code=(
-                        "MARKER_PLACE_PREVIEW_HOLD"
-                        if place_status == "preview_hold"
-                        else "MARKER_PLACE_FAILED"
-                    ),
+                    result_code=outcome["result_code"],
                     place_status=place_status,
                     current_joints_rad=self.current_joints,
                 )
                 self.get_logger().warn(
                     f"PICK_SEQUENCE_HOLD place_status={place_status}; "
                     "pick_complete not published, automatic scan paused")
-                self._hold_pick_sequence(f"marker_place_{place_status}")
+                self._hold_pick_sequence(outcome["hold_reason"])
                 return
 
         self.get_logger().info("7 return to pick-start scan pose")

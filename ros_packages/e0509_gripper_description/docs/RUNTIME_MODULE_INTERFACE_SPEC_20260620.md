@@ -32,6 +32,7 @@ RealSense RGB-D
 | `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보와 measured-TCP tie-break 정책 | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
 | `scripts/harvest_result_policy.py` | grasp result 기반 place gate, block reason, pick sequence result code 정책 | 신규 분리 모듈. KPI/result taxonomy 변경 시 planner 본문 수정 최소화 |
 | `scripts/open_stem_descent_policy.py` | 열린 그리퍼 상태에서 KP1까지 내려가는 BASE -Z 거리 계산 | 신규 분리 모듈. NW/SW 파지 높이 조정 로직을 독립 계산식으로 분리 |
+| `scripts/place_sequence_policy.py` | place executor status를 state-machine action/result code로 변환 | 신규 분리 모듈. place 후 hold/skip/continue 정책 분리 |
 | `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
 | `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
 | `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
@@ -186,6 +187,7 @@ RealSense RGB-D
 - `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
 - `harvest_result_policy.py` 분리: grasp result에서 place gate와 sequence result code를 결정하는 정책
 - `open_stem_descent_policy.py` 분리: reached TCP Z와 KP1 Z 차이 기반 open-stem descent 계산
+- `place_sequence_policy.py` 분리: place status에서 hold/skip/continue state-machine action 결정
 - `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1200줄 감소
 
 다음 분리 후보:

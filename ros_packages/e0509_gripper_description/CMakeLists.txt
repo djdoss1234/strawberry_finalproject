@@ -71,6 +71,7 @@ install(PROGRAMS
   scripts/harvest_motion_params.py
   scripts/harvest_result_policy.py
   scripts/open_stem_descent_policy.py
+  scripts/place_sequence_policy.py
   scripts/tray_place_policy.py
   scripts/trajectory_guards.py
   scripts/pick_place_node.py
