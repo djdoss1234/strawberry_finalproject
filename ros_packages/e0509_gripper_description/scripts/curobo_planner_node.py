@@ -2184,10 +2184,6 @@ class CuroboPlanner(Node):
                 return
 
         # 3. 그리퍼 닫기 + 파지 확인
-        # SafeGrasp action 서버가 있으면 close+current 감지를 원자 동작으로 수행.
-        # 없으면 SetPosition+GetState fallback.
-        self.get_logger().info("3 close gripper + verify grasp")
-        self.runtime_log.log("gripper_command", command="close")
         grasp_result, present_pos, present_current_raw, grasp_reason = (
             self._close_and_verify_grasp())
         if grasp_result == "GRIPPER_CLOSE_FAILED":
@@ -2218,20 +2214,6 @@ class CuroboPlanner(Node):
             else:
                 self._hold_pick_sequence("gripper_close_failed_retreat_failed")
             return
-        self.get_logger().info(
-            f"VERIFY_GRASP: {grasp_result} present_pos={present_pos} "
-            f"current_raw={present_current_raw} — {grasp_reason}")
-        self.runtime_log.log(
-            "verify_grasp",
-            result_code=grasp_result,
-            present_position=present_pos,
-            present_current_raw=present_current_raw,
-            reason=grasp_reason,
-            close_command_pos=700,
-            empty_threshold=GRASP_EMPTY_POSITION_THRESHOLD,
-            current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
-        )
-
         # 4. BASE -Z 당기기로 줄기 분리 후 직선 역진 retreat
         self.get_logger().info(
             f"4 detach pull — BASE -Z {DETACH_PULL_DOWN_MM:.0f}mm "

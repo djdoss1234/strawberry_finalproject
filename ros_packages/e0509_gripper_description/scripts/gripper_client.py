@@ -119,16 +119,40 @@ class HarvestGripperClient:
 
     def close_and_verify_grasp(self):
         """Close gripper and return a normalized grasp result tuple."""
+        self._log().info("3 close gripper + verify grasp")
+        self.runtime_log.log("gripper_command", command="close")
         if self.use_safe_grasp_action and self.safe_grasp_cli is not None:
             if self.safe_grasp_cli.server_is_ready():
-                return self.close_via_safe_grasp_action()
+                result = self.close_via_safe_grasp_action()
+                self.log_verify_result(result)
+                return result
             self._log().warn(
                 "SAFE_GRASP: action server not ready — fallback to set_position+get_state")
         close_ok = self.set_position(700, timeout_sec=10.0)
         if not close_ok:
             return "GRIPPER_CLOSE_FAILED", -1, -1, "set_position(700) failed"
         time.sleep(GRASP_CLOSE_SETTLE_SEC)
-        return self.verify_grasp()
+        result = self.verify_grasp()
+        self.log_verify_result(result)
+        return result
+
+    def log_verify_result(self, result):
+        grasp_result, present_pos, present_current_raw, grasp_reason = result
+        if grasp_result == "GRIPPER_CLOSE_FAILED":
+            return
+        self._log().info(
+            f"VERIFY_GRASP: {grasp_result} present_pos={present_pos} "
+            f"current_raw={present_current_raw} — {grasp_reason}")
+        self.runtime_log.log(
+            "verify_grasp",
+            result_code=grasp_result,
+            present_position=present_pos,
+            present_current_raw=present_current_raw,
+            reason=grasp_reason,
+            close_command_pos=700,
+            empty_threshold=GRASP_EMPTY_POSITION_THRESHOLD,
+            current_contact_threshold_raw=self.grasp_current_contact_threshold_raw,
+        )
 
     def close_via_safe_grasp_action(self):
         if self.safe_grasp_action_type is None or self.safe_grasp_cli is None:
