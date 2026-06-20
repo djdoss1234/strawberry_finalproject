@@ -2930,14 +2930,17 @@ class CuroboPlanner(Node):
                             tool_finish_m=remaining_tool_line_m,
                             requested_total_m=requested_final_approach_distance,
                         )
-                        # 2026-06-20 실기 확인: NW high target은 틸트(+15deg 등)가 있는
-                        # 채로 TOOL+Z 직선을 쓰면 이 마지막 구간 전체가 대각선으로
-                        # 같이 떠올라서(사용자 직접 관찰: "수평이 아니라 대각선으로
-                        # 살짝 위로 올라감"), crane_z_offset을 아무리 낮춰도 깊이를
-                        # 늘릴수록 다시 높아지는 문제가 반복됐다. 이 구간만 BASE
-                        # 기준 수평(XY) 방향으로 이동시켜 깊이와 높이를 분리한다.
-                        # 그리퍼 자세(틸트)는 그대로 유지되고 이동 방향만 바뀐다.
-                        if is_nw_high_target:
+                        # 2026-06-20 실기 확인: 틸트(+15deg 등)가 있는 채로 TOOL+Z
+                        # 직선을 쓰면 이 마지막 구간 전체가 대각선으로 같이
+                        # 떠오른다(사용자 직접 관찰: "수평이 아니라 대각선으로 살짝
+                        # 위로 올라감"). 처음엔 is_nw_high_target(z>=750mm)에만
+                        # 적용했는데, z<750mm 타겟도 같은 +15deg variant를 고르면
+                        # 똑같이 재현됨(실기 로그로 확인) — 즉 진짜 원인은 "높은
+                        # 타겟"이 아니라 "틸트된 variant"다. 그래서 타겟 높이가
+                        # 아니라 실제 선택된 approach_dir의 Z 성분으로 분기한다.
+                        # 틸트가 0이면 horiz_dir == used_approach_dir이라 SW처럼
+                        # 평평한 접근은 동작이 전혀 안 바뀐다.
+                        if abs(float(used_approach_dir[2])) > 1e-3:
                             horiz_dir = np.array(used_approach_dir, dtype=float)
                             horiz_dir[2] = 0.0
                             horiz_norm = float(np.linalg.norm(horiz_dir))
@@ -3063,8 +3066,9 @@ class CuroboPlanner(Node):
                                     requested_total_m=requested_final_approach_distance,
                                 )
                                 # see horizontal-only rationale at the other
-                                # FINAL_APPROACH_TOOL_FINISH call site above.
-                                if is_nw_high_target:
+                                # FINAL_APPROACH_TOOL_FINISH call site above —
+                                # gated on actual tilt, not target height.
+                                if abs(float(used_approach_dir[2])) > 1e-3:
                                     horiz_dir = np.array(used_approach_dir, dtype=float)
                                     horiz_dir[2] = 0.0
                                     horiz_norm = float(np.linalg.norm(horiz_dir))
@@ -3207,12 +3211,15 @@ class CuroboPlanner(Node):
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and crane_z_offset_m > 0:
-            if is_nw_high_target and used_grasp_ee_pos is not None:
+            if used_grasp_ee_pos is not None:
                 # 2026-06-20: 고정 mm 보정 대신, 실제 도달한 그리퍼 Z와 목표
                 # KP1 Z의 차이를 그대로 하강 거리로 쓴다. +15deg variant처럼
                 # 접근 중 Z가 같이 올라가는 경우에도 tilt 각도와 무관하게
-                # KP1에 정확히 도달한다 (기존 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M은
-                # tilt>10deg면 스킵되어 보정이 전혀 안 되는 문제가 있었음).
+                # KP1에 정확히 도달한다. 원래 is_nw_high_target에만 적용했는데,
+                # z<750mm 타겟도 같은 틸트 variant를 고르면 똑같이 어긋나는 게
+                # 확인돼서 모든 measured_tcp 타겟에 적용한다 — 틸트가 0이면
+                # overshoot이 정확히 기존 crane_z_offset_m과 같아져서(아래 식)
+                # SW처럼 평평한 접근은 결과가 전혀 안 바뀐다.
                 target_kp1_z_m = float(straw[2])
                 reached_z_m = float(used_grasp_ee_pos[2])
                 overshoot_above_kp1_m = max(0.0, reached_z_m - target_kp1_z_m)
@@ -3221,7 +3228,7 @@ class CuroboPlanner(Node):
                     + self._nw_high_target_descent_extra_below_kp1_m
                 )
                 self.get_logger().warn(
-                    "NW_HIGH_TARGET_OPEN_DESCENT_DYNAMIC: kp1_z="
+                    "OPEN_DESCENT_DYNAMIC: kp1_z="
                     f"{target_kp1_z_m*1000:.0f}mm reached_z={reached_z_m*1000:.0f}mm "
                     f"overshoot={overshoot_above_kp1_m*1000:.0f}mm "
                     f"extra_below_kp1={self._nw_high_target_descent_extra_below_kp1_m*1000:.0f}mm "
