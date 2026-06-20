@@ -98,10 +98,10 @@ CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26
 # 확인됐다. 기본값은 깊이 추가 없이 open descent만 유지한다.
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
 NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
-NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
+NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.000
 NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
-NW_HIGH_TARGET_OPEN_DESCENT_M = 0.015
+NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.015
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -626,7 +626,7 @@ class CuroboPlanner(Node):
                 f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm "
                 f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
                 f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm "
-                f"open_descent={NW_HIGH_TARGET_OPEN_DESCENT_M*1000:.0f}mm")
+                f"kp1_offset={NW_HIGH_TARGET_CRANE_Z_OFFSET_M*1000:.0f}mm")
         else:
             self.get_logger().warn(
                 "  TOOL_GEOMETRY_LEGACY: planner offset="
@@ -2559,10 +2559,25 @@ class CuroboPlanner(Node):
             ee_pre = straw - (
                 PRE_APPROACH_OFFSET + self._ee_to_tcp_offset_m
             ) * approach_dir
-            if self._measured_tcp_model and CRANE_Z_OFFSET_M > 0:
+            crane_z_offset_m = (
+                NW_HIGH_TARGET_CRANE_Z_OFFSET_M
+                if is_nw_high_target else CRANE_Z_OFFSET_M)
+            if self._measured_tcp_model and crane_z_offset_m > 0:
                 # KP1 위쪽에서 수평 진입을 끝낸 뒤, 열린 그리퍼로 BASE -Z
                 # 하강하여 KP1에서 파지한다.
-                ee_pre = ee_pre + np.array([0.0, 0.0, CRANE_Z_OFFSET_M])
+                if is_nw_high_target:
+                    self.get_logger().warn(
+                        "NW_HIGH_TARGET_KP1_OFFSET: pre-approach and open descent "
+                        f"{CRANE_Z_OFFSET_M*1000:.0f}mm -> "
+                        f"{crane_z_offset_m*1000:.0f}mm "
+                        "(lower approach endpoint closer to KP1)")
+                    self.runtime_log.log(
+                        "nw_high_target_kp1_offset",
+                        base_offset_m=CRANE_Z_OFFSET_M,
+                        executed_offset_m=crane_z_offset_m,
+                        reason="reduce_open_descent_without_changing_depth",
+                    )
+                ee_pre = ee_pre + np.array([0.0, 0.0, crane_z_offset_m])
             r_pre_for_variant = self.plan(
                 self.current_joints, ee_pre.tolist(), q_retry, num_ik_seeds=24
             )
@@ -3144,18 +3159,19 @@ class CuroboPlanner(Node):
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
         if self._measured_tcp_model and CRANE_Z_OFFSET_M > 0:
             open_stem_descent_m = (
-                NW_HIGH_TARGET_OPEN_DESCENT_M if is_nw_high_target else CRANE_Z_OFFSET_M)
+                NW_HIGH_TARGET_CRANE_Z_OFFSET_M
+                if is_nw_high_target else CRANE_Z_OFFSET_M)
             if is_nw_high_target:
                 self.get_logger().warn(
-                    "NW_HIGH_TARGET_OPEN_DESCENT: "
+                    "NW_HIGH_TARGET_KP1_OFFSET_DESCENT: "
                     f"{CRANE_Z_OFFSET_M*1000:.0f}mm -> "
                     f"{open_stem_descent_m*1000:.0f}mm "
-                    "(shorter open descent to avoid sweeping adjacent stems)")
+                    "(matches lowered pre-approach endpoint)")
                 self.runtime_log.log(
-                    "nw_high_target_open_descent",
+                    "nw_high_target_kp1_offset_descent",
                     base_descent_m=CRANE_Z_OFFSET_M,
                     executed_descent_m=open_stem_descent_m,
-                    reason="avoid_adjacent_stem_overlap",
+                    reason="match_lowered_pre_approach_endpoint",
                 )
             used_variant_tilt_deg = (
                 abs(float(used_grasp_variant[2]))
