@@ -28,6 +28,7 @@ RealSense RGB-D
 | `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
 | `scripts/scene_obstacle_manager.py` | dynamic obstacle JSON, detection scene positions, neighbor sphere 등록/해제, cuRobo world update logging | 신규 분리 모듈. collision world 상태 관리 |
+| `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보와 measured-TCP tie-break 정책 | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
 | `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
 | `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
 | `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
@@ -178,13 +179,14 @@ RealSense RGB-D
 - `trajectory_guards.py` 분리: operational limit, J4/J6 equivalent normalization, spline jump/swing reject
 - `curobo_planning_adapter.py` 분리: Cartesian/joint-space MotionGen plan 호출, plan logging, collision diagnostic
 - `scene_obstacle_manager.py` 분리: dynamic cuboid, neighbor sphere, scene position, world update logging
-- `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1150줄 감소
+- `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
+- `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1200줄 감소
 
 다음 분리 후보:
 
 1. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리
 2. `pick_sequence.py`: `_pick()` state machine 분리
-3. `grasp_candidate_policy.py`: grasp depth/variant probing loop 분리
+3. `grasp_search_executor.py`: 실제 plan 호출을 포함한 grasp probing loop 분리
 
 주의:
 

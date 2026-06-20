@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Grasp candidate policy helpers for the harvest planner."""
+
+from harvest_motion_params import (
+    GRASP_QUAT_RETRY_VARIANTS,
+    GRASP_RETRY_OFFSETS,
+    LEFTMOST_GRASP_RETRY_OFFSETS,
+    MEASURED_TCP_FINAL_STANDOFF_M,
+    MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS,
+    MEASURED_TCP_MIN_PRUNE_DEPTH_M,
+    NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS,
+    NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG,
+    NW_HIGH_TARGET_PROBE_DEPTHS_M,
+)
+
+
+def grasp_offsets_for_target(straw, measured_tcp_model: bool):
+    if measured_tcp_model:
+        return [MEASURED_TCP_FINAL_STANDOFF_M]
+    if straw[0] > 0.25:
+        return [-0.03, 0.0]
+    if straw[0] < -0.30:
+        return LEFTMOST_GRASP_RETRY_OFFSETS
+    return GRASP_RETRY_OFFSETS
+
+
+def grasp_quat_variants_for_target(measured_tcp_model: bool,
+                                   is_nw_high_target: bool):
+    if is_nw_high_target:
+        return list(NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS)
+    if measured_tcp_model:
+        return list(MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS)
+    return list(GRASP_QUAT_RETRY_VARIANTS)
+
+
+def variant_label(variant):
+    frame, _axis, deg = variant
+    if frame == "published_roll":
+        return f"published_roll({deg:+.0f}deg)"
+    return f"{deg:+.0f}deg"
+
+
+def measured_tcp_probe_depths(requested_depth_m: float, is_nw_high_target: bool,
+                              measured_best_depth_m: float):
+    if is_nw_high_target:
+        probe_depths = [
+            d for d in NW_HIGH_TARGET_PROBE_DEPTHS_M
+            if d <= requested_depth_m + 1e-6
+        ]
+    else:
+        probe_depths = [requested_depth_m]
+        for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
+            if 0.001 < depth_m < requested_depth_m - 0.005:
+                probe_depths.append(depth_m)
+
+    pruned = False
+    if measured_best_depth_m >= MEASURED_TCP_MIN_PRUNE_DEPTH_M:
+        probe_depths = [
+            d for d in probe_depths
+            if d <= measured_best_depth_m + 1e-6
+        ]
+        if not probe_depths:
+            probe_depths = [measured_best_depth_m]
+        pruned = True
+    return probe_depths, pruned
+
+
+def should_replace_measured_best(
+        depth_m: float,
+        candidate_j3_deg: float,
+        quat_frame: str,
+        quat_deg: float,
+        measured_best,
+        measured_best_depth_m: float,
+        measured_best_j3_deg,
+        measured_best_alignment_deg,
+        is_nw_high_target: bool):
+    candidate_is_published_roll = quat_frame == "published_roll"
+    candidate_alignment_deg = 0.0 if candidate_is_published_roll else abs(float(quat_deg))
+    best_is_published_roll = (
+        measured_best is not None
+        and measured_best[3][0] == "published_roll"
+    )
+    is_deeper = depth_m > measured_best_depth_m + 1e-6
+    is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
+
+    if (
+        best_is_published_roll
+        and not candidate_is_published_roll
+        and measured_best_j3_deg is not None
+        and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
+    ):
+        return False, candidate_alignment_deg, False
+
+    if is_nw_high_target and is_tied:
+        candidate_flat_safe = candidate_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
+        best_flat_safe = (
+            measured_best_j3_deg is not None
+            and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
+        )
+        is_tied_but_better = (
+            candidate_flat_safe
+            and (
+                not best_flat_safe
+                or measured_best_alignment_deg is None
+                or candidate_alignment_deg < measured_best_alignment_deg - 1e-6
+                or (
+                    abs(candidate_alignment_deg - measured_best_alignment_deg) <= 1e-6
+                    and (
+                        measured_best_j3_deg is None
+                        or candidate_j3_deg > measured_best_j3_deg
+                    )
+                )
+            )
+        )
+    else:
+        is_tied_but_better = (
+            is_tied
+            and (
+                measured_best_j3_deg is None
+                or candidate_j3_deg > measured_best_j3_deg
+            )
+        )
+    return bool(is_deeper or is_tied_but_better), candidate_alignment_deg, is_tied_but_better

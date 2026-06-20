@@ -36,6 +36,13 @@ from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 from curobo.geom.types import WorldConfig, Cuboid
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
+from grasp_candidate_policy import (
+    grasp_offsets_for_target,
+    grasp_quat_variants_for_target,
+    measured_tcp_probe_depths,
+    should_replace_measured_best,
+    variant_label,
+)
 from gripper_client import HarvestGripperClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
 from harvest_math import (
@@ -611,19 +618,10 @@ class CuroboPlanner(Node):
         return self.planning_adapter.clamp_joints(joints)
 
     def grasp_candidates_for_target(self, straw):
-        if self._measured_tcp_model:
-            return [MEASURED_TCP_FINAL_STANDOFF_M]
-        if straw[0] > 0.25:
-            return [-0.03, 0.0]
-        if straw[0] < -0.30:
-            # 더 깊은 30/35mm부터 검사하되 cuRobo가 검증한 endpoint만 실행한다.
-            return LEFTMOST_GRASP_RETRY_OFFSETS
-        return GRASP_RETRY_OFFSETS
+        return grasp_offsets_for_target(straw, self._measured_tcp_model)
 
     def grasp_quat_variants(self):
-        if self._measured_tcp_model:
-            return MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS
-        return GRASP_QUAT_RETRY_VARIANTS
+        return grasp_quat_variants_for_target(self._measured_tcp_model, False)
 
     def _published_roll_grasp_variant(self, input_quat_wxyz):
         """Return a wall-normal approach quaternion with roll aligned to published stem direction."""
@@ -1507,20 +1505,13 @@ class CuroboPlanner(Node):
 
         # 2. Grasp (cuRobo 2-step): 6cm pre-approach → 직선 진입
         # 직전 측방 편차가 줄기 형상/검출점 영향인지 분리하기 위해 6cm를 재검증한다.
-        grasp_quat_variants = (
-            NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS
-            if is_nw_high_target else self.grasp_quat_variants()
+        grasp_quat_variants = grasp_quat_variants_for_target(
+            self._measured_tcp_model,
+            is_nw_high_target,
         )
-        grasp_quat_variants = list(grasp_quat_variants)
         published_roll_variant = self._published_roll_grasp_variant(input_quat_wxyz)
         if published_roll_variant is not None:
             grasp_quat_variants = [published_roll_variant] + grasp_quat_variants
-
-        def variant_label(variant):
-            frame, axis, deg = variant
-            if frame == "published_roll":
-                return f"published_roll({deg:+.0f}deg)"
-            return f"{deg:+.0f}deg"
 
         n_offsets = len(grasp_retry_offsets)
         n_quats   = len(grasp_quat_variants)
@@ -1597,31 +1588,12 @@ class CuroboPlanner(Node):
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
                 requested_probe_depth_m = max(
                     0.060, min(MEASURED_TCP_MAX_APPROACH_CEILING_M, self._measured_tcp_max_approach_m))
-                if is_nw_high_target:
-                    # Repeated NW high-cell 실기에서 110mm 이상 final endpoint는
-                    # 매번 IK_FAIL이었다. 90mm cuRobo + 90mm TOOL finish가
-                    # 검증된 직선진입 구조이므로 불가능한 깊은 후보부터
-                    # 두드리며 시간을 쓰지 않는다.
-                    probe_depths = [
-                        d for d in NW_HIGH_TARGET_PROBE_DEPTHS_M
-                        if d <= requested_probe_depth_m + 1e-6
-                    ]
-                else:
-                    probe_depths = [requested_probe_depth_m]
-                    for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
-                        if 0.001 < depth_m < requested_probe_depth_m - 0.005:
-                            probe_depths.append(depth_m)
-                if measured_best_depth_m >= MEASURED_TCP_MIN_PRUNE_DEPTH_M:
-                    # If one orientation already proved that deeper endpoints fail,
-                    # do not repeat those expensive IK_FAIL probes for every later
-                    # orientation. Later variants are now used mainly to find a
-                    # healthier elbow at the same reachable depth.
-                    probe_depths = [
-                        d for d in probe_depths
-                        if d <= measured_best_depth_m + 1e-6
-                    ]
-                    if not probe_depths:
-                        probe_depths = [measured_best_depth_m]
+                probe_depths, probe_pruned = measured_tcp_probe_depths(
+                    requested_probe_depth_m,
+                    is_nw_high_target,
+                    measured_best_depth_m,
+                )
+                if probe_pruned:
                     self.get_logger().info(
                         "MEASURED_TCP_PROBE_PRUNED: existing best depth="
                         f"{measured_best_depth_m*1000:.0f}mm; "
@@ -1647,59 +1619,20 @@ class CuroboPlanner(Node):
                     if r_final_probe is None:
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
-                    best_is_published_roll = (
-                        measured_best is not None
-                        and measured_best[3][0] == "published_roll"
-                    )
-                    candidate_is_published_roll = quat_frame == "published_roll"
-                    candidate_alignment_deg = (
-                        0.0 if candidate_is_published_roll else abs(float(quat_deg))
-                    )
-                    is_deeper = depth_m > measured_best_depth_m + 1e-6
-                    is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
-                    if (
-                        best_is_published_roll
-                        and not candidate_is_published_roll
-                        and measured_best_j3_deg is not None
-                        and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
-                    ):
-                        # If the per-target stem-aligned candidate is already
-                        # reachable with a non-singular elbow, do not let the
-                        # generic +15deg library steal the same-depth solution
-                        # just because J3 is a little healthier. That was the
-                        # observed root of "bent stems still get side approach".
-                        is_tied_but_better = False
-                        is_deeper = False
-                    elif is_nw_high_target and is_tied:
-                        candidate_flat_safe = (
-                            candidate_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
-                        best_flat_safe = (
-                            measured_best_j3_deg is not None
-                            and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
-                        is_tied_but_better = (
-                            candidate_flat_safe
-                            and (
-                                not best_flat_safe
-                                or measured_best_alignment_deg is None
-                                or candidate_alignment_deg < measured_best_alignment_deg - 1e-6
-                                or (
-                                    abs(candidate_alignment_deg - measured_best_alignment_deg) <= 1e-6
-                                    and (
-                                        measured_best_j3_deg is None
-                                        or candidate_j3_deg > measured_best_j3_deg
-                                    )
-                                )
-                            )
+                    should_replace, candidate_alignment_deg, is_tied_but_better = (
+                        should_replace_measured_best(
+                            depth_m=depth_m,
+                            candidate_j3_deg=candidate_j3_deg,
+                            quat_frame=quat_frame,
+                            quat_deg=quat_deg,
+                            measured_best=measured_best,
+                            measured_best_depth_m=measured_best_depth_m,
+                            measured_best_j3_deg=measured_best_j3_deg,
+                            measured_best_alignment_deg=measured_best_alignment_deg,
+                            is_nw_high_target=is_nw_high_target,
                         )
-                    else:
-                        is_tied_but_better = (
-                            is_tied
-                            and (
-                                measured_best_j3_deg is None
-                                or candidate_j3_deg > measured_best_j3_deg
-                            )
-                        )
-                    if is_deeper or is_tied_but_better:
+                    )
+                    if should_replace:
                         measured_best_depth_m = depth_m
                         measured_best_j3_deg = candidate_j3_deg
                         measured_best_alignment_deg = candidate_alignment_deg
