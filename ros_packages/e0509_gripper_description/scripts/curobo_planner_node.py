@@ -9,7 +9,6 @@ import os
 import time
 import torch
 import numpy as np
-import json
 import yaml
 from scipy.spatial.transform import Rotation as SciR
 
@@ -34,7 +33,7 @@ except ImportError:
 from curobo.types.base import TensorDeviceType
 from curobo.types.robot import RobotConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
-from curobo.geom.types import WorldConfig, Cuboid, Sphere
+from curobo.geom.types import WorldConfig, Cuboid
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
 from gripper_client import HarvestGripperClient
@@ -47,6 +46,7 @@ from harvest_math import (
 )
 from harvest_motion_params import *  # noqa: F403 - experiment constants
 from runtime_jsonl_logger import RuntimeJsonlLogger
+from scene_obstacle_manager import SceneObstacleManager
 from tray_place_policy import TrayPlacePolicy
 from trajectory_guards import TrajectoryGuards
 
@@ -115,11 +115,12 @@ class CuroboPlanner(Node):
         self._sequence_hold_reason = None
         self._last_sequence_hold_warn_sec = 0.0
         self._marker_place_slot_idx = 0
-        self.static_cuboids = load_environment_cuboids()
-        self.dynamic_cuboids = []
-        self.neighbor_spheres: list = []
-        self._registered_neighbor_positions: list[np.ndarray] = []
-        self._scene_positions: list = []
+        self.scene_manager = SceneObstacleManager(
+            node=self,
+            runtime_log=self.runtime_log,
+            motion_gen=None,
+            static_cuboids=load_environment_cuboids(),
+        )
 
         # ── cuRobo 초기화 ──────────────────────────────────────────────────────
         self.declare_parameter("tool_model_profile", "measured_tcp_260mm")
@@ -170,6 +171,7 @@ class CuroboPlanner(Node):
         self.motion_gen = MotionGen(motion_gen_cfg)
         self.motion_gen.warmup(warmup_js_trajopt=False)
         self.motion_gen.detach_object_from_robot()
+        self.scene_manager.set_motion_gen(self.motion_gen)
         self.get_logger().info("cuRobo MotionGen warmed up!")
 
         self.declare_parameter("enable_marker_place_sequence", False)
@@ -516,6 +518,26 @@ class CuroboPlanner(Node):
         self._gripper_init_done = False
         self.create_timer(2.0, self._init_gripper_once)
 
+    @property
+    def static_cuboids(self):
+        return self.scene_manager.static_cuboids
+
+    @property
+    def dynamic_cuboids(self):
+        return self.scene_manager.dynamic_cuboids
+
+    @dynamic_cuboids.setter
+    def dynamic_cuboids(self, value):
+        self.scene_manager.dynamic_cuboids = value
+
+    @property
+    def neighbor_spheres(self):
+        return self.scene_manager.neighbor_spheres
+
+    @neighbor_spheres.setter
+    def neighbor_spheres(self, value):
+        self.scene_manager.neighbor_spheres = value
+
     def _init_gripper_once(self):
         if not self._gripper_init_done:
             self._gripper_init_done = True
@@ -546,45 +568,17 @@ class CuroboPlanner(Node):
 
     def obstacles_cb(self, msg: String):
         try:
-            data = json.loads(msg.data)
-            cuboids = []
-            for obj in data:
-                cuboids.append(Cuboid(
-                    name=obj["name"],
-                    pose=[*obj["pos"], 1, 0, 0, 0],
-                    dims=obj.get("dims", [0.05, 0.05, 0.05])
-                ))
-            self.dynamic_cuboids = cuboids
-            self.update_curobo_world("dynamic obstacles")
+            self.scene_manager.obstacles_from_json(msg.data)
         except Exception as e:
             self.get_logger().error(f"obstacles_cb error: {e}")
 
     # ── World 관리 ─────────────────────────────────────────────────────────────
 
     def update_curobo_world(self, reason="manual"):
-        cuboids = self.static_cuboids + self.dynamic_cuboids
-        self.motion_gen.update_world(WorldConfig(cuboid=cuboids, sphere=self.neighbor_spheres))
-        self.get_logger().info(
-            f"World updated ({reason}): static={len(self.static_cuboids)} "
-            f"dynamic={len(self.dynamic_cuboids)} "
-            f"neighbor_spheres={len(self.neighbor_spheres)}")
-        self.runtime_log.log(
-            "collision_world_update",
-            reason=reason,
-            cuboids=[{"name": c.name, "pose": c.pose, "dims": c.dims} for c in cuboids],
-            neighbor_spheres=[
-                {"name": s.name, "pose": s.pose, "radius": s.radius}
-                for s in self.neighbor_spheres
-            ],
-        )
+        self.scene_manager.update_curobo_world(reason)
 
     def _scene_cb(self, msg: Float64MultiArray) -> None:
-        data = msg.data
-        self._scene_positions = [
-            np.array([data[i], data[i+1], data[i+2]])
-            for i in range(0, len(data) - 2, 3)
-        ]
-        self.runtime_log.log("scene_positions_received", positions_m=self._scene_positions)
+        self.scene_manager.update_scene_positions_from_flat_array(msg.data)
 
     def _scan_status_cb(self, msg: String) -> None:
         self.runtime_log.log("scan_status", text=msg.data)
@@ -593,28 +587,10 @@ class CuroboPlanner(Node):
         self.runtime_log.log("cell_state", text=msg.data)
 
     def _register_neighbor_obstacles(self, target_pos: np.ndarray) -> None:
-        spheres = []
-        registered_positions = []
-        for i, pos in enumerate(self._scene_positions):
-            if np.linalg.norm(pos - target_pos) < 0.035:
-                continue
-            spheres.append(Sphere(
-                name=f"neighbor_{i}",
-                pose=[float(pos[0]), float(pos[1]), float(pos[2]), 1.0, 0.0, 0.0, 0.0],
-                radius=NEIGHBOR_SPHERE_RADIUS_M,
-            ))
-            registered_positions.append(np.array(pos, dtype=float))
-        self.neighbor_spheres = spheres
-        self._registered_neighbor_positions = registered_positions
-        self.update_curobo_world("neighbor obstacles registered")
-        self.get_logger().info(f"Registered {len(spheres)} neighbor sphere obstacle(s)")
+        self.scene_manager.register_neighbor_obstacles(target_pos)
 
     def _clear_neighbor_obstacles(self) -> None:
-        had_neighbors = bool(self.neighbor_spheres or self._registered_neighbor_positions)
-        self.neighbor_spheres = []
-        self._registered_neighbor_positions = []
-        if had_neighbors:
-            self.update_curobo_world("neighbor obstacles cleared")
+        self.scene_manager.clear_neighbor_obstacles()
 
     # ── 충돌 진단 ──────────────────────────────────────────────────────────────
 
