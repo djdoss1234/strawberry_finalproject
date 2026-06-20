@@ -435,6 +435,28 @@ ERROR: ABORT: 직선 진입 실패
      - `FINAL_APPROACH_SW_STYLE_TOOL_LINE TOOL +Z 180.0mm`
    - 목적: "계산상 가능한 중간 spline + 남은 직선"이 아니라, SW에서 사용자가 좋다고 본
      파지 모션 형상 자체를 재현한다.
+22. 2026-06-20 17:22 run: SW-style TOOL line도 J5≈-86deg wrist singularity에서 무동작
+   - 로그: `curobo_planner_node_20260620T172236-f1c6bf7e.jsonl`
+   - 선택 branch: 수평 `0deg`.
+   - pre-approach endpoint: `end_J=[..., J5=-86.2deg, ...]`.
+   - 결과: `FINAL_APPROACH_SW_STYLE_TOOL_LINE MoveLine reported success but joints barely moved`.
+   - 원인:
+     - 접근 방향은 원하는 수평이지만, pre 자세가 J5≈±90deg 손목 특이점 근처라
+       Doosan TOOL MoveLine이 실제 motion을 만들지 못한다.
+     - SW에서 됐던 이유는 같은 수평 접근이라도 J5가 이런 특이점 근처가 아니었기 때문으로
+       추정된다.
+   - 수정:
+     - NW high 후보는 side approach를 만들지 않는 범위에서 유지한다.
+     - `0deg` 수평 후보에 더해 TOOL Z축 roll `+180deg/-180deg` 후보를 추가한다.
+     - roll 후보는 접근 방향을 바꾸지 않고 손목 자세만 뒤집어 J5 특이점을 피하기 위한 것이다.
+     - 후보 tie-break에 pre J5 singularity guard 추가:
+       `NW_HIGH_TARGET_PRE_J5_SINGULAR_DEG = 83.0`.
+   - 기대 로그:
+     - `MEASURED_TCP_FINAL_PROBE_BEST ... J5pre=...deg ...`
+     - J5가 83deg 이상인 후보보다 낮은 J5 roll 후보가 있으면 그 후보 선택.
+   - 주의:
+     - 로그의 variant `('tool', [0,0,1], 180.0)`는 접근을 180deg 틀었다는 뜻이 아니라
+       TOOL Z축 roll만 180deg 뒤집었다는 뜻이다. approach_dir은 계속 수평이어야 한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

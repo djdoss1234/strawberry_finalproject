@@ -103,6 +103,7 @@ NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
 NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.015
 NW_HIGH_TARGET_STOP_ALIGNMENT_DEG = 5.0
+NW_HIGH_TARGET_PRE_J5_SINGULAR_DEG = 83.0
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -148,7 +149,12 @@ NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
     # NW high 실기에서 +15deg뿐 아니라 +5deg도 사용자가 명확히
     # "옆으로 들어간다"고 관찰했다. SW에서 좋았던 모션을 유지하려면
     # 계산상 건강한 tilted branch보다 수평 0deg branch를 강제해야 한다.
+    # 단, 0deg가 J5≈±90deg 손목 특이점에 걸리면 Doosan TOOL MoveLine이
+    # success/no-motion을 반환하므로, 접근 방향은 그대로 두고 TOOL Z축 roll만
+    # 180deg 뒤집은 후보를 fallback으로 둔다. 이는 side approach가 아니다.
     ("base", [1, 0, 0],   0.0),
+    ("tool", [0, 0, 1], 180.0),
+    ("tool", [0, 0, 1], -180.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1
@@ -2544,6 +2550,7 @@ class CuroboPlanner(Node):
         # elbow from a later variant can replace it.
         measured_best_j3_deg = None
         measured_best_alignment_deg = None
+        measured_best_pre_j5_abs_deg = None
         grasp_attempt = 0
         for quat_frame, axis, quat_deg in grasp_quat_variants:
             q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
@@ -2640,6 +2647,8 @@ class CuroboPlanner(Node):
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
                     candidate_alignment_deg = abs(float(quat_deg))
+                    candidate_pre_j5_abs_deg = abs(
+                        float(np.rad2deg(r_pre_for_variant[0][-1][4])))
                     is_deeper = depth_m > measured_best_depth_m + 1e-6
                     is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
                     if is_nw_high_target and is_tied:
@@ -2653,13 +2662,23 @@ class CuroboPlanner(Node):
                         best_sw_like = (
                             measured_best_alignment_deg is not None
                             and measured_best_alignment_deg <= NW_HIGH_TARGET_STOP_ALIGNMENT_DEG)
+                        candidate_avoids_wrist_singularity = (
+                            candidate_pre_j5_abs_deg < NW_HIGH_TARGET_PRE_J5_SINGULAR_DEG)
+                        best_near_wrist_singularity = (
+                            measured_best_pre_j5_abs_deg is not None
+                            and measured_best_pre_j5_abs_deg >= NW_HIGH_TARGET_PRE_J5_SINGULAR_DEG)
                         is_tied_but_better = (
                             candidate_flat_safe
                             and (
                                 not best_flat_safe
                                 or (
+                                    best_near_wrist_singularity
+                                    and candidate_avoids_wrist_singularity
+                                )
+                                or (
                                     candidate_sw_like
                                     and best_sw_like
+                                    and not best_near_wrist_singularity
                                     and measured_best_j3_deg is not None
                                     and candidate_j3_deg > measured_best_j3_deg + 1e-6
                                 )
@@ -2686,6 +2705,7 @@ class CuroboPlanner(Node):
                         measured_best_depth_m = depth_m
                         measured_best_j3_deg = candidate_j3_deg
                         measured_best_alignment_deg = candidate_alignment_deg
+                        measured_best_pre_j5_abs_deg = candidate_pre_j5_abs_deg
                         measured_best = (
                             r_pre_for_variant,
                             r_final_probe,
@@ -2699,9 +2719,10 @@ class CuroboPlanner(Node):
                         self.get_logger().info(
                             "MEASURED_TCP_FINAL_PROBE_BEST "
                             f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
+                            f"J5pre={candidate_pre_j5_abs_deg:.1f}deg "
                             f"align={candidate_alignment_deg:.1f}deg "
                             f"variant={(quat_frame, axis, quat_deg)}"
-                            + (" (tie-break: SW-like healthy branch)" if is_tied_but_better else ""))
+                            + (" (tie-break: wrist-safe SW-style branch)" if is_tied_but_better else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
                 if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
@@ -2902,9 +2923,9 @@ class CuroboPlanner(Node):
             requested_final_approach_distance = final_approach_distance
             precomputed_final_attempted = False
             used_variant_tilt_deg_for_approach = (
-                abs(float(used_grasp_variant[2]))
-                if used_grasp_variant is not None and len(used_grasp_variant) >= 3
-                else 0.0
+                abs(float(np.degrees(np.arcsin(np.clip(
+                    used_approach_dir[2], -1.0, 1.0)))))
+                if used_approach_dir is not None else 0.0
             )
             force_sw_style_tool_line = (
                 self._measured_tcp_model
