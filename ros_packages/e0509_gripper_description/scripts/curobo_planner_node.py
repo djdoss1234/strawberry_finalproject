@@ -145,15 +145,10 @@ MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base", [1, 0, 0], -10.0),
 ]
 NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # NW high에서 +15deg는 J3/IK가 건강해 보여도 실제 접근선이 옆으로
-    # 빗겨가며 SW와 다른 모션을 만든다. SW에서 검증된 수평 접근 감각을
-    # 우선하므로 0deg/±5deg를 먼저 보고 +15deg는 마지막 fallback으로 둔다.
+    # NW high 실기에서 +15deg뿐 아니라 +5deg도 사용자가 명확히
+    # "옆으로 들어간다"고 관찰했다. SW에서 좋았던 모션을 유지하려면
+    # 계산상 건강한 tilted branch보다 수평 0deg branch를 강제해야 한다.
     ("base", [1, 0, 0],   0.0),
-    ("base", [1, 0, 0],  +5.0),
-    ("base", [1, 0, 0],  -5.0),
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0], -10.0),
-    ("base", [1, 0, 0], +15.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1

@@ -397,6 +397,24 @@ ERROR: ABORT: 직선 진입 실패
    - 기대 로그:
      - `MEASURED_TCP_FINAL_PROBE_BEST ... align=5.0deg ... (tie-break: SW-like healthy branch)`
    - 목적: +15deg 옆 접근을 피하면서도, 0deg의 긴 TOOL finish 무동작 실패를 줄인다.
+20. 2026-06-20 17:13 run: +5deg도 옆 접근으로 관찰됨 → NW high는 0deg 강제
+   - 로그: `curobo_planner_node_20260620T171347-306c7607.jsonl`
+   - 선택 branch: `variant=('base', [1,0,0], +5.0)`, cuRobo 70mm + TOOL finish 110mm.
+   - 결과: `GRASP_EMPTY`.
+   - 사용자 관찰: +5deg도 여전히 옆으로 들어간다.
+   - 결론:
+     - "J3가 건강한 SW-like branch"라는 절충안도 실제 파지 모션 관점에서는 실패.
+     - NW high에서는 계산 성공보다 SW에서 검증된 수평 접근 형상이 우선이다.
+   - 수정:
+     - `NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS = [(0deg)]`
+     - +5/+10/+15 tilted branch는 NW high 자동 실행 후보에서 제거.
+   - 기대 로그:
+     - `NW_HIGH_TARGET_VARIANT_ORDER: +0deg`
+     - `GRASP_POSE_REACHED ... variant=('base', [1, 0, 0], 0.0)`
+   - 주의:
+     - 0deg에서 직선진입이 실패하면 이제 옆 접근으로 억지 fallback하지 않는다.
+     - 그 경우 다음 문제는 orientation sampling이 아니라 target Y/Z, TCP, 또는 scan pose 기반
+       접근 가능성 자체로 분리해서 봐야 한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
