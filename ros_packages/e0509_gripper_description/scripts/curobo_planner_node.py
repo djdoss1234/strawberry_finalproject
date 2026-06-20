@@ -2552,6 +2552,15 @@ class CuroboPlanner(Node):
         used_grasp_quat = None
         used_pre_ee_pos = None
         used_grasp_ee_pos = None
+        # 2026-06-20: FINAL_APPROACH_TOOL_FINISH가 틸트 variant에서 horiz_dir로
+        # 꺾여 들어가면 전진 경로가 더 이상 단일 직선(used_approach_dir)이 아니다.
+        # retreat 쪽이 그 꺾인 다리를 모르면 전체 거리를 한 방향으로만 되돌리려
+        # 하면서 실제로 온 길을 못 따라가 관절을 무리하게 꺾는다(J2 한도 초과
+        # 실기로 확인). 이 두 변수로 꺾인 다리만 따로 기록해서 retreat에서
+        # 분리해 되돌린다. 틸트가 없으면(horiz_dir==used_approach_dir) 0/None
+        # 그대로라 기존 단일 직선 retreat과 동일하게 동작한다(SW no-op).
+        tool_finish_executed_m = 0.0
+        tool_finish_executed_dir = None
         measured_best = None
         measured_best_depth_m = -1.0
         # 2026-06-18: depth probing picks the deepest reachable standoff, but
@@ -2955,6 +2964,9 @@ class CuroboPlanner(Node):
                                 acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
                             )
                             tool_finish_delta = remaining_tool_line_m * horiz_dir
+                            if tool_finish_ok:
+                                tool_finish_executed_m = remaining_tool_line_m
+                                tool_finish_executed_dir = horiz_dir
                         else:
                             tool_finish_ok = self.execute_tool_z_line(
                                 remaining_tool_line_m,
@@ -2978,7 +2990,7 @@ class CuroboPlanner(Node):
                             self.runtime_log.log(
                                 "final_approach_tool_finish_success",
                                 executed_total_m=final_approach_distance,
-                                horizontal_only=is_nw_high_target,
+                                horizontal_only=tool_finish_executed_dir is not None,
                             )
                 else:
                     self.get_logger().warn(
@@ -3083,6 +3095,9 @@ class CuroboPlanner(Node):
                                         acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
                                     )
                                     tool_finish_delta = remaining_tool_line_m * horiz_dir
+                                    if tool_finish_ok:
+                                        tool_finish_executed_m = remaining_tool_line_m
+                                        tool_finish_executed_dir = horiz_dir
                                 else:
                                     tool_finish_ok = self.execute_tool_z_line(
                                         remaining_tool_line_m,
@@ -3106,7 +3121,7 @@ class CuroboPlanner(Node):
                                 self.runtime_log.log(
                                     "final_approach_tool_finish_success",
                                     executed_total_m=final_approach_distance,
-                                    horizontal_only=is_nw_high_target,
+                                    horizontal_only=tool_finish_executed_dir is not None,
                                 )
                             break
                 if not fallback_ok:
@@ -3292,14 +3307,30 @@ class CuroboPlanner(Node):
                 result_code="GRIPPER_CLOSE_FAILED",
                 action="straight_retreat_without_detach",
             )
-            retreat_distance_m = final_approach_distance + extra_advance_m
+            retreat_distance_m = (
+                final_approach_distance + extra_advance_m - tool_finish_executed_m)
             if self._measured_tcp_model:
-                retreat_ok = self.execute_base_relative_line(
-                    -retreat_distance_m * used_approach_dir,
-                    "CLOSE_FAIL_RETREAT_BASE",
-                    vel_mm_s=RETREAT_VEL_MM_S,
-                    acc_mm_s2=RETREAT_ACC_MM_S2,
-                )
+                # 2026-06-20: tool_finish 다리가 틸트가 아닌 horiz_dir로 꺾여
+                # 들어갔으면 그 구간은 따로 되돌린다 — 안 그러면 retreat 전체를
+                # used_approach_dir(틸트)로만 되돌리면서 실제로 안 내려간
+                # 구간까지 Z를 더 내려버려 팔이 과도하게 펴진다(J2 한도 초과
+                # 실기로 확인). 틸트가 없으면 tool_finish_executed_m=0이라
+                # 기존과 동일하게 한 번에 되돌린다.
+                retreat_ok = True
+                if tool_finish_executed_m > 0.0 and tool_finish_executed_dir is not None:
+                    retreat_ok = self.execute_base_relative_line(
+                        -tool_finish_executed_m * tool_finish_executed_dir,
+                        "CLOSE_FAIL_RETREAT_TOOL_FINISH_UNDO",
+                        vel_mm_s=RETREAT_VEL_MM_S,
+                        acc_mm_s2=RETREAT_ACC_MM_S2,
+                    )
+                if retreat_ok and retreat_distance_m > 0.0:
+                    retreat_ok = self.execute_base_relative_line(
+                        -retreat_distance_m * used_approach_dir,
+                        "CLOSE_FAIL_RETREAT_BASE",
+                        vel_mm_s=RETREAT_VEL_MM_S,
+                        acc_mm_s2=RETREAT_ACC_MM_S2,
+                    )
             else:
                 retreat_ok = self.execute_tool_z_line(
                     -retreat_distance_m,
@@ -3339,23 +3370,38 @@ class CuroboPlanner(Node):
         # 역진하고 이후 joint-space 복귀를 사용한다.
         reverse_distance_m = extra_advance_m
         if self._measured_tcp_model:
-            reverse_distance_m += final_approach_distance
+            reverse_distance_m += final_approach_distance - tool_finish_executed_m
         reverse_ok = True
-        if reverse_distance_m > 0.0:
-            if self._measured_tcp_model:
+        if self._measured_tcp_model:
+            # 2026-06-20: 위 FINAL_APPROACH_TOOL_FINISH가 horiz_dir로 꺾여
+            # 들어간 구간이 있으면 그 다리를 먼저 따로 되돌린 다음, 남은
+            # 직선(curobo 진입 + extra_advance, 둘 다 used_approach_dir 방향)을
+            # 되돌린다. 한 번에 used_approach_dir로만 되돌리면 horiz 구간의
+            # 거리만큼 실제로 안 내려간 Z까지 같이 내려가버려 팔이 과신전되고
+            # J2가 한도(±95°)를 넘는 실기 사고가 있었음(-97.55°/-97.7° 확인).
+            # 틸트가 없으면 tool_finish_executed_m=0이라 기존과 동일하게
+            # 한 번의 직선으로 되돌아간다(SW no-op).
+            if tool_finish_executed_m > 0.0 and tool_finish_executed_dir is not None:
+                reverse_ok = self.execute_base_relative_line(
+                    -tool_finish_executed_m * tool_finish_executed_dir,
+                    "RETREAT_TOOL_FINISH_UNDO",
+                    vel_mm_s=RETREAT_VEL_MM_S,
+                    acc_mm_s2=RETREAT_ACC_MM_S2,
+                )
+            if reverse_ok and reverse_distance_m > 0.0:
                 reverse_ok = self.execute_base_relative_line(
                     -reverse_distance_m * used_approach_dir,
                     "RETREAT_BASE",
                     vel_mm_s=RETREAT_VEL_MM_S,
                     acc_mm_s2=RETREAT_ACC_MM_S2,
                 )
-            else:
-                reverse_ok = self.execute_tool_z_line(
-                    -reverse_distance_m,
-                    motion_label="RETREAT",
-                    vel_mm_s=RETREAT_VEL_MM_S,
-                    acc_mm_s2=RETREAT_ACC_MM_S2,
-                )
+        elif reverse_distance_m > 0.0:
+            reverse_ok = self.execute_tool_z_line(
+                -reverse_distance_m,
+                motion_label="RETREAT",
+                vel_mm_s=RETREAT_VEL_MM_S,
+                acc_mm_s2=RETREAT_ACC_MM_S2,
+            )
         if not reverse_ok:
             self.get_logger().error(
                 "ABORT: straight reverse retreat failed — holding current pose")
