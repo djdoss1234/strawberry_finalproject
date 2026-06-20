@@ -52,6 +52,11 @@ from harvest_math import (
     quat_rotate_vec,
 )
 from harvest_motion_params import *  # noqa: F403 - experiment constants
+from harvest_result_policy import (
+    allow_place_after_grasp,
+    pick_sequence_result_code,
+    place_gate_block_reason,
+)
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from scene_obstacle_manager import SceneObstacleManager
 from tray_place_policy import TrayPlacePolicy
@@ -2407,19 +2412,12 @@ class CuroboPlanner(Node):
 
         # Place 게이트 기본값은 fail-closed다. 센서 판독이 불가능한 실험에서만
         # allow_unverified_grasp_place를 명시적으로 켜고 사람 관찰 라벨을 남긴다.
-        _allow_place = (
-            grasp_result == "GRASP_CONTACT_DETECTED"
-            or (
-                grasp_result == "GRASP_UNVERIFIED"
-                and self._allow_unverified_grasp_place
-            )
+        _allow_place = allow_place_after_grasp(
+            grasp_result,
+            self._allow_unverified_grasp_place,
         )
         if not _allow_place:
-            place_block_reason = (
-                "GRASP_EMPTY: jaw fully closed, nothing grabbed"
-                if grasp_result == "GRASP_EMPTY"
-                else "GRASP_UNVERIFIED: enable explicit override only after visual check"
-            )
+            place_block_reason = place_gate_block_reason(grasp_result)
             self.get_logger().warn(
                 f"PLACE_GATE_BLOCKED ({grasp_result}): {place_block_reason}")
             self.runtime_log.log(
@@ -2511,11 +2509,7 @@ class CuroboPlanner(Node):
         self._clear_neighbor_obstacles()
         self._reset_gripper()  # 다음 파지를 위해 approach 위치(600)로 복귀
         self.pick_complete_pub.publish(Empty())
-        sequence_result_code = (
-            "DETACH_SUCCESS_UNVERIFIED"
-            if grasp_result == "GRASP_CONTACT_DETECTED"
-            else grasp_result   # GRASP_EMPTY or GRASP_UNVERIFIED
-        )
+        sequence_result_code = pick_sequence_result_code(grasp_result)
         self.runtime_log.log(
             "pick_sequence_complete",
             result_code=sequence_result_code,
