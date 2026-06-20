@@ -102,6 +102,7 @@ NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.000
 NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.000
 NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010
 NW_HIGH_TARGET_CRANE_Z_OFFSET_M = 0.015
+NW_HIGH_TARGET_STOP_ALIGNMENT_DEG = 5.0
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -144,15 +145,15 @@ MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS: list = [
     ("base", [1, 0, 0], -10.0),
 ]
 NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS: list = [
-    # NW high 실기에서 +15deg만 90mm cuRobo final depth를 안정적으로
-    # 만들었다. 먼저 시도해 반복 IK_FAIL을 줄이고, tilted open descent는
-    # 별도 guard로 제한한다.
-    ("base", [1, 0, 0], +15.0),
+    # NW high에서 +15deg는 J3/IK가 건강해 보여도 실제 접근선이 옆으로
+    # 빗겨가며 SW와 다른 모션을 만든다. SW에서 검증된 수평 접근 감각을
+    # 우선하므로 0deg/±5deg를 먼저 보고 +15deg는 마지막 fallback으로 둔다.
     ("base", [1, 0, 0],   0.0),
     ("base", [1, 0, 0],  +5.0),
     ("base", [1, 0, 0],  -5.0),
     ("base", [1, 0, 0], +10.0),
     ("base", [1, 0, 0], -10.0),
+    ("base", [1, 0, 0], +15.0),
 ]
 
 CARTESIAN_PLAN_MAX_ATTEMPTS = 1
@@ -2710,10 +2711,23 @@ class CuroboPlanner(Node):
                         NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
                         if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
                     )
+                    if (
+                        is_nw_high_target
+                        and measured_best_alignment_deg is not None
+                        and measured_best_alignment_deg > NW_HIGH_TARGET_STOP_ALIGNMENT_DEG
+                    ):
+                        self.get_logger().info(
+                            "MEASURED_TCP_VARIANT_SEARCH_CONTINUES "
+                            f"J3={measured_best_j3_deg:.1f}deg is healthy but "
+                            f"align={measured_best_alignment_deg:.1f}deg > "
+                            f"{NW_HIGH_TARGET_STOP_ALIGNMENT_DEG:.1f}deg; "
+                            "keep searching for SW-like flatter approach")
+                        continue
                     self.get_logger().info(
                         "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
                         f"J3={measured_best_j3_deg:.1f}deg >= "
                         f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
+                        f"align={measured_best_alignment_deg:.1f}deg; "
                         "skipping remaining grasp_quat_variants")
                     break
                 continue

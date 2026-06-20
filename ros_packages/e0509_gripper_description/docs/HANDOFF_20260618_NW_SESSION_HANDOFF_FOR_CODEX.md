@@ -322,20 +322,22 @@ ERROR: ABORT: 직선 진입 실패
    - 로그: `curobo_planner_node_20260620T160401-7a81cb4e.jsonl`
    - 직선진입은 성공했고, `close_extra_down`은 의도대로 skip되어 open descent가 30mm로 줄었다.
    - 하지만 결과는 여전히 `GRASP_UNVERIFIED`, 사용자는 "너무 얕다"고 판단.
-   - 실패 로그가 많은 이유:
-     - NW high에서 +15deg가 사실상 90mm depth를 만드는 유일한 branch인데, 기존 순서가
-       `0,+5,-5,+10,-10,+15`라서 실패 branch를 다 지나간 뒤에야 성공 branch를 찾았다.
+   - 당시 실패 로그가 많은 이유로 +15deg를 늦게 시도하는 점을 의심했지만, 이후 실기에서
+     +15deg 우선 전략은 접근선을 옆으로 빗겨가게 만드는 부작용이 더 크다고 확인됐다.
    - 얕음의 원인 가설:
      - `Detection Y≈800mm`를 `wall_y=672mm`로 clamp하면서 target depth가 지나치게 앞쪽으로
        고정된다.
      - final move 끝에서 더 밀면 MoveLine 한계 또는 side-drift가 생기므로, motion 끝단 보정이
        아니라 target plane 정의를 제한적으로 보정한다.
-   - 수정:
+   - 수정 당시 시도:
      - NW high variant order를 `+15deg -> 0deg -> +5deg -> -5deg -> +10deg -> -10deg`로 변경.
-       +15deg를 먼저 시도해 반복 IK_FAIL 시간을 줄인다.
+       +15deg를 먼저 시도해 반복 IK_FAIL 시간을 줄이려 했다.
      - `NW_HIGH_TARGET_Y_PLANE_RELAX_M = 0.010` 추가.
        wall clamp된 NW high target의 Y를 계획 전에 10mm만 안쪽으로 이동한다.
-   - 기대 로그:
+   - 이후 폐기/수정:
+     - +15deg 우선은 계산은 빨라져도 SW와 다른 옆 접근을 만들었으므로 다시 수평 branch
+       우선으로 되돌린다.
+   - 당시 기대 로그:
      - `NW_HIGH_TARGET_Y_PLANE_RELAX: clamped target Y 672mm -> 682mm`
      - `NW_HIGH_TARGET_VARIANT_ORDER: +15deg, +0deg, +5deg, -5deg, +10deg, -10deg`
    - 주의: 이것도 장기적으로는 calibration/perception target 정의로 해결해야 한다. 다만
@@ -359,6 +361,25 @@ ERROR: ABORT: 직선 진입 실패
    - 목적: 깊이는 유지하되, 접근점과 close 지점을 함께 KP1에 가깝게 내려 주변 줄기
      동시 파지와 fruit push를 줄인다. 단순 후처리 오프셋 떡칠이 아니라 접근 기준점을
      바꾸는 수정이다.
+18. 2026-06-20 16:30 run: +15deg branch가 SW와 다른 옆 접근을 만듦
+   - 로그: `curobo_planner_node_20260620T163011-f9db19b6.jsonl`
+   - 선택 branch: `variant=('base', [1,0,0], +15.0)`, cuRobo 70mm + TOOL finish 110mm.
+   - 사용자 관찰: 접근 자체가 옆으로 들어가고, KP1 부근이 아니라 한참 위에서 close한다.
+   - 원인:
+     - 코드가 `+15deg`를 첫 후보로 두고 있었다.
+     - +15deg에서 J3가 64.3deg로 건강하다고 판단되어 `MEASURED_TCP_VARIANT_SEARCH_STOPPED`
+       로 나머지 `0deg/+5deg/-5deg` 후보를 보지 않았다.
+     - 결과적으로 "SW처럼 수평 접근"이 아니라 "계산이 잘 되는 tilted branch"가 선택됐다.
+   - 수정:
+     - NW high variant order를 `0deg -> +5deg -> -5deg -> +10deg -> -10deg -> +15deg`로 복구.
+     - `NW_HIGH_TARGET_STOP_ALIGNMENT_DEG = 5.0` 추가.
+     - NW high에서는 J3가 좋아도 선택 branch가 5deg보다 많이 기울어져 있으면 early-stop하지
+       않고 더 수평에 가까운 branch를 계속 찾는다.
+   - 기대 로그:
+     - `NW_HIGH_TARGET_VARIANT_ORDER: +0deg, +5deg, -5deg, +10deg, -10deg, +15deg`
+     - tilted branch에서만 성공한 경우:
+       `MEASURED_TCP_VARIANT_SEARCH_CONTINUES ... keep searching for SW-like flatter approach`
+   - 목적: 실패 로그를 조금 줄이는 것보다 SW에서 검증된 파지 모션 형상을 우선한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
