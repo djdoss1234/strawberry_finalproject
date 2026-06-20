@@ -34,6 +34,7 @@ from curobo.types.base import TensorDeviceType
 from curobo.types.robot import RobotConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 from curobo.geom.types import WorldConfig, Cuboid
+from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import build_straight_retreat_steps
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
@@ -194,6 +195,7 @@ class CuroboPlanner(Node):
         self.motion_gen.warmup(warmup_js_trajopt=False)
         self.motion_gen.detach_object_from_robot()
         self.scene_manager.set_motion_gen(self.motion_gen)
+        self.kinematics_adapter = CuroboKinematicsAdapter(self.motion_gen)
         self.get_logger().info("cuRobo MotionGen warmed up!")
 
         self.declare_parameter("enable_marker_place_sequence", False)
@@ -824,30 +826,12 @@ class CuroboPlanner(Node):
 
     def _curobo_fk_ee_pose(self, joints_rad):
         """cuRobo robot model 기준 현재 ee_link pose를 반환한다."""
-        q = torch.tensor(
-            [joints_rad], device="cuda:0", dtype=torch.float32)
-        state = self.motion_gen.kinematics.get_state(q)
-        return (
-            state.ee_position[0].detach().cpu().numpy().tolist(),
-            state.ee_quaternion[0].detach().cpu().numpy().tolist(),
-        )
+        return self.kinematics_adapter.ee_pose(joints_rad)
 
     def _trajectory_line_deviation_mm(self, traj_rad, start_pos_m, end_pos_m):
         """FK 궤적의 목표 Cartesian 선분 대비 최대 측방 편차를 계산한다."""
-        q = torch.tensor(traj_rad, device="cuda:0", dtype=torch.float32)
-        state = self.motion_gen.kinematics.get_state(q)
-        points = state.ee_position.detach().cpu().numpy()
-        start = np.array(start_pos_m, dtype=float)
-        end = np.array(end_pos_m, dtype=float)
-        line = end - start
-        line_norm_sq = float(np.dot(line, line))
-        if line_norm_sq < 1e-12:
-            return float("inf"), -1
-        fractions = np.clip(((points - start) @ line) / line_norm_sq, 0.0, 1.0)
-        projected = start + fractions[:, None] * line
-        deviations_mm = np.linalg.norm(points - projected, axis=1) * 1000.0
-        max_index = int(np.argmax(deviations_mm))
-        return float(deviations_mm[max_index]), max_index
+        return self.kinematics_adapter.trajectory_line_deviation_mm(
+            traj_rad, start_pos_m, end_pos_m)
 
     def _nearest_equivalent_joints(self, base_joints_deg):
         """J4/J6를 현재 위치에서 가장 가까운 360° equivalent로 조정."""

@@ -28,6 +28,7 @@ RealSense RGB-D
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
 | `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
+| `scripts/curobo_kinematics_adapter.py` | cuRobo FK ee pose 조회, trajectory Cartesian line deviation 계산 | 신규 분리 모듈. FK/diagnostic 계산을 planner 본문에서 분리 |
 | `scripts/scene_obstacle_manager.py` | dynamic obstacle JSON, detection scene positions, neighbor sphere 등록/해제, cuRobo world update logging | 신규 분리 모듈. collision world 상태 관리 |
 | `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보와 measured-TCP tie-break 정책 | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
 | `scripts/harvest_result_policy.py` | grasp result 기반 place gate, block reason, pick sequence result code 정책 | 신규 분리 모듈. KPI/result taxonomy 변경 시 planner 본문 수정 최소화 |
@@ -185,6 +186,7 @@ RealSense RGB-D
 - `tray_place_policy.py` 분리: marker tray target 로딩, taught grid pitch 보정, slot offset 계산
 - `trajectory_guards.py` 분리: operational limit, J4/J6 equivalent normalization, spline jump/swing reject
 - `curobo_planning_adapter.py` 분리: Cartesian/joint-space MotionGen plan 호출, plan logging, collision diagnostic
+- `curobo_kinematics_adapter.py` 분리: FK ee pose와 trajectory line deviation diagnostic 계산
 - `scene_obstacle_manager.py` 분리: dynamic cuboid, neighbor sphere, scene position, world update logging
 - `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
 - `harvest_result_policy.py` 분리: grasp result에서 place gate와 sequence result code를 결정하는 정책

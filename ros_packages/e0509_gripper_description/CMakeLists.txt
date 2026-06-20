@@ -61,6 +61,7 @@ install(PROGRAMS
   scripts/robot_slider_control.py
   scripts/joint_jog_control.py
   scripts/approach_retreat_policy.py
+  scripts/curobo_kinematics_adapter.py
   scripts/curobo_planner_node.py
   scripts/curobo_planning_adapter.py
   scripts/doosan_motion_client.py
