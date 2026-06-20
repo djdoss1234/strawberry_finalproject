@@ -2832,12 +2832,30 @@ class CuroboPlanner(Node):
                     if r_final_probe is None:
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
+                    best_is_published_roll = (
+                        measured_best is not None
+                        and measured_best[3][0] == "published_roll"
+                    )
+                    candidate_is_published_roll = quat_frame == "published_roll"
                     candidate_alignment_deg = (
-                        0.0 if quat_frame == "published_roll" else abs(float(quat_deg))
+                        0.0 if candidate_is_published_roll else abs(float(quat_deg))
                     )
                     is_deeper = depth_m > measured_best_depth_m + 1e-6
                     is_tied = abs(depth_m - measured_best_depth_m) <= 1e-6
-                    if is_nw_high_target and is_tied:
+                    if (
+                        best_is_published_roll
+                        and not candidate_is_published_roll
+                        and measured_best_j3_deg is not None
+                        and measured_best_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
+                    ):
+                        # If the per-target stem-aligned candidate is already
+                        # reachable with a non-singular elbow, do not let the
+                        # generic +15deg library steal the same-depth solution
+                        # just because J3 is a little healthier. That was the
+                        # observed root of "bent stems still get side approach".
+                        is_tied_but_better = False
+                        is_deeper = False
+                    elif is_nw_high_target and is_tied:
                         candidate_flat_safe = (
                             candidate_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG)
                         best_flat_safe = (
@@ -3140,7 +3158,10 @@ class CuroboPlanner(Node):
                         # 아니라 실제 선택된 approach_dir의 Z 성분으로 분기한다.
                         # 틸트가 0이면 horiz_dir == used_approach_dir이라 SW처럼
                         # 평평한 접근은 동작이 전혀 안 바뀐다.
-                        if abs(float(used_approach_dir[2])) > 1e-3:
+                        if (
+                            used_grasp_variant is not None
+                            and used_grasp_variant[0] == "published_roll"
+                        ) or abs(float(used_approach_dir[2])) > 1e-3:
                             horiz_dir = np.array(used_approach_dir, dtype=float)
                             horiz_dir[2] = 0.0
                             horiz_norm = float(np.linalg.norm(horiz_dir))
@@ -3148,6 +3169,14 @@ class CuroboPlanner(Node):
                                 horiz_dir = horiz_dir / horiz_norm
                             else:
                                 horiz_dir = np.array(used_approach_dir, dtype=float)
+                            if (
+                                used_grasp_variant is not None
+                                and used_grasp_variant[0] == "published_roll"
+                            ):
+                                self.get_logger().warn(
+                                    "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
+                                    "using BASE relative line; TOOL +Z returned "
+                                    "success/no-motion in this branch")
                             tool_finish_ok = self.execute_base_relative_line(
                                 remaining_tool_line_m * horiz_dir,
                                 "FINAL_APPROACH_TOOL_FINISH",
@@ -3271,7 +3300,10 @@ class CuroboPlanner(Node):
                                 # see horizontal-only rationale at the other
                                 # FINAL_APPROACH_TOOL_FINISH call site above —
                                 # gated on actual tilt, not target height.
-                                if abs(float(used_approach_dir[2])) > 1e-3:
+                                if (
+                                    used_grasp_variant is not None
+                                    and used_grasp_variant[0] == "published_roll"
+                                ) or abs(float(used_approach_dir[2])) > 1e-3:
                                     horiz_dir = np.array(used_approach_dir, dtype=float)
                                     horiz_dir[2] = 0.0
                                     horiz_norm = float(np.linalg.norm(horiz_dir))
@@ -3279,6 +3311,14 @@ class CuroboPlanner(Node):
                                         horiz_dir = horiz_dir / horiz_norm
                                     else:
                                         horiz_dir = np.array(used_approach_dir, dtype=float)
+                                    if (
+                                        used_grasp_variant is not None
+                                        and used_grasp_variant[0] == "published_roll"
+                                    ):
+                                        self.get_logger().warn(
+                                            "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
+                                            "using BASE relative line; TOOL +Z returned "
+                                            "success/no-motion in this branch")
                                     tool_finish_ok = self.execute_base_relative_line(
                                         remaining_tool_line_m * horiz_dir,
                                         "FINAL_APPROACH_TOOL_FINISH",
