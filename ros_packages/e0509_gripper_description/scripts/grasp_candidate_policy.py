@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Grasp candidate policy helpers for the harvest planner."""
 
+from dataclasses import dataclass
+
 from harvest_motion_params import (
     GRASP_QUAT_RETRY_VARIANTS,
     GRASP_RETRY_OFFSETS,
@@ -12,6 +14,40 @@ from harvest_motion_params import (
     NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG,
     NW_HIGH_TARGET_PROBE_DEPTHS_M,
 )
+
+
+@dataclass
+class GraspSearchResult:
+    """Selected grasp plan and metadata from the grasp probing loop."""
+
+    ret_pre: object = None
+    ret_grasp: object = None
+    grasp_offset_m: float = None
+    grasp_variant: object = None
+    approach_dir: object = None
+    grasp_quat: object = None
+    pre_ee_pos: object = None
+    grasp_ee_pos: object = None
+    attempt_count: int = 0
+    measured_best_depth_m: float = -1.0
+    measured_best_j3_deg: float = None
+    measured_best_alignment_deg: float = None
+
+    @property
+    def found(self) -> bool:
+        return self.ret_pre is not None
+
+    def apply_measured_best(self, measured_best):
+        (
+            self.ret_pre,
+            self.ret_grasp,
+            self.grasp_offset_m,
+            self.grasp_variant,
+            self.approach_dir,
+            self.grasp_quat,
+            self.pre_ee_pos,
+            self.grasp_ee_pos,
+        ) = measured_best
 
 
 def grasp_offsets_for_target(straw, measured_tcp_model: bool):

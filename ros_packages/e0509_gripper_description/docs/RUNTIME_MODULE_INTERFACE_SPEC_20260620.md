@@ -30,7 +30,7 @@ RealSense RGB-D
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
 | `scripts/curobo_kinematics_adapter.py` | cuRobo FK ee pose 조회, trajectory Cartesian line deviation 계산 | 신규 분리 모듈. FK/diagnostic 계산을 planner 본문에서 분리 |
 | `scripts/scene_obstacle_manager.py` | dynamic obstacle JSON, detection scene positions, neighbor sphere 등록/해제, cuRobo world update logging | 신규 분리 모듈. collision world 상태 관리 |
-| `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보와 measured-TCP tie-break 정책 | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
+| `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보, measured-TCP tie-break, `GraspSearchResult` | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
 | `scripts/harvest_result_policy.py` | grasp result 기반 place gate, block reason, pick sequence result code 정책 | 신규 분리 모듈. KPI/result taxonomy 변경 시 planner 본문 수정 최소화 |
 | `scripts/open_stem_descent_policy.py` | 열린 그리퍼 상태에서 KP1까지 내려가는 BASE -Z 거리 계산 | 신규 분리 모듈. NW/SW 파지 높이 조정 로직을 독립 계산식으로 분리 |
 | `scripts/pick_target_policy.py` | pick PoseStamped 위치에서 raw/grasp target, wall-Y clamp, NW-high 판정, x/z guard 계산 | 신규 분리 모듈. target preparation/guard 정책 분리 |
@@ -192,6 +192,7 @@ RealSense RGB-D
 - `curobo_kinematics_adapter.py` 분리: FK ee pose와 trajectory line deviation diagnostic 계산
 - `scene_obstacle_manager.py` 분리: dynamic cuboid, neighbor sphere, scene position, world update logging
 - `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
+- `grasp_candidate_policy.py` 확장: 다음 `grasp_search_executor.py` 분리를 위한 `GraspSearchResult` 컨테이너 추가
 - `harvest_result_policy.py` 분리: grasp result에서 place gate와 sequence result code를 결정하는 정책
 - `open_stem_descent_policy.py` 분리: reached TCP Z와 KP1 Z 차이 기반 open-stem descent 계산
 - `pick_target_policy.py` 분리: wall-Y clamp, bias 적용, NW high target, x/z guard 계산

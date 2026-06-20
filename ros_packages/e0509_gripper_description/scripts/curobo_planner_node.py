@@ -39,6 +39,7 @@ from approach_retreat_policy import build_straight_retreat_steps
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
 from grasp_candidate_policy import (
+    GraspSearchResult,
     grasp_offsets_for_target,
     grasp_quat_variants_for_target,
     measured_tcp_probe_depths,
@@ -1447,14 +1448,7 @@ class CuroboPlanner(Node):
                 "NW_HIGH_TARGET_VARIANT_ORDER: "
                 + ", ".join(variant_label(v) for v in grasp_quat_variants)
                 + " (prefer flatter branch over +15deg side-drift)")
-        ret_pre   = None
-        ret_grasp = None
-        used_grasp_offset = None
-        used_grasp_variant = None
-        used_approach_dir = None
-        used_grasp_quat = None
-        used_pre_ee_pos = None
-        used_grasp_ee_pos = None
+        grasp_search = GraspSearchResult()
         # 2026-06-20: FINAL_APPROACH_TOOL_FINISH가 틸트 variant에서 horiz_dir로
         # 꺾여 들어가면 전진 경로가 더 이상 단일 직선(used_approach_dir)이 아니다.
         # retreat 쪽이 그 꺾인 다리를 모르면 전체 거리를 한 방향으로만 되돌리려
@@ -1465,7 +1459,6 @@ class CuroboPlanner(Node):
         tool_finish_executed_m = 0.0
         tool_finish_executed_dir = None
         measured_best = None
-        measured_best_depth_m = -1.0
         # 2026-06-18: depth probing picks the deepest reachable standoff, but
         # multiple grasp_quat_variants often reach the IDENTICAL depth with
         # wildly different elbow health (J3 from ~0deg/near-singular up to
@@ -1475,9 +1468,6 @@ class CuroboPlanner(Node):
         # FIRST variant tried on a tie, which was consistently the worst one.
         # Track J3 health as a tiebreaker so an equally-deep but healthier
         # elbow from a later variant can replace it.
-        measured_best_j3_deg = None
-        measured_best_alignment_deg = None
-        grasp_attempt = 0
         for quat_frame, axis, quat_deg in grasp_quat_variants:
             if quat_frame == "published_roll":
                 q_retry = axis
@@ -1499,7 +1489,7 @@ class CuroboPlanner(Node):
                 self.current_joints, ee_pre.tolist(), q_retry, num_ik_seeds=24
             )
             if r_pre_for_variant is None:
-                grasp_attempt += len(grasp_retry_offsets)
+                grasp_search.attempt_count += len(grasp_retry_offsets)
                 continue
             pre_joints = r_pre_for_variant[0][-1].tolist()
 
@@ -1513,17 +1503,17 @@ class CuroboPlanner(Node):
                 probe_depths, probe_pruned = measured_tcp_probe_depths(
                     requested_probe_depth_m,
                     is_nw_high_target,
-                    measured_best_depth_m,
+                    grasp_search.measured_best_depth_m,
                 )
                 if probe_pruned:
                     self.get_logger().info(
                         "MEASURED_TCP_PROBE_PRUNED: existing best depth="
-                        f"{measured_best_depth_m*1000:.0f}mm; "
+                        f"{grasp_search.measured_best_depth_m*1000:.0f}mm; "
                         f"next depths={[round(d*1000) for d in probe_depths]}mm")
-                elif measured_best_depth_m > 0.0:
+                elif grasp_search.measured_best_depth_m > 0.0:
                     self.get_logger().info(
                         "MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth="
-                        f"{measured_best_depth_m*1000:.0f}mm < "
+                        f"{grasp_search.measured_best_depth_m*1000:.0f}mm < "
                         f"{MEASURED_TCP_MIN_PRUNE_DEPTH_M*1000:.0f}mm minimum; "
                         "later variants may still reach the proven 90mm TOOL finish branch")
                 for depth_m in probe_depths:
@@ -1537,7 +1527,7 @@ class CuroboPlanner(Node):
                         timeout_sec=1.5,
                         max_joint_delta_deg=90.0,
                     )
-                    grasp_attempt += 1
+                    grasp_search.attempt_count += 1
                     if r_final_probe is None:
                         continue
                     candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
@@ -1548,16 +1538,16 @@ class CuroboPlanner(Node):
                             quat_frame=quat_frame,
                             quat_deg=quat_deg,
                             measured_best=measured_best,
-                            measured_best_depth_m=measured_best_depth_m,
-                            measured_best_j3_deg=measured_best_j3_deg,
-                            measured_best_alignment_deg=measured_best_alignment_deg,
+                            measured_best_depth_m=grasp_search.measured_best_depth_m,
+                            measured_best_j3_deg=grasp_search.measured_best_j3_deg,
+                            measured_best_alignment_deg=grasp_search.measured_best_alignment_deg,
                             is_nw_high_target=is_nw_high_target,
                         )
                     )
                     if should_replace:
-                        measured_best_depth_m = depth_m
-                        measured_best_j3_deg = candidate_j3_deg
-                        measured_best_alignment_deg = candidate_alignment_deg
+                        grasp_search.measured_best_depth_m = depth_m
+                        grasp_search.measured_best_j3_deg = candidate_j3_deg
+                        grasp_search.measured_best_alignment_deg = candidate_alignment_deg
                         measured_best = (
                             r_pre_for_variant,
                             r_final_probe,
@@ -1576,11 +1566,11 @@ class CuroboPlanner(Node):
                             + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
-                if measured_best_depth_m >= requested_probe_depth_m - 1e-6:
+                if grasp_search.measured_best_depth_m >= requested_probe_depth_m - 1e-6:
                     break
                 if (
-                    measured_best_j3_deg is not None
-                    and measured_best_j3_deg >= (
+                    grasp_search.measured_best_j3_deg is not None
+                    and grasp_search.measured_best_j3_deg >= (
                         NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
                         if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
                     )
@@ -1591,14 +1581,14 @@ class CuroboPlanner(Node):
                     )
                     self.get_logger().info(
                         "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
-                        f"J3={measured_best_j3_deg:.1f}deg >= "
+                        f"J3={grasp_search.measured_best_j3_deg:.1f}deg >= "
                         f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
                         "skipping remaining grasp_quat_variants")
                     break
                 continue
 
             for grasp_offset in grasp_retry_offsets:
-                grasp_attempt += 1
+                grasp_search.attempt_count += 1
                 # 2-step 구조에서 grasp endpoint는 pre-approach보다 target에
                 # 가까워야 한다. 6cm pre에서 7cm offset을 허용하면 직선 진입이
                 # 음수가 되어 정확도 보장 목적이 깨진다.
@@ -1610,36 +1600,37 @@ class CuroboPlanner(Node):
                 r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
                 if r_grasp is None:
                     continue
-                ret_pre   = r_pre_for_variant
-                ret_grasp = r_grasp
-                used_grasp_offset = grasp_offset
-                used_grasp_variant = (quat_frame, axis, quat_deg)
-                used_approach_dir = approach_dir
-                used_grasp_quat = q_retry
-                used_pre_ee_pos = ee_pre.copy()
-                used_grasp_ee_pos = ee_g_try.copy()
+                grasp_search.ret_pre = r_pre_for_variant
+                grasp_search.ret_grasp = r_grasp
+                grasp_search.grasp_offset_m = grasp_offset
+                grasp_search.grasp_variant = (quat_frame, axis, quat_deg)
+                grasp_search.approach_dir = approach_dir
+                grasp_search.grasp_quat = q_retry
+                grasp_search.pre_ee_pos = ee_pre.copy()
+                grasp_search.grasp_ee_pos = ee_g_try.copy()
                 break
-            if ret_pre is not None:
+            if grasp_search.found:
                 break
 
         if self._measured_tcp_model and measured_best is not None:
-            (
-                ret_pre,
-                ret_grasp,
-                used_grasp_offset,
-                used_grasp_variant,
-                used_approach_dir,
-                used_grasp_quat,
-                used_pre_ee_pos,
-                used_grasp_ee_pos,
-            ) = measured_best
+            grasp_search.apply_measured_best(measured_best)
             self.runtime_log.log(
                 "measured_tcp_final_probe_selected",
-                selected_depth_m=measured_best_depth_m,
-                grasp_variant=used_grasp_variant,
-                pre_ee_pos_m=used_pre_ee_pos.tolist(),
-                final_ee_pos_m=used_grasp_ee_pos.tolist(),
+                selected_depth_m=grasp_search.measured_best_depth_m,
+                grasp_variant=grasp_search.grasp_variant,
+                pre_ee_pos_m=grasp_search.pre_ee_pos.tolist(),
+                final_ee_pos_m=grasp_search.grasp_ee_pos.tolist(),
             )
+
+        ret_pre = grasp_search.ret_pre
+        ret_grasp = grasp_search.ret_grasp
+        used_grasp_offset = grasp_search.grasp_offset_m
+        used_grasp_variant = grasp_search.grasp_variant
+        used_approach_dir = grasp_search.approach_dir
+        used_grasp_quat = grasp_search.grasp_quat
+        used_pre_ee_pos = grasp_search.pre_ee_pos
+        used_grasp_ee_pos = grasp_search.grasp_ee_pos
+        measured_best_depth_m = grasp_search.measured_best_depth_m
 
         if (
             ret_pre is not None
@@ -1661,7 +1652,7 @@ class CuroboPlanner(Node):
 
         if ret_pre is None:
             self.get_logger().error(
-                f"ABORT: grasp 전체 실패 — {grasp_attempt}개 후보 모두 reject "
+                f"ABORT: grasp 전체 실패 — {grasp_search.attempt_count}개 후보 모두 reject "
                 f"(target=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
                 f"start_J=[{', '.join(f'{np.rad2deg(v):.0f}' for v in self.current_joints)}]°)")
             self._clear_neighbor_obstacles()
@@ -2115,7 +2106,7 @@ class CuroboPlanner(Node):
             f"GRASP_POSE_REACHED — offset={used_grasp_offset:+.3f}m "
             f"pre={PRE_APPROACH_OFFSET*100:.0f}cm+{final_approach_distance*1000:.0f}mm+{extra_advance_m*1000:.0f}mm "
             f"variant={used_grasp_variant} elevation={np.degrees(np.arcsin(np.clip(used_approach_dir[2], -1.0, 1.0))):+.1f}deg "
-            f"(attempt {grasp_attempt}/{n_offsets * n_quats})")
+            f"(attempt {grasp_search.attempt_count}/{n_offsets * n_quats})")
         self.runtime_log.log(
             "grasp_pose_reached",
             grasp_offset_m=used_grasp_offset,
