@@ -265,6 +265,19 @@ ERROR: ABORT: 직선 진입 실패
      90mm이고 총 접근 깊이도 180mm라서, 깊이 부족 자체는 해결되지 않았다.
    - 즉 현재 병목은 "branch 각도"보다 **target depth / TCP frame / final straight segment**
      쪽에 더 가깝다.
+13. 다음 실험용: close 직전 BASE +Y 10mm 깊이 보정 추가
+   - 19:36 run 이후 관찰은 "높이는 대체로 맞고 깊이만 10~20mm 부족"이었다.
+   - `nw_high_target_final_extra_m`처럼 approach distance를 늘리면 TOOL 방향의 기울기 때문에
+     옆으로 빗겨가거나 MoveLine 무동작이 생겼다.
+   - 그래서 열린 그리퍼로 BASE -Z 하강을 끝낸 뒤, 닫기 직전에 순수 BASE +Y로 10mm만
+     더 들어가는 실험 보정을 추가했다.
+   - 기본값:
+     - `nw_high_target_base_y_nudge_m:=0.010`
+   - 기대 로그:
+     - `NW_HIGH_TARGET_BASE_Y_NUDGE: BASE +Y 10mm before close`
+     - `NW_HIGH_TARGET_BASE_Y_NUDGE BASE REL xyz=[0.0, 10.0, 0.0]mm`
+   - 이것은 깊이 부족만 분리해서 보는 제한적 실험이다. 성공하면 10~20mm 범위에서
+     최적값을 찾고, 실패하면 perception/TCP target 자체를 다시 봐야 한다.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 
@@ -300,7 +313,7 @@ ERROR: ABORT: 직선 진입 실패
 5. SW 회귀 테스트 1회 실행.
 6. `config/scan_pose_candidates_depth2.yaml` untracked 파일 검토.
 
-## 7. 다음 실행 커맨드 (변경 없음, 이전 세션과 동일)
+## 7. 다음 실행 커맨드
 
 Planner:
 ```bash
@@ -309,6 +322,7 @@ ros2 run e0509_gripper_description curobo_planner_node.py --ros-args \
   -p direct_curobo_final_approach_for_measured_tcp:=true \
   -p measured_tcp_max_approach_m:=0.200 \
   -p measured_tcp_tool_line_after_curobo_fallback:=true \
+  -p nw_high_target_base_y_nudge_m:=0.010 \
   -p debug_dump_plan_calls:=true
 ```
 

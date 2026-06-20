@@ -91,6 +91,7 @@ CRANE_ASCENT_VEL_MM_S  = 26.0   # NW 실기 안정화 후 30% 증속 (20.0 -> 26
 NW_HIGH_TARGET_Z_THRESHOLD_M = 0.750
 NW_HIGH_TARGET_FINAL_EXTRA_M = 0.000
 NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M = 0.030
+NW_HIGH_TARGET_BASE_Y_NUDGE_M = 0.010
 DETACH_PULL_DOWN_MM  = 40.0   # 파지 후 BASE -Z 당기기 거리 (mm)
 DETACH_PULL_VEL_MM_S = 20.0   # NW 실기 안정화 후 30% 증속
 
@@ -405,6 +406,8 @@ class CuroboPlanner(Node):
         self.declare_parameter(
             "nw_high_target_close_extra_down_m",
             NW_HIGH_TARGET_CLOSE_EXTRA_DOWN_M)
+        self.declare_parameter(
+            "nw_high_target_base_y_nudge_m", NW_HIGH_TARGET_BASE_Y_NUDGE_M)
         self.declare_parameter("debug_dump_plan_calls", False)
         self._debug_dump_plan_calls = bool(
             self.get_parameter("debug_dump_plan_calls").value)
@@ -474,6 +477,9 @@ class CuroboPlanner(Node):
         self._nw_high_target_close_extra_down_m = max(
             0.0, float(
                 self.get_parameter("nw_high_target_close_extra_down_m").value))
+        self._nw_high_target_base_y_nudge_m = max(
+            0.0, float(
+                self.get_parameter("nw_high_target_base_y_nudge_m").value))
         self._leftmost_extra_advance_request_m = max(
             0.0, float(self.get_parameter("leftmost_extra_advance_request_m").value))
         self._leftmost_wall_safety_margin_m = float(
@@ -556,6 +562,7 @@ class CuroboPlanner(Node):
             measured_flange_to_grasp_center_m=MEASURED_FLANGE_TO_GRASP_CENTER_M,
             tcp_model_shortfall_m=TCP_MODEL_SHORTFALL_M,
             open_stem_descent_m=CRANE_Z_OFFSET_M,
+            nw_high_target_base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
             enable_marker_place=self._enable_marker_place,
             execute_marker_place_release=self._execute_marker_place_release,
             use_taught_slot0_place_reference=self._use_taught_slot0_place_reference,
@@ -605,7 +612,8 @@ class CuroboPlanner(Node):
                 "  NW_HIGH_TARGET_CORRECTION "
                 f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
                 f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
-                f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm")
+                f"close_extra_down={self._nw_high_target_close_extra_down_m*1000:.0f}mm "
+                f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm")
         else:
             self.get_logger().warn(
                 "  TOOL_GEOMETRY_LEGACY: planner offset="
@@ -3082,6 +3090,28 @@ class CuroboPlanner(Node):
             if not self.execute_base_z_relative(
                     -open_stem_descent_m, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
                 self.get_logger().error("ABORT: open stem descent 실패")
+                self._clear_neighbor_obstacles()
+                self._reset_gripper()
+                self.pick_complete_pub.publish(Empty())
+                return
+
+        if is_nw_high_target and self._nw_high_target_base_y_nudge_m > 0.0:
+            self.get_logger().warn(
+                "NW_HIGH_TARGET_BASE_Y_NUDGE: BASE +Y "
+                f"{self._nw_high_target_base_y_nudge_m*1000:.0f}mm before close "
+                "(pure depth correction after height alignment)")
+            self.runtime_log.log(
+                "nw_high_target_base_y_nudge",
+                target_z_m=float(raw_straw[2]),
+                base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
+            )
+            if not self.execute_base_relative_line(
+                    [0.0, self._nw_high_target_base_y_nudge_m, 0.0],
+                    "NW_HIGH_TARGET_BASE_Y_NUDGE",
+                    CRANE_DESCENT_VEL_MM_S,
+                    FINAL_APPROACH_ACC_MM_S2):
+                self.get_logger().error(
+                    "ABORT: NW high target BASE +Y nudge failed")
                 self._clear_neighbor_obstacles()
                 self._reset_gripper()
                 self.pick_complete_pub.publish(Empty())
