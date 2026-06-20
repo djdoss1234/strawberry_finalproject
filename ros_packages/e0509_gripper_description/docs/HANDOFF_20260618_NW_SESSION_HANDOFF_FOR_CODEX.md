@@ -286,6 +286,18 @@ ERROR: ABORT: 직선 진입 실패
      - `GRASP_POSE_REACHED ... pre=6cm+180mm+0mm ...`
    - 실행 커맨드에서 `-p nw_high_target_base_y_nudge_m:=0.010`를 넘기면 다시 후처리
      10mm nudge가 켜지므로, 다음 테스트에서는 반드시 빼야 한다.
+14. 2026-06-20 15:45 run: 수평 branch pruning 버그 수정
+   - `0deg` branch는 side-drift가 적지만 해당 run에서는 cuRobo final depth가 70mm까지만
+     성공했다.
+   - 기존 pruning은 "best depth가 하나라도 있으면 다음 variant는 그 depth 이하만 검사"라서,
+     70mm가 best가 된 순간 +5/+10deg 후보의 90mm endpoint를 아예 검사하지 않았다.
+   - 그 결과 남은 TOOL finish가 110mm가 되어 Doosan MoveLine success/no-motion이 재발했다.
+   - 수정: `MEASURED_TCP_MIN_PRUNE_DEPTH_M = 0.090` 추가. 최소 90mm cuRobo depth를 찾기
+     전에는 variant pruning을 하지 않는다.
+   - 기대 로그:
+     - `MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth=70mm < 90mm minimum`
+     - 이후 +5/+10 branch에서 `MEASURED_TCP_FINAL_PROBE_BEST depth=90mm ...`
+   - 목표: 예전에 직선진입이 됐던 `90mm cuRobo + 90mm TOOL finish = 180mm` 구조를 복구.
 
 ## 5. 아직 안 된 것 / 새로 발견된 것
 

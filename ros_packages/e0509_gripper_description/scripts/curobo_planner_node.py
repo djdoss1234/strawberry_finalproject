@@ -78,6 +78,7 @@ MEASURED_TCP_MAX_APPROACH_CEILING_M = 0.220
 MEASURED_TCP_J3_GOOD_ENOUGH_DEG = 45.0
 NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG = 40.0
 NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG = 20.0
+MEASURED_TCP_MIN_PRUNE_DEPTH_M = 0.090
 NW_EXPERIMENTAL_MAX_APPROACH_M = 0.150
 RETREAT_VEL_MM_S         = 40.0   # NW 실기 안정화 후 30% 증속 (31.0 -> 40.0)
 RETREAT_ACC_MM_S2         = 51.0   # NW 실기 안정화 후 30% 증속 (39.0 -> 51.0)
@@ -2559,7 +2560,7 @@ class CuroboPlanner(Node):
                 for depth_m in [0.150, 0.130, 0.110, 0.090, 0.070, 0.060]:
                     if 0.001 < depth_m < requested_probe_depth_m - 0.005:
                         probe_depths.append(depth_m)
-                if measured_best_depth_m > 0.0:
+                if measured_best_depth_m >= MEASURED_TCP_MIN_PRUNE_DEPTH_M:
                     # If one orientation already proved that deeper endpoints fail,
                     # do not repeat those expensive IK_FAIL probes for every later
                     # orientation. Later variants are now used mainly to find a
@@ -2574,6 +2575,12 @@ class CuroboPlanner(Node):
                         "MEASURED_TCP_PROBE_PRUNED: existing best depth="
                         f"{measured_best_depth_m*1000:.0f}mm; "
                         f"next depths={[round(d*1000) for d in probe_depths]}mm")
+                elif measured_best_depth_m > 0.0:
+                    self.get_logger().info(
+                        "MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth="
+                        f"{measured_best_depth_m*1000:.0f}mm < "
+                        f"{MEASURED_TCP_MIN_PRUNE_DEPTH_M*1000:.0f}mm minimum; "
+                        "later variants may still reach the proven 90mm TOOL finish branch")
                 for depth_m in probe_depths:
                     probe_target = ee_pre + depth_m * approach_dir
                     r_final_probe = self.plan(
