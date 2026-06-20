@@ -66,6 +66,7 @@ from marker_place_orientation_policy import (
     unique_clearance_candidates,
 )
 from open_stem_descent_policy import compute_open_stem_descent_m
+from pick_target_policy import prepare_pick_target
 from place_sequence_policy import classify_place_outcome
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from row2_place_policy import row2_line_check_result
@@ -1339,35 +1340,29 @@ class CuroboPlanner(Node):
             start_joints_rad=pick_start_joints,
         )
 
-        # Y 클램핑: berry는 벽 표면보다 뒤에 있을 수 없음 (FK drift 보정)
-        detection_raw_y = float(p.y)   # 클램핑 전 원본값 — measured TCP 적응형 접근 거리 계산용
-        raw_y = detection_raw_y
-        wall_y_clamped = raw_y > WALL_SURFACE_Y_M
+        target_info = prepare_pick_target(
+            p,
+            self._measured_tcp_model,
+            self._pick_target_x_bias_m,
+            self._pick_target_z_bias_m,
+            self._nw_high_target_z_threshold_m,
+            self._nw_high_target_crane_z_offset_m,
+        )
+        detection_raw_y = target_info["detection_raw_y"]
+        raw_y = target_info["raw_y"]
+        wall_y_clamped = target_info["wall_y_clamped"]
+        raw_straw = target_info["raw_straw"]
+        straw = target_info["straw"]
+        is_nw_high_target = target_info["is_nw_high_target"]
+        crane_z_offset_m = target_info["crane_z_offset_m"]
+
         if wall_y_clamped:
             self.get_logger().warn(
-                f"Detection Y={raw_y*1000:.0f}mm > wall surface {WALL_SURFACE_Y_M*1000:.0f}mm "
+                f"Detection Y={detection_raw_y*1000:.0f}mm > wall surface "
+                f"{WALL_SURFACE_Y_M*1000:.0f}mm "
                 f"(FK calibration drift) — clamped to {WALL_SURFACE_Y_M*1000:.0f}mm")
-            raw_y = WALL_SURFACE_Y_M
-        raw_straw = np.array([p.x, raw_y, max(p.z, 0.05)])
-        straw = raw_straw + np.array([
-            self._pick_target_x_bias_m,
-            0.0,
-            self._pick_target_z_bias_m,
-        ])
-        straw[2] = max(straw[2], 0.05)
-        is_nw_high_target = (
-            self._measured_tcp_model
-            and float(raw_straw[2]) >= self._nw_high_target_z_threshold_m
-        )
-        # NW high target만 KP1 진입 높이/open descent 거리를 별도로 줄여볼 수 있게
-        # 분리한 값. SW(및 다른 NW 타겟)는 기존 CRANE_Z_OFFSET_M 그대로 유지.
-        crane_z_offset_m = (
-            self._nw_high_target_crane_z_offset_m
-            if is_nw_high_target else CRANE_Z_OFFSET_M
-        )
-        if is_nw_high_target and wall_y_clamped and NW_HIGH_TARGET_Y_PLANE_RELAX_M > 0.0:
-            before_y = float(straw[1])
-            straw[1] += NW_HIGH_TARGET_Y_PLANE_RELAX_M
+        if target_info["y_relax_applied"]:
+            before_y = target_info["y_relax_before_m"]
             self.get_logger().warn(
                 "NW_HIGH_TARGET_Y_PLANE_RELAX: clamped target Y "
                 f"{before_y*1000:.0f}mm -> {straw[1]*1000:.0f}mm "
@@ -1381,23 +1376,23 @@ class CuroboPlanner(Node):
                 relax_m=NW_HIGH_TARGET_Y_PLANE_RELAX_M,
             )
 
-        x_min, x_max = DIRECT_GRASP_TARGET_X_RANGE_M
-        if not (x_min <= float(raw_straw[0]) <= x_max):
+        x_min, x_max = target_info["x_range_m"]
+        if not target_info["x_guard_ok"]:
             self.get_logger().warn(
                 f"ABORT: pick target x={raw_straw[0]*1000:.0f}mm outside "
                 f"[{x_min*1000:.0f}, {x_max*1000:.0f}]mm")
             self.pick_complete_pub.publish(Empty())
             return
-        if self._measured_tcp_model and float(raw_straw[2]) > MEASURED_TCP_TARGET_Z_MAX_M:
+        if not target_info["z_guard_ok"]:
             self.get_logger().warn(
                 f"SKIP: pick target z={raw_straw[2]*1000:.0f}mm > "
-                f"{MEASURED_TCP_TARGET_Z_MAX_M*1000:.0f}mm "
+                f"{target_info['z_max_m']*1000:.0f}mm "
                 "(NW high/leaf candidate guard)")
             self.runtime_log.log(
                 "pick_target_skipped",
                 reason="target_z_above_measured_tcp_guard",
                 raw_target_m=raw_straw,
-                z_max_m=MEASURED_TCP_TARGET_Z_MAX_M,
+                z_max_m=target_info["z_max_m"],
                 wall_y_clamped=wall_y_clamped,
             )
             self.pick_complete_pub.publish(Empty())

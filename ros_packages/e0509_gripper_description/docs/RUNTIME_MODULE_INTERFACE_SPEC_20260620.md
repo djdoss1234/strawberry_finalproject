@@ -33,6 +33,7 @@ RealSense RGB-D
 | `scripts/grasp_candidate_policy.py` | target별 grasp offset/quat variant/depth probing 후보와 measured-TCP tie-break 정책 | 신규 분리 모듈. 실패가 많던 후보 선택 정책을 planner 본문에서 분리 |
 | `scripts/harvest_result_policy.py` | grasp result 기반 place gate, block reason, pick sequence result code 정책 | 신규 분리 모듈. KPI/result taxonomy 변경 시 planner 본문 수정 최소화 |
 | `scripts/open_stem_descent_policy.py` | 열린 그리퍼 상태에서 KP1까지 내려가는 BASE -Z 거리 계산 | 신규 분리 모듈. NW/SW 파지 높이 조정 로직을 독립 계산식으로 분리 |
+| `scripts/pick_target_policy.py` | pick PoseStamped 위치에서 raw/grasp target, wall-Y clamp, NW-high 판정, x/z guard 계산 | 신규 분리 모듈. target preparation/guard 정책 분리 |
 | `scripts/place_sequence_policy.py` | place executor status를 state-machine action/result code로 변환 | 신규 분리 모듈. place 후 hold/skip/continue 정책 분리 |
 | `scripts/row2_place_policy.py` | row2 tray place descent/ascent Cartesian line deviation 판정 | 신규 분리 모듈. row2 place 안전 threshold 판정 분리 |
 | `scripts/harvest_math.py` | quaternion/vector 순수 수학 함수 | 신규 분리 모듈 |
@@ -191,6 +192,7 @@ RealSense RGB-D
 - `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
 - `harvest_result_policy.py` 분리: grasp result에서 place gate와 sequence result code를 결정하는 정책
 - `open_stem_descent_policy.py` 분리: reached TCP Z와 KP1 Z 차이 기반 open-stem descent 계산
+- `pick_target_policy.py` 분리: wall-Y clamp, bias 적용, NW high target, x/z guard 계산
 - `place_sequence_policy.py` 분리: place status에서 hold/skip/continue state-machine action 결정
 - `row2_place_policy.py` 분리: row2 place line deviation threshold 판정
 - `marker_place_orientation_policy.py` 분리: marker place orientation/clearance 후보와 measured-TCP contact 보정 target 계산
