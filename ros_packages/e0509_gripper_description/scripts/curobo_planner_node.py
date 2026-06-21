@@ -1592,14 +1592,16 @@ class CuroboPlanner(Node):
                 r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
                 if r_grasp is None:
                     continue
-                grasp_search.ret_pre = r_pre_for_variant
-                grasp_search.ret_grasp = r_grasp
-                grasp_search.grasp_offset_m = grasp_offset
-                grasp_search.grasp_variant = (quat_frame, axis, quat_deg)
-                grasp_search.approach_dir = approach_dir
-                grasp_search.grasp_quat = q_retry
-                grasp_search.pre_ee_pos = ee_pre.copy()
-                grasp_search.grasp_ee_pos = ee_g_try.copy()
+                grasp_search.select_legacy_grasp(
+                    r_pre_for_variant,
+                    r_grasp,
+                    grasp_offset,
+                    (quat_frame, axis, quat_deg),
+                    approach_dir,
+                    q_retry,
+                    ee_pre,
+                    ee_g_try,
+                )
                 break
             if grasp_search.found:
                 break

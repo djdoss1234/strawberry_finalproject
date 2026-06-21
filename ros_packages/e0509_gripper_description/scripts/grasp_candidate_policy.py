@@ -68,6 +68,18 @@ class GraspSearchResult:
         self.measured_best_alignment_deg = alignment_deg
         return measured_best
 
+    def select_legacy_grasp(self, ret_pre, ret_grasp, grasp_offset_m,
+                            grasp_variant, approach_dir, grasp_quat,
+                            pre_ee_pos, grasp_ee_pos):
+        self.ret_pre = ret_pre
+        self.ret_grasp = ret_grasp
+        self.grasp_offset_m = grasp_offset_m
+        self.grasp_variant = grasp_variant
+        self.approach_dir = approach_dir
+        self.grasp_quat = grasp_quat
+        self.pre_ee_pos = pre_ee_pos.copy()
+        self.grasp_ee_pos = grasp_ee_pos.copy()
+
 
 def grasp_offsets_for_target(straw, measured_tcp_model: bool):
     if measured_tcp_model:
