@@ -42,6 +42,7 @@ from grasp_candidate_policy import (
     GraspSearchResult,
     grasp_offsets_for_target,
     grasp_quat_variants_for_target,
+    grasp_variant_pose,
     measured_tcp_probe_depths,
     should_replace_measured_best,
     variant_label,
@@ -49,8 +50,6 @@ from grasp_candidate_policy import (
 from gripper_client import HarvestGripperClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
 from harvest_math import (
-    quat_from_axis_angle,
-    quat_multiply_wxyz,
     quat_normalize_wxyz,
     quat_rotate_vec,
 )
@@ -1469,22 +1468,13 @@ class CuroboPlanner(Node):
         # Track J3 health as a tiebreaker so an equally-deep but healthier
         # elbow from a later variant can replace it.
         for quat_frame, axis, quat_deg in grasp_quat_variants:
-            if quat_frame == "published_roll":
-                q_retry = axis
-            else:
-                q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
-                if quat_frame == "base":
-                    q_retry = quat_multiply_wxyz(q_delta, WALL_QUAT_WXYZ)
-                else:
-                    q_retry = quat_multiply_wxyz(WALL_QUAT_WXYZ, q_delta)
-            approach_dir = np.array(quat_rotate_vec(q_retry, [0.0, 0.0, 1.0]))
-            ee_pre = straw - (
-                PRE_APPROACH_OFFSET + self._ee_to_tcp_offset_m
-            ) * approach_dir
-            if self._measured_tcp_model and crane_z_offset_m > 0:
-                # KP1 위쪽에서 수평 진입을 끝낸 뒤, 열린 그리퍼로 BASE -Z
-                # 하강하여 KP1에서 파지한다.
-                ee_pre = ee_pre + np.array([0.0, 0.0, crane_z_offset_m])
+            q_retry, approach_dir, ee_pre = grasp_variant_pose(
+                (quat_frame, axis, quat_deg),
+                straw,
+                self._ee_to_tcp_offset_m,
+                self._measured_tcp_model,
+                crane_z_offset_m,
+            )
             r_pre_for_variant = self.plan(
                 self.current_joints, ee_pre.tolist(), q_retry, num_ik_seeds=24
             )

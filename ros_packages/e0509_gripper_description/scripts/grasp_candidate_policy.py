@@ -3,6 +3,13 @@
 
 from dataclasses import dataclass
 
+import numpy as np
+
+from harvest_math import (
+    quat_from_axis_angle,
+    quat_multiply_wxyz,
+    quat_rotate_vec,
+)
 from harvest_motion_params import (
     GRASP_QUAT_RETRY_VARIANTS,
     GRASP_RETRY_OFFSETS,
@@ -13,6 +20,8 @@ from harvest_motion_params import (
     NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS,
     NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG,
     NW_HIGH_TARGET_PROBE_DEPTHS_M,
+    PRE_APPROACH_OFFSET,
+    WALL_QUAT_WXYZ,
 )
 
 
@@ -74,6 +83,29 @@ def variant_label(variant):
     if frame == "published_roll":
         return f"published_roll({deg:+.0f}deg)"
     return f"{deg:+.0f}deg"
+
+
+def grasp_variant_pose(variant, straw, ee_to_tcp_offset_m: float,
+                       measured_tcp_model: bool,
+                       crane_z_offset_m: float):
+    """Return `(q_retry, approach_dir, ee_pre)` for one grasp variant."""
+    quat_frame, axis, quat_deg = variant
+    if quat_frame == "published_roll":
+        q_retry = axis
+    else:
+        q_delta = quat_from_axis_angle(axis, np.deg2rad(quat_deg))
+        if quat_frame == "base":
+            q_retry = quat_multiply_wxyz(q_delta, WALL_QUAT_WXYZ)
+        else:
+            q_retry = quat_multiply_wxyz(WALL_QUAT_WXYZ, q_delta)
+
+    approach_dir = np.array(quat_rotate_vec(q_retry, [0.0, 0.0, 1.0]))
+    ee_pre = np.array(straw, dtype=float) - (
+        PRE_APPROACH_OFFSET + float(ee_to_tcp_offset_m)
+    ) * approach_dir
+    if measured_tcp_model and crane_z_offset_m > 0:
+        ee_pre = ee_pre + np.array([0.0, 0.0, float(crane_z_offset_m)])
+    return q_retry, approach_dir, ee_pre
 
 
 def measured_tcp_probe_depths(requested_depth_m: float, is_nw_high_target: bool,
