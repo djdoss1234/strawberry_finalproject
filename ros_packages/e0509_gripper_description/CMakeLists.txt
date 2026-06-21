@@ -76,6 +76,7 @@ install(PROGRAMS
   scripts/open_stem_descent_policy.py
   scripts/pick_target_policy.py
   scripts/place_sequence_policy.py
+  scripts/planner_bootstrap.py
   scripts/row2_place_policy.py
   scripts/tray_place_executor.py
   scripts/tray_place_policy.py

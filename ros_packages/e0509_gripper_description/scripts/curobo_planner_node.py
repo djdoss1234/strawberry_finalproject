@@ -7,7 +7,6 @@ Pick sequence: pre-approach(CuRobo) → straight grasp(MoveLine) → close
 
 import os
 import time
-import torch
 import numpy as np
 import yaml
 
@@ -29,10 +28,7 @@ except ImportError:
     _SetPosition = None
     _GetState = None
 
-from curobo.types.base import TensorDeviceType
-from curobo.types.robot import RobotConfig
-from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
-from curobo.geom.types import WorldConfig, Cuboid
+from curobo.geom.types import Cuboid
 from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import (
     build_straight_retreat_steps,
@@ -68,6 +64,7 @@ from harvest_result_policy import (
 from open_stem_descent_policy import compute_open_stem_descent_m
 from pick_target_policy import prepare_pick_target
 from place_sequence_policy import classify_place_outcome
+from planner_bootstrap import build_curobo_motion_gen, declare_and_load_params
 from runtime_jsonl_logger import RuntimeJsonlLogger
 from scene_obstacle_manager import SceneObstacleManager
 from tray_place_executor import TrayPlaceExecutor
@@ -160,181 +157,13 @@ class CuroboPlanner(Node):
         self.declare_parameter("measured_tcp_plan_only", True)
         self._measured_tcp_plan_only = bool(
             self.get_parameter("measured_tcp_plan_only").value)
-        config_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "config", "curobo"
-        )
-        if not os.path.exists(config_dir):
-            from ament_index_python.packages import get_package_share_directory
-            config_dir = os.path.join(
-                get_package_share_directory("e0509_gripper_description"),
-                "config", "curobo"
-            )
-
-        tensor_args = TensorDeviceType(device=torch.device("cuda:0"))
-        robot_config_name = (
-            "e0509_gripper_measured_tcp.yml"
-            if self._measured_tcp_model
-            else "e0509_gripper.yml"
-        )
-        with open(os.path.join(config_dir, robot_config_name), "r", encoding="utf-8") as f:
-            robot_cfg_data = yaml.safe_load(f)
-        robot_kin = robot_cfg_data["robot_cfg"]["kinematics"]
-        robot_kin["urdf_path"] = os.path.join(config_dir, "e0509_gripper.urdf")
-        robot_kin["collision_spheres"] = os.path.join(config_dir, "e0509_spheres.yml")
-        robot_cfg = RobotConfig.from_dict(robot_cfg_data, tensor_args=tensor_args)
-        world_cfg = WorldConfig(cuboid=self.static_cuboids)
-        motion_gen_cfg = MotionGenConfig.load_from_robot_config(
-            robot_cfg, world_cfg, tensor_args=tensor_args,
-            num_trajopt_seeds=16, num_graph_seeds=16,
-            collision_cache={"obb": 30, "mesh": 10, "sphere": 30},
-            use_cuda_graph=False,
-            self_collision_check=USE_CUROBO_SELF_COLLISION,
-            self_collision_opt=USE_CUROBO_SELF_COLLISION,
-        )
-        self.motion_gen = MotionGen(motion_gen_cfg)
-        self.motion_gen.warmup(warmup_js_trajopt=False)
-        self.motion_gen.detach_object_from_robot()
+        self.motion_gen = build_curobo_motion_gen(
+            self._measured_tcp_model, self.static_cuboids)
         self.scene_manager.set_motion_gen(self.motion_gen)
         self.kinematics_adapter = CuroboKinematicsAdapter(self.motion_gen)
         self.get_logger().info("cuRobo MotionGen warmed up!")
 
-        self.declare_parameter("enable_marker_place_sequence", False)
-        self.declare_parameter("execute_marker_place_release", False)
-        self.declare_parameter("use_taught_slot0_place_reference", False)
-        self.declare_parameter("hold_after_taught_slot0_place", True)
-        self.declare_parameter("initial_place_slot_index", 0)
-        self.declare_parameter("allow_generated_tray_slot_release", False)
-        self.declare_parameter("allow_unverified_grasp_place", False)
-        self.declare_parameter("grasp_current_contact_threshold_raw", -1)
-        self.declare_parameter("tray_cells_json", "")
-        self.declare_parameter("marker_place_max_age_sec", 3600.0)
-        self.declare_parameter("marker_place_above_clearance_m", 0.100)
-        self.declare_parameter(
-            "taught_slot_above_clearance_m", TAUGHT_SLOT0_ABOVE_CLEARANCE_M)
-        self.declare_parameter("row2_place_pitch_tilt_deg", 15.0)
-        self.declare_parameter("row2_release_correction_mm", [0.0, 0.0, 0.0])
-        self.declare_parameter("row2_max_line_deviation_mm", 20.0)
-        self.declare_parameter("use_safe_grasp_action", True)
-        self.declare_parameter("safe_grasp_max_current", 400)
-        self.declare_parameter("safe_grasp_current_delta_threshold", 120)
-        self.declare_parameter("safe_grasp_timeout_sec", 8.0)
-        self.declare_parameter(
-            "direct_curobo_final_approach_for_measured_tcp",
-            DIRECT_CUROBO_FINAL_APPROACH_FOR_MEASURED_TCP)
-        self.declare_parameter(
-            "measured_tcp_max_approach_m",
-            MEASURED_TCP_MAX_APPROACH_M)
-        self.declare_parameter(
-            "measured_tcp_tool_line_after_curobo_fallback",
-            True)
-        self.declare_parameter("use_published_grasp_orientation", False)
-        self.declare_parameter("published_grasp_roll_align_axis", "x")
-        self.declare_parameter("published_grasp_roll_max_abs_deg", 75.0)
-        self.declare_parameter("pick_target_x_bias_m", 0.0)
-        self.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
-        self.declare_parameter(
-            "nw_high_target_z_threshold_m", NW_HIGH_TARGET_Z_THRESHOLD_M)
-        self.declare_parameter(
-            "nw_high_target_final_extra_m", NW_HIGH_TARGET_FINAL_EXTRA_M)
-        self.declare_parameter(
-            "nw_high_target_base_y_nudge_m", NW_HIGH_TARGET_BASE_Y_NUDGE_M)
-        self.declare_parameter(
-            "nw_high_target_crane_z_offset_m", NW_HIGH_TARGET_CRANE_Z_OFFSET_M)
-        self.declare_parameter(
-            "nw_high_target_descent_extra_below_kp1_m",
-            NW_HIGH_TARGET_DESCENT_EXTRA_BELOW_KP1_M)
-        self.declare_parameter("debug_dump_plan_calls", False)
-        self._debug_dump_plan_calls = bool(
-            self.get_parameter("debug_dump_plan_calls").value)
-        self.declare_parameter(
-            "leftmost_extra_advance_request_m",
-            0.0 if self._measured_tcp_model else LEFTMOST_EXTRA_ADVANCE_REQUEST_M)
-        self.declare_parameter(
-            "leftmost_wall_safety_margin_m", LEFTMOST_WALL_SAFETY_MARGIN_M)
-        self.declare_parameter("leftmost_allow_wall_model_override", False)
-        self._enable_marker_place = bool(
-            self.get_parameter("enable_marker_place_sequence").value)
-        self._execute_marker_place_release = bool(
-            self.get_parameter("execute_marker_place_release").value)
-        self._use_taught_slot0_place_reference = bool(
-            self.get_parameter("use_taught_slot0_place_reference").value)
-        self._hold_after_taught_slot0_place = bool(
-            self.get_parameter("hold_after_taught_slot0_place").value)
-        self._marker_place_slot_idx = int(
-            self.get_parameter("initial_place_slot_index").value)
-        self._allow_generated_tray_slot_release = bool(
-            self.get_parameter("allow_generated_tray_slot_release").value)
-        if not 0 <= self._marker_place_slot_idx < TAUGHT_TRAY_SLOT_COUNT:
-            raise ValueError(
-                f"initial_place_slot_index must be 0..{TAUGHT_TRAY_SLOT_COUNT - 1}")
-        self._allow_unverified_grasp_place = bool(
-            self.get_parameter("allow_unverified_grasp_place").value)
-        self._grasp_current_contact_threshold_raw = int(
-            self.get_parameter("grasp_current_contact_threshold_raw").value)
-        self._tray_cells_json = os.path.expanduser(
-            str(self.get_parameter("tray_cells_json").value))
-        self._marker_place_max_age_sec = float(
-            self.get_parameter("marker_place_max_age_sec").value)
-        self._marker_place_above_clearance_m = float(
-            self.get_parameter("marker_place_above_clearance_m").value)
-        self._taught_slot_above_clearance_m = float(
-            self.get_parameter("taught_slot_above_clearance_m").value)
-        self._row2_place_pitch_tilt_deg = float(
-            self.get_parameter("row2_place_pitch_tilt_deg").value)
-        self._row2_release_correction_mm = list(
-            self.get_parameter("row2_release_correction_mm").value)
-        self._row2_max_line_deviation_mm = float(
-            self.get_parameter("row2_max_line_deviation_mm").value)
-        self._use_safe_grasp_action = bool(
-            self.get_parameter("use_safe_grasp_action").value) and _SAFE_GRASP_AVAILABLE
-        self._safe_grasp_max_current = int(
-            self.get_parameter("safe_grasp_max_current").value)
-        self._safe_grasp_current_delta_threshold = int(
-            self.get_parameter("safe_grasp_current_delta_threshold").value)
-        self._safe_grasp_timeout_sec = float(
-            self.get_parameter("safe_grasp_timeout_sec").value)
-        self._direct_curobo_final_approach_for_measured_tcp = bool(
-            self.get_parameter(
-                "direct_curobo_final_approach_for_measured_tcp").value)
-        self._measured_tcp_max_approach_m = float(
-            self.get_parameter("measured_tcp_max_approach_m").value)
-        self._measured_tcp_tool_line_after_curobo_fallback = bool(
-            self.get_parameter(
-                "measured_tcp_tool_line_after_curobo_fallback").value)
-        self._use_published_grasp_orientation = bool(
-            self.get_parameter("use_published_grasp_orientation").value)
-        self._published_grasp_roll_align_axis = str(
-            self.get_parameter("published_grasp_roll_align_axis").value
-        ).strip().lower()
-        if self._published_grasp_roll_align_axis not in {"x", "y"}:
-            raise ValueError("published_grasp_roll_align_axis must be 'x' or 'y'")
-        self._published_grasp_roll_max_abs_deg = max(
-            0.0, float(
-                self.get_parameter("published_grasp_roll_max_abs_deg").value))
-        self._pick_target_x_bias_m = float(
-            self.get_parameter("pick_target_x_bias_m").value)
-        self._pick_target_z_bias_m = float(
-            self.get_parameter("pick_target_z_bias_m").value)
-        self._nw_high_target_z_threshold_m = float(
-            self.get_parameter("nw_high_target_z_threshold_m").value)
-        self._nw_high_target_final_extra_m = max(
-            0.0, float(self.get_parameter("nw_high_target_final_extra_m").value))
-        self._nw_high_target_base_y_nudge_m = max(
-            0.0, float(
-                self.get_parameter("nw_high_target_base_y_nudge_m").value))
-        self._nw_high_target_crane_z_offset_m = max(
-            0.0, float(
-                self.get_parameter("nw_high_target_crane_z_offset_m").value))
-        self._nw_high_target_descent_extra_below_kp1_m = max(
-            0.0, float(self.get_parameter(
-                "nw_high_target_descent_extra_below_kp1_m").value))
-        self._leftmost_extra_advance_request_m = max(
-            0.0, float(self.get_parameter("leftmost_extra_advance_request_m").value))
-        self._leftmost_wall_safety_margin_m = float(
-            self.get_parameter("leftmost_wall_safety_margin_m").value)
-        self._leftmost_allow_wall_model_override = bool(
-            self.get_parameter("leftmost_allow_wall_model_override").value)
+        declare_and_load_params(self, _SAFE_GRASP_AVAILABLE)
 
         # ── ROS2 인터페이스 ────────────────────────────────────────────────────
         self.create_subscription(
