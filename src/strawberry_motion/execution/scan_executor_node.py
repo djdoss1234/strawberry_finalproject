@@ -136,18 +136,7 @@ def _mat4_to_pos_quat_wxyz(mat4: np.ndarray) -> Tuple[List[float], List[float]]:
 
 class ScanExecutorNode(Node):
 
-    def __init__(self) -> None:
-        super().__init__("scan_executor_node")
-
-        self._current_joints: Optional[List[float]] = None
-        self._started = False
-        self._mg: Optional[MotionGen] = None
-        self._detection_count: int = 0
-        self._detection_poses: List[PoseStamped] = []
-        self._detection_lock = threading.Lock()
-        self._pick_complete_event = threading.Event()
-        self._last_movej_command_deg: Optional[List[float]] = None
-        self._runtime_preview_lock = threading.Lock()
+    def _declare_and_load_params(self) -> None:
         self.declare_parameter("execute_motion", False)
         self.declare_parameter("target_cell", "")
         self.declare_parameter("manual_validation_mode", False)
@@ -209,6 +198,20 @@ class ScanExecutorNode(Node):
         self._runtime_curobo_preview_retries = int(
             self.get_parameter("runtime_curobo_preview_retries").value
         )
+
+    def __init__(self) -> None:
+        super().__init__("scan_executor_node")
+
+        self._current_joints: Optional[List[float]] = None
+        self._started = False
+        self._mg: Optional[MotionGen] = None
+        self._detection_count: int = 0
+        self._detection_poses: List[PoseStamped] = []
+        self._detection_lock = threading.Lock()
+        self._pick_complete_event = threading.Event()
+        self._last_movej_command_deg: Optional[List[float]] = None
+        self._runtime_preview_lock = threading.Lock()
+        self._declare_and_load_params()
 
         pkg = get_package_share_directory("strawberry_motion")
         candidates_path = Path(pkg) / "config" / _CANDIDATES_FNAME
