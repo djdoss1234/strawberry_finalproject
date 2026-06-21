@@ -1602,6 +1602,81 @@ class CuroboPlanner(Node):
         self.get_logger().info(f"=== PICK COMPLETE ({sequence_result_code}) ===")
         return True
 
+    def _execute_leftmost_extra_advance_if_needed(self, raw_x_m: float,
+                                                  used_grasp_offset: float,
+                                                  used_approach_dir,
+                                                  used_grasp_ee_pos):
+        extra_advance_m = 0.0
+        if raw_x_m > 0.25 or self._leftmost_extra_advance_request_m <= 0.0:
+            return True, extra_advance_m, used_grasp_ee_pos
+
+        available_extra_m = max(
+            0.0, used_grasp_offset - self._leftmost_wall_safety_margin_m)
+        extra_advance_m = (
+            self._leftmost_extra_advance_request_m
+            if self._leftmost_allow_wall_model_override
+            else min(self._leftmost_extra_advance_request_m, available_extra_m)
+        )
+        if self._leftmost_allow_wall_model_override:
+            modeled_overtravel_m = max(0.0, extra_advance_m - available_extra_m)
+            self.get_logger().error(
+                f"LEFTMOST_WALL_MODEL_OVERRIDE: executing "
+                f"{extra_advance_m*1000:.0f}mm extra advance; "
+                f"modeled wall overtravel={modeled_overtravel_m*1000:.0f}mm. "
+                f"Physical clearance and E-stop must be verified.")
+            self.runtime_log.log(
+                "leftmost_wall_model_override",
+                requested_m=self._leftmost_extra_advance_request_m,
+                executed_m=extra_advance_m,
+                safe_available_m=available_extra_m,
+                modeled_wall_overtravel_m=modeled_overtravel_m,
+                reason="explicit_ros_parameter_override",
+            )
+        if extra_advance_m < 0.020:
+            self.get_logger().warn(
+                f"LEFTMOST_EXTRA_ADVANCE_BLOCKED: request="
+                f"{self._leftmost_extra_advance_request_m*1000:.0f}mm, "
+                f"safe_available={available_extra_m*1000:.0f}mm, "
+                f"wall_margin={self._leftmost_wall_safety_margin_m*1000:.0f}mm")
+            self.runtime_log.log(
+                "leftmost_extra_advance_blocked",
+                requested_m=self._leftmost_extra_advance_request_m,
+                safe_available_m=available_extra_m,
+                wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
+                selected_grasp_offset_m=used_grasp_offset,
+            )
+            return True, 0.0, used_grasp_ee_pos
+
+        if extra_advance_m < self._leftmost_extra_advance_request_m:
+            self.get_logger().warn(
+                f"LEFTMOST_EXTRA_ADVANCE_CAPPED: request="
+                f"{self._leftmost_extra_advance_request_m*1000:.0f}mm -> "
+                f"execute={extra_advance_m*1000:.0f}mm "
+                f"(wall margin {self._leftmost_wall_safety_margin_m*1000:.0f}mm)")
+        self.runtime_log.log(
+            "leftmost_extra_advance",
+            requested_m=self._leftmost_extra_advance_request_m,
+            executed_m=extra_advance_m,
+            wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
+            selected_grasp_offset_m=used_grasp_offset,
+            validation="wall_distance_gate_only_not_curobo_endpoint",
+        )
+        if not self.execute_tool_z_line(
+            extra_advance_m,
+            motion_label="LEFTMOST_EXTRA_ADVANCE",
+            vel_mm_s=LEFTMOST_EXTRA_ADVANCE_VEL_MM_S,
+            acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+        ):
+            self.get_logger().error(
+                "ABORT: leftmost extra advance failed after dispatch — "
+                "holding current pose")
+            self._clear_neighbor_obstacles()
+            self._hold_pick_sequence("leftmost_extra_advance_failed")
+            return False, extra_advance_m, used_grasp_ee_pos
+        used_grasp_ee_pos = (
+            used_grasp_ee_pos + extra_advance_m * used_approach_dir)
+        return True, extra_advance_m, used_grasp_ee_pos
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2276,76 +2351,16 @@ class CuroboPlanner(Node):
         # 실기 확인: 모든 벽면 딸기 줄기는 모델 벽 앞면보다 ~30mm 안쪽에 위치.
         # wall_margin=-30mm이면 available = offset+30mm → 80mm extra 자동 실행.
         # rightmost(x>250mm)는 offsets[-0.03, 0.0]으로 이미 깊게 진입하므로 제외.
-        extra_advance_m = 0.0
-        if (
-            raw_straw[0] <= 0.25
-            and self._leftmost_extra_advance_request_m > 0.0
-        ):
-            available_extra_m = max(
-                0.0, used_grasp_offset - self._leftmost_wall_safety_margin_m)
-            extra_advance_m = (
-                self._leftmost_extra_advance_request_m
-                if self._leftmost_allow_wall_model_override
-                else min(self._leftmost_extra_advance_request_m, available_extra_m)
+        extra_ok, extra_advance_m, used_grasp_ee_pos = (
+            self._execute_leftmost_extra_advance_if_needed(
+                raw_straw[0],
+                used_grasp_offset,
+                used_approach_dir,
+                used_grasp_ee_pos,
             )
-            if self._leftmost_allow_wall_model_override:
-                modeled_overtravel_m = max(0.0, extra_advance_m - available_extra_m)
-                self.get_logger().error(
-                    f"LEFTMOST_WALL_MODEL_OVERRIDE: executing "
-                    f"{extra_advance_m*1000:.0f}mm extra advance; "
-                    f"modeled wall overtravel={modeled_overtravel_m*1000:.0f}mm. "
-                    f"Physical clearance and E-stop must be verified.")
-                self.runtime_log.log(
-                    "leftmost_wall_model_override",
-                    requested_m=self._leftmost_extra_advance_request_m,
-                    executed_m=extra_advance_m,
-                    safe_available_m=available_extra_m,
-                    modeled_wall_overtravel_m=modeled_overtravel_m,
-                    reason="explicit_ros_parameter_override",
-                )
-            if extra_advance_m < 0.020:
-                self.get_logger().warn(
-                    f"LEFTMOST_EXTRA_ADVANCE_BLOCKED: request="
-                    f"{self._leftmost_extra_advance_request_m*1000:.0f}mm, "
-                    f"safe_available={available_extra_m*1000:.0f}mm, "
-                    f"wall_margin={self._leftmost_wall_safety_margin_m*1000:.0f}mm")
-                self.runtime_log.log(
-                    "leftmost_extra_advance_blocked",
-                    requested_m=self._leftmost_extra_advance_request_m,
-                    safe_available_m=available_extra_m,
-                    wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
-                    selected_grasp_offset_m=used_grasp_offset,
-                )
-                extra_advance_m = 0.0
-            else:
-                if extra_advance_m < self._leftmost_extra_advance_request_m:
-                    self.get_logger().warn(
-                        f"LEFTMOST_EXTRA_ADVANCE_CAPPED: request="
-                        f"{self._leftmost_extra_advance_request_m*1000:.0f}mm -> "
-                        f"execute={extra_advance_m*1000:.0f}mm "
-                        f"(wall margin {self._leftmost_wall_safety_margin_m*1000:.0f}mm)")
-                self.runtime_log.log(
-                    "leftmost_extra_advance",
-                    requested_m=self._leftmost_extra_advance_request_m,
-                    executed_m=extra_advance_m,
-                    wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
-                    selected_grasp_offset_m=used_grasp_offset,
-                    validation="wall_distance_gate_only_not_curobo_endpoint",
-                )
-                if not self.execute_tool_z_line(
-                    extra_advance_m,
-                    motion_label="LEFTMOST_EXTRA_ADVANCE",
-                    vel_mm_s=LEFTMOST_EXTRA_ADVANCE_VEL_MM_S,
-                    acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                ):
-                    self.get_logger().error(
-                        "ABORT: leftmost extra advance failed after dispatch — "
-                        "holding current pose")
-                    self._clear_neighbor_obstacles()
-                    self._hold_pick_sequence("leftmost_extra_advance_failed")
-                    return
-                used_grasp_ee_pos = (
-                    used_grasp_ee_pos + extra_advance_m * used_approach_dir)
+        )
+        if not extra_ok:
+            return
 
         grasp_joints = (
             list(self.current_joints)
