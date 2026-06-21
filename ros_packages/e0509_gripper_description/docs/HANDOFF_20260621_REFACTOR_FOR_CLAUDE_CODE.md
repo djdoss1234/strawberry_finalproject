@@ -175,7 +175,28 @@ db48c68 refactor: extract gripper close failure recovery
 
 ## 5. 현재 남은 큰 덩어리
 
-### 5.1 final approach fallback depth search loop
+### 5.1 final approach fallback depth search loop — **완료 (2026-06-21, Claude Code)**
+
+`_try_final_approach_fallback(...)`로 분리 완료. 커밋 `9f03bff`. depth 후보 순서/`plan()`
+파라미터/로그 이벤트명/`FinalApproachState` 갱신 방식 전부 그대로 유지, py_compile/diff
+--check/colcon build 통과 후 push 완료. 실기 미검증(코드 이동만, 로직 무변경).
+
+### 5.2 final approach 전체 helper화 — **완료 (2026-06-21, Claude Code)**
+
+`_execute_final_approach(...)`로 분리 완료. 커밋 `b81f83e`. precomputed cuRobo 시도 →
+measured TCP/legacy 직선 MoveLine → fallback depth search → 실패시 `_abort_pick_with_complete()`
+순서를 그대로 묶었고, `_execute_leftmost_extra_advance_if_needed`와 동일한 "내부에서 abort
+처리 후 ok bool 반환" 패턴을 따름. `_pick()`은 이제 `if not self._execute_final_approach(...): return`
+한 줄로 줄어듦. py_compile/diff --check/colcon build 통과, push 완료. 실기 미검증.
+
+**다음 우선순위는 5.3(grasp search loop 분리)이지만, 그 전에 0번 항목(grasp orientation이
+실제 줄기 방향 무시하는 구조적 버그, `published_roll` 후보 추가됨)의 실기 검증이 더 급함 —
+리팩토링은 "디버깅 가능하게 만드는 작업"일 뿐 실기 정확도 문제를 직접 고치는 게 아니라는
+6절 내용 기억할 것.**
+
+이하 원본 내용(5.1 작업 시작 전 기록, 참고용으로 남겨둠):
+
+#### (참고) 분리 전 원래 블록
 
 현재 `_pick()` 안에 아직 남아있는 큰 블록:
 
