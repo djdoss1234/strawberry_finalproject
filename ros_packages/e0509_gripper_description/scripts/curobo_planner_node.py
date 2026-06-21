@@ -1867,6 +1867,101 @@ class CuroboPlanner(Node):
                 "falling back to depth search")
         return True, approach_ok
 
+    def _try_final_approach_fallback(self, final_state: FinalApproachState,
+                                     requested_final_approach_distance: float,
+                                     used_pre_ee_pos,
+                                     used_grasp_quat,
+                                     used_grasp_variant,
+                                     used_approach_dir,
+                                     precomputed_final_attempted: bool) -> bool:
+        fallback_ok = False
+        if not (
+            self._measured_tcp_model
+            and ENABLE_CUROBO_FINAL_APPROACH_FALLBACK
+            and not precomputed_final_attempted
+            and used_pre_ee_pos is not None
+            and used_grasp_quat is not None
+            and self.current_joints is not None
+        ):
+            return fallback_ok
+
+        depth_candidates = final_approach_fallback_depths(
+            requested_final_approach_distance,
+            self._direct_curobo_final_approach_for_measured_tcp,
+        )
+        for depth_m in depth_candidates:
+            fallback_target = (
+                used_pre_ee_pos
+                + depth_m * used_approach_dir
+            )
+            self.get_logger().warn(
+                "FINAL_APPROACH_STRAIGHT_BASE failed; trying cuRobo "
+                f"fallback depth={depth_m*1000:.0f}mm "
+                f"xyz={[round(v*1000, 1) for v in fallback_target]}mm")
+            self.runtime_log.log(
+                "final_approach_fallback_requested",
+                reason="doosan_moveline_failed_or_no_motion",
+                target_pos_m=fallback_target.tolist(),
+                approach_dir=used_approach_dir,
+                depth_m=depth_m,
+            )
+            fallback_plan = self.plan(
+                self.current_joints,
+                fallback_target.tolist(),
+                used_grasp_quat,
+                num_ik_seeds=24,
+                max_attempts=2,
+                timeout_sec=1.5,
+                max_joint_delta_deg=90.0,
+            )
+            if fallback_plan is None:
+                continue
+            fallback_ok = self.execute_spline(*fallback_plan)
+            if fallback_ok:
+                final_state.distance_m = depth_m
+                final_state.grasp_ee_pos = fallback_target.copy()
+                self.runtime_log.log(
+                    "final_approach_fallback_success",
+                    controller="curobo_plus_doosan_move_spline_joint",
+                    executed_depth_m=depth_m,
+                )
+                remaining_tool_line_m = (
+                    requested_final_approach_distance - depth_m)
+                if (
+                    self._direct_curobo_final_approach_for_measured_tcp
+                    and self._measured_tcp_tool_line_after_curobo_fallback
+                    and remaining_tool_line_m >= 0.020
+                ):
+                    (
+                        tool_finish_ok,
+                        tool_finish_delta,
+                        tool_finish_executed_m,
+                        tool_finish_executed_dir,
+                    ) = self._execute_final_approach_tool_finish(
+                        remaining_tool_line_m,
+                        depth_m,
+                        requested_final_approach_distance,
+                        used_grasp_variant,
+                        used_approach_dir,
+                        "cuRobo shallow fallback",
+                    )
+                    if not tool_finish_ok:
+                        fallback_ok = False
+                        break
+                    final_state.apply_tool_finish(
+                        depth_m,
+                        remaining_tool_line_m,
+                        tool_finish_delta,
+                        tool_finish_executed_dir,
+                    )
+                    self.runtime_log.log(
+                        "final_approach_tool_finish_success",
+                        executed_total_m=final_state.distance_m,
+                        horizontal_only=final_state.tool_finish_executed_dir is not None,
+                    )
+                break
+        return fallback_ok
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2264,90 +2359,15 @@ class CuroboPlanner(Node):
                     final_approach_distance,
                     min_distance_m=0.005)
             if not approach_ok:
-                fallback_ok = False
-                if (
-                    self._measured_tcp_model
-                    and ENABLE_CUROBO_FINAL_APPROACH_FALLBACK
-                    and not precomputed_final_attempted
-                    and used_pre_ee_pos is not None
-                    and used_grasp_quat is not None
-                    and self.current_joints is not None
-                ):
-                    depth_candidates = final_approach_fallback_depths(
-                        final_approach_distance,
-                        self._direct_curobo_final_approach_for_measured_tcp,
-                    )
-                    for depth_m in depth_candidates:
-                        fallback_target = (
-                            used_pre_ee_pos
-                            + depth_m * used_approach_dir
-                        )
-                        self.get_logger().warn(
-                            "FINAL_APPROACH_STRAIGHT_BASE failed; trying cuRobo "
-                            f"fallback depth={depth_m*1000:.0f}mm "
-                            f"xyz={[round(v*1000, 1) for v in fallback_target]}mm")
-                        self.runtime_log.log(
-                            "final_approach_fallback_requested",
-                            reason="doosan_moveline_failed_or_no_motion",
-                            target_pos_m=fallback_target.tolist(),
-                            approach_dir=used_approach_dir,
-                            depth_m=depth_m,
-                        )
-                        fallback_plan = self.plan(
-                            self.current_joints,
-                            fallback_target.tolist(),
-                            used_grasp_quat,
-                            num_ik_seeds=24,
-                            max_attempts=2,
-                            timeout_sec=1.5,
-                            max_joint_delta_deg=90.0,
-                        )
-                        if fallback_plan is None:
-                            continue
-                        fallback_ok = self.execute_spline(*fallback_plan)
-                        if fallback_ok:
-                            final_state.distance_m = depth_m
-                            final_state.grasp_ee_pos = fallback_target.copy()
-                            self.runtime_log.log(
-                                "final_approach_fallback_success",
-                                controller="curobo_plus_doosan_move_spline_joint",
-                                executed_depth_m=depth_m,
-                            )
-                            remaining_tool_line_m = (
-                                requested_final_approach_distance - depth_m)
-                            if (
-                                self._direct_curobo_final_approach_for_measured_tcp
-                                and self._measured_tcp_tool_line_after_curobo_fallback
-                                and remaining_tool_line_m >= 0.020
-                            ):
-                                (
-                                    tool_finish_ok,
-                                    tool_finish_delta,
-                                    tool_finish_executed_m,
-                                    tool_finish_executed_dir,
-                                ) = self._execute_final_approach_tool_finish(
-                                    remaining_tool_line_m,
-                                    depth_m,
-                                    requested_final_approach_distance,
-                                    used_grasp_variant,
-                                    used_approach_dir,
-                                    "cuRobo shallow fallback",
-                                )
-                                if not tool_finish_ok:
-                                    fallback_ok = False
-                                    break
-                                final_state.apply_tool_finish(
-                                    depth_m,
-                                    remaining_tool_line_m,
-                                    tool_finish_delta,
-                                    tool_finish_executed_dir,
-                                )
-                                self.runtime_log.log(
-                                    "final_approach_tool_finish_success",
-                                    executed_total_m=final_state.distance_m,
-                                    horizontal_only=final_state.tool_finish_executed_dir is not None,
-                                )
-                            break
+                fallback_ok = self._try_final_approach_fallback(
+                    final_state,
+                    requested_final_approach_distance,
+                    used_pre_ee_pos,
+                    used_grasp_quat,
+                    used_grasp_variant,
+                    used_approach_dir,
+                    precomputed_final_attempted,
+                )
                 if not fallback_ok:
                     self.get_logger().error("ABORT: 직선 진입 실패")
                     self._abort_pick_with_complete()
