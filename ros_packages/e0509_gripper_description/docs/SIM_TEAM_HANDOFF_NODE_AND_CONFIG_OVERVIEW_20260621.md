@@ -173,16 +173,61 @@ J1 ±225°, **J2 ±95°**, J3 ±135°, J4 ±360°, J5 ±130°, J6 ±225°. J2가
 1. `ros2 launch e0509_gripper_description bringup_dsr.launch.py mode:=virtual` (또는 `real`)
    — 컨트롤러 emulator + 그리퍼 저수준 서비스
 2. `dsr_gripper_tcp`의 `gripper_service_node` 실행 (별도 패키지, `/gripper_service/*` 제공)
-3. `ros2 launch strawberry_motion workspace_scan.launch.py enable_fusion_detection:=true
-   enable_robot_execution:=true` — 시각화 + fusion 검출 + scan executor
-4. `curobo_planner_node` 수동 실행:
-   ```bash
-   export CUDA_HOME=/usr/local/cuda-12.8
-   source /opt/ros/humble/setup.bash && source ~/doosan_ws/install/setup.bash
-   python3 ~/doosan_ws/src/e0509_gripper_description/scripts/curobo_planner_node.py
-   ```
-   (GPU warmup 약 30초 소요)
-5. `ros2 service call /strawberry/scan/start std_srvs/srv/Trigger` 로 스캔 시작
+3. `curobo_planner_node` 수동 실행 (8-A 참고, GPU warmup 약 30초 소요)
+4. `ros2 launch strawberry_motion workspace_scan.launch.py ...` (8-B 참고) — 시각화 +
+   fusion 검출 + scan executor를 한 launch에서 켬
+5. `ros2 service call /strawberry/scan/start std_srvs/srv/Trigger "{}"` 로 스캔 시작
+
+### 8-A. `curobo_planner_node` 실행 파라미터 (검증된 예시, 2026-06-20 기준)
+
+```bash
+ros2 run e0509_gripper_description curobo_planner_node.py --ros-args \
+  -p measured_tcp_plan_only:=false \
+  -p direct_curobo_final_approach_for_measured_tcp:=true \
+  -p measured_tcp_max_approach_m:=0.200 \
+  -p measured_tcp_tool_line_after_curobo_fallback:=true \
+  -p debug_dump_plan_calls:=true
+```
+
+| 파라미터 | 의미 |
+| --- | --- |
+| `measured_tcp_plan_only` | **false=실제로 로봇 움직임.** true면 plan만 하고 motion dispatch 안 함(안전점검 모드) |
+| `direct_curobo_final_approach_for_measured_tcp` | 최종 접근(final approach) 일부를 직선(MoveLine) 대신 cuRobo plan으로 먼저 시도 |
+| `measured_tcp_max_approach_m` | 최종 접근 최대 진입 깊이(m). 기본보다 늘려서 더 깊은 타겟을 허용 |
+| `measured_tcp_tool_line_after_curobo_fallback` | cuRobo가 일부 깊이까지만 풀리면 남은 구간을 직선(TOOL Z) 이동으로 채움 |
+| `debug_dump_plan_calls` | 매 `plan()` 호출을 파일로 덤프 — 오프라인 재생(replay)으로 실패 원인 분석 가능하게 함 |
+
+### 8-B. `workspace_scan.launch.py` 실행 파라미터 (검증된 예시)
+
+```bash
+ros2 launch strawberry_motion workspace_scan.launch.py \
+  enable_robot_execution:=true target_cell:=root/nw \
+  enable_fusion_detection:=true enable_pick_integration:=true \
+  collect_then_pick:=true collect_pick_ready_cell:=root/nw/pick_ready \
+  fusion_pick_target_max_z_m:=0.95 \
+  scan_movej_vel_deg_s:=20.0 scan_movej_acc_deg_s2:=30.0 \
+  overview_return_vel_deg_s:=20.0 overview_return_acc_deg_s2:=30.0
+```
+
+| 파라미터 | 대상 노드 | 의미 |
+| --- | --- | --- |
+| `enable_robot_execution` | (gate) | **`scan_executor_node`를 실제로 띄움.** false면 시각화만 되고 노드 자체가 안 뜸 |
+| `target_cell` | scan_executor | 어느 셀만 스캔할지(`all`이면 전체 순회) |
+| `enable_fusion_detection` | (gate) | **`strawberry_fusion_node`를 실제로 띄움** |
+| `enable_pick_integration` | scan_executor | dwell 중 감지된 pose를 실제로 pick 시퀀스로 넘길지 |
+| `collect_then_pick` | scan_executor | 서브셀 전체를 먼저 다 스캔해 후보를 모은 다음, 한 군데(pick-ready pose)에서 한 개씩 pick |
+| `collect_pick_ready_cell` | scan_executor | collect_then_pick 후 이동할 pick 전용 pose 셀 ID |
+| `fusion_pick_target_max_z_m` | strawberry_fusion_node | 이 높이(base_link 기준, m) 위 후보는 잎/꼭대기로 간주해 거절 |
+| `scan_movej_vel_deg_s` / `scan_movej_acc_deg_s2` | scan_executor | 셀 간 이동 MoveJoint 속도/가속도 |
+| `overview_return_vel_deg_s` / `overview_return_acc_deg_s2` | scan_executor | overview 복귀 속도/가속도 |
+
+`/strawberry/scan/start`는 `scan_executor_node`가 직접 제공하는 서비스 서버다 — launch만으로는
+자동으로 안 움직이고 이 서비스를 명시적으로 호출해야 스캔이 시작되는 안전장치다.
+
+**파라미터 두 그룹의 구분**: `ros2 run curobo_planner_node` 파라미터는 *그 노드 하나의*
+접근/안전 동작 튜닝이고, `ros2 launch workspace_scan.launch.py` 파라미터는 *어느 노드를
+켤지 + scan_executor/fusion의 동작 옵션*이다 — 서로 다른 프로세스에 붙는 별개 설정이며
+같은 launch/run 안에서 섞이지 않는다.
 
 ---
 
