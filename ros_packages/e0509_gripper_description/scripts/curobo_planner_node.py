@@ -35,7 +35,10 @@ from curobo.types.robot import RobotConfig
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 from curobo.geom.types import WorldConfig, Cuboid
 from curobo_kinematics_adapter import CuroboKinematicsAdapter
-from approach_retreat_policy import build_straight_retreat_steps
+from approach_retreat_policy import (
+    build_straight_retreat_steps,
+    measured_tcp_approach_distance,
+)
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
 from grasp_candidate_policy import (
@@ -1679,16 +1682,20 @@ class CuroboPlanner(Node):
             # clamp 전 detection_raw_y를 쓰면 FK drift가 final approach를 벽 뒤로
             # 밀어 넣어 cuRobo fallback goal이 Y>wall로 튄다.
             # baseline(180mm)보다 깊은 딸기만 추가 진입; baseline 미만으로 줄이지 않음
-            baseline_approach = PRE_APPROACH_OFFSET - MEASURED_TCP_FINAL_STANDOFF_M  # 0.180m
-            pre_approach_y_m = WALL_SURFACE_Y_M - PRE_APPROACH_OFFSET  # 0.612m
-            effective_detection_y = raw_straw[1]
-            adaptive_dist = (effective_detection_y - Y_DETECTION_BIAS_M) - pre_approach_y_m
-            target_plane_dist = float(np.dot(straw - used_pre_ee_pos, used_approach_dir))
-            uncapped_distance = max(baseline_approach, min(adaptive_dist, 0.260))
-            final_approach_distance = max(
-                0.0,
-                min(uncapped_distance, self._measured_tcp_max_approach_m),
+            approach_distance = measured_tcp_approach_distance(
+                raw_y_m=raw_straw[1],
+                straw=straw,
+                used_pre_ee_pos=used_pre_ee_pos,
+                used_approach_dir=used_approach_dir,
+                max_approach_m=self._measured_tcp_max_approach_m,
+                y_detection_bias_m=Y_DETECTION_BIAS_M,
+                pre_approach_offset_m=PRE_APPROACH_OFFSET,
+                final_standoff_m=MEASURED_TCP_FINAL_STANDOFF_M,
+                wall_surface_y_m=WALL_SURFACE_Y_M,
             )
+            target_plane_dist = approach_distance.target_plane_dist_m
+            uncapped_distance = approach_distance.uncapped_distance_m
+            final_approach_distance = approach_distance.final_distance_m
             # 2026-06-20 실기 확인: z=717mm 타겟(is_nw_high_target=False, 750mm
             # 미달)도 동일한 +15deg 틸트 variant를 골랐는데, wall_y_clamped로
             # adaptive_dist가 baseline(180mm)에 floor-lock되면서 final_extra가

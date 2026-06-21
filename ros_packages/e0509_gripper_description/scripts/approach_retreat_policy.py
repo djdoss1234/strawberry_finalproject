@@ -6,9 +6,44 @@ reverse path. Keeping it pure makes the measured-TCP two-stage retreat easier
 to audit after the J2 over-extension incident.
 """
 
+from dataclasses import dataclass
 from typing import Any, Dict, List
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class ApproachDistanceResult:
+    target_plane_dist_m: float
+    uncapped_distance_m: float
+    final_distance_m: float
+
+
+def measured_tcp_approach_distance(raw_y_m: float,
+                                   straw,
+                                   used_pre_ee_pos,
+                                   used_approach_dir,
+                                   max_approach_m: float,
+                                   y_detection_bias_m: float,
+                                   pre_approach_offset_m: float,
+                                   final_standoff_m: float,
+                                   wall_surface_y_m: float,
+                                   ceiling_m: float = 0.260):
+    """Compute measured-TCP final approach distance before optional extras."""
+    baseline_approach = float(pre_approach_offset_m) - float(final_standoff_m)
+    pre_approach_y_m = float(wall_surface_y_m) - float(pre_approach_offset_m)
+    adaptive_dist = (float(raw_y_m) - float(y_detection_bias_m)) - pre_approach_y_m
+    target_plane_dist = float(np.dot(
+        np.array(straw, dtype=float) - np.array(used_pre_ee_pos, dtype=float),
+        np.array(used_approach_dir, dtype=float),
+    ))
+    uncapped_distance = max(baseline_approach, min(adaptive_dist, float(ceiling_m)))
+    final_distance = max(0.0, min(uncapped_distance, float(max_approach_m)))
+    return ApproachDistanceResult(
+        target_plane_dist_m=target_plane_dist,
+        uncapped_distance_m=uncapped_distance,
+        final_distance_m=final_distance,
+    )
 
 
 def build_straight_retreat_steps(measured_tcp_model: bool,
