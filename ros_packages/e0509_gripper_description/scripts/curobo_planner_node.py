@@ -810,14 +810,41 @@ class CuroboPlanner(Node):
     def _execute_pitch_detach(self) -> bool:
         return self.motion_client.execute_pitch_detach()
 
+    def _execute_retreat_step_via_curobo(self, delta_m, motion_label: str) -> bool:
+        """Retreat one BASE-frame leg via cuRobo plan instead of a raw relative
+        MoveLine. A raw relative line lets the Doosan controller pick whatever
+        IK branch it wants for the destination, which can swing joints through
+        the operational limit (observed: same 125mm leg only moved J2 ~4deg
+        forward but ~15deg in reverse from a lower post-detach pose). cuRobo's
+        planner checks operational joint limits before returning a trajectory,
+        so an unreachable retreat fails cleanly (existing hold path) instead of
+        physically exceeding a joint limit mid-motion."""
+        if self.current_joints is None:
+            self.get_logger().error(
+                f"{motion_label}: no current_joints for cuRobo retreat plan")
+            return False
+        start_joints = list(self.current_joints)
+        current_pos, current_quat = self._curobo_fk_ee_pose(start_joints)
+        target_pos = (
+            np.array(current_pos, dtype=float)
+            + np.array(delta_m, dtype=float)
+        ).tolist()
+        plan_result = self.plan(start_joints, target_pos, current_quat, num_ik_seeds=32)
+        if plan_result is None:
+            self.get_logger().error(
+                f"{motion_label}: cuRobo retreat plan failed (IK/limits/collision)")
+            return False
+        ok = self.execute_spline(*plan_result)
+        if not ok:
+            self.get_logger().error(f"{motion_label}: cuRobo retreat spline exec failed")
+        return ok
+
     def _execute_retreat_steps(self, steps, vel_mm_s=None, acc_mm_s2=None) -> bool:
         for step in steps:
             if step["frame"] == "base":
-                ok = self.execute_base_relative_line(
+                ok = self._execute_retreat_step_via_curobo(
                     step["delta_m"],
                     step["label"],
-                    vel_mm_s=vel_mm_s or RETREAT_VEL_MM_S,
-                    acc_mm_s2=acc_mm_s2 or RETREAT_ACC_MM_S2,
                 )
             else:
                 ok = self.execute_tool_z_line(
