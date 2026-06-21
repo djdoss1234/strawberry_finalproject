@@ -1677,6 +1677,60 @@ class CuroboPlanner(Node):
             used_grasp_ee_pos + extra_advance_m * used_approach_dir)
         return True, extra_advance_m, used_grasp_ee_pos
 
+    def _execute_final_approach_tool_finish(self, remaining_tool_line_m: float,
+                                            curobo_depth_m: float,
+                                            requested_total_m: float,
+                                            used_grasp_variant,
+                                            used_approach_dir,
+                                            failure_context: str):
+        self.get_logger().warn(
+            "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
+            f"{curobo_depth_m*1000:.0f}mm only; executing "
+            f"remaining {remaining_tool_line_m*1000:.0f}mm with "
+            "TOOL +Z MoveLine like the proven SW baseline")
+        self.runtime_log.log(
+            "final_approach_tool_finish_requested",
+            reason="curobo_deep_final_approach_ik_fail",
+            curobo_depth_m=curobo_depth_m,
+            tool_finish_m=remaining_tool_line_m,
+            requested_total_m=requested_total_m,
+        )
+        finish_direction = tool_finish_base_direction(
+            used_grasp_variant,
+            used_approach_dir,
+        )
+        if finish_direction.use_base_line:
+            if finish_direction.is_published_roll:
+                self.get_logger().warn(
+                    "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
+                    "using BASE relative line; TOOL +Z returned "
+                    "success/no-motion in this branch")
+            tool_finish_ok = self.execute_base_relative_line(
+                remaining_tool_line_m * finish_direction.direction,
+                "FINAL_APPROACH_TOOL_FINISH",
+                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+            )
+            tool_finish_delta = remaining_tool_line_m * finish_direction.direction
+            tool_finish_dir = finish_direction.direction if tool_finish_ok else None
+        else:
+            tool_finish_ok = self.execute_tool_z_line(
+                remaining_tool_line_m,
+                motion_label="FINAL_APPROACH_TOOL_FINISH",
+                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+                min_distance_m=0.005,
+            )
+            tool_finish_delta = remaining_tool_line_m * np.array(
+                used_approach_dir, dtype=float)
+            tool_finish_dir = None
+
+        if not tool_finish_ok:
+            self.get_logger().error(
+                "FINAL_APPROACH_TOOL_FINISH failed after "
+                f"{failure_context}")
+        return tool_finish_ok, tool_finish_delta, remaining_tool_line_m, tool_finish_dir
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2141,63 +2195,20 @@ class CuroboPlanner(Node):
                         self._measured_tcp_tool_line_after_curobo_fallback
                         and remaining_tool_line_m >= 0.020
                     ):
-                        self.get_logger().warn(
-                            "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
-                            f"{selected_curobo_depth_m*1000:.0f}mm only; executing "
-                            f"remaining {remaining_tool_line_m*1000:.0f}mm with "
-                            "TOOL +Z MoveLine like the proven SW baseline")
-                        self.runtime_log.log(
-                            "final_approach_tool_finish_requested",
-                            reason="curobo_deep_final_approach_ik_fail",
-                            curobo_depth_m=selected_curobo_depth_m,
-                            tool_finish_m=remaining_tool_line_m,
-                            requested_total_m=requested_final_approach_distance,
-                        )
-                        # 2026-06-20 실기 확인: 틸트(+15deg 등)가 있는 채로 TOOL+Z
-                        # 직선을 쓰면 이 마지막 구간 전체가 대각선으로 같이
-                        # 떠오른다(사용자 직접 관찰: "수평이 아니라 대각선으로 살짝
-                        # 위로 올라감"). 처음엔 is_nw_high_target(z>=750mm)에만
-                        # 적용했는데, z<750mm 타겟도 같은 +15deg variant를 고르면
-                        # 똑같이 재현됨(실기 로그로 확인) — 즉 진짜 원인은 "높은
-                        # 타겟"이 아니라 "틸트된 variant"다. 그래서 타겟 높이가
-                        # 아니라 실제 선택된 approach_dir의 Z 성분으로 분기한다.
-                        # 틸트가 0이면 horiz_dir == used_approach_dir이라 SW처럼
-                        # 평평한 접근은 동작이 전혀 안 바뀐다.
-                        finish_direction = tool_finish_base_direction(
+                        (
+                            tool_finish_ok,
+                            tool_finish_delta,
+                            tool_finish_executed_m,
+                            tool_finish_executed_dir,
+                        ) = self._execute_final_approach_tool_finish(
+                            remaining_tool_line_m,
+                            selected_curobo_depth_m,
+                            requested_final_approach_distance,
                             used_grasp_variant,
                             used_approach_dir,
+                            "precomputed cuRobo final approach",
                         )
-                        if finish_direction.use_base_line:
-                            if finish_direction.is_published_roll:
-                                self.get_logger().warn(
-                                    "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
-                                    "using BASE relative line; TOOL +Z returned "
-                                    "success/no-motion in this branch")
-                            tool_finish_ok = self.execute_base_relative_line(
-                                remaining_tool_line_m * finish_direction.direction,
-                                "FINAL_APPROACH_TOOL_FINISH",
-                                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                            )
-                            tool_finish_delta = (
-                                remaining_tool_line_m * finish_direction.direction)
-                            if tool_finish_ok:
-                                tool_finish_executed_m = remaining_tool_line_m
-                                tool_finish_executed_dir = finish_direction.direction
-                        else:
-                            tool_finish_ok = self.execute_tool_z_line(
-                                remaining_tool_line_m,
-                                motion_label="FINAL_APPROACH_TOOL_FINISH",
-                                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                                min_distance_m=0.005,
-                            )
-                            tool_finish_delta = remaining_tool_line_m * np.array(
-                                used_approach_dir, dtype=float)
                         if not tool_finish_ok:
-                            self.get_logger().error(
-                                "FINAL_APPROACH_TOOL_FINISH failed after "
-                                "precomputed cuRobo final approach")
                             approach_ok = False
                         else:
                             final_approach_distance = (
@@ -2281,56 +2292,20 @@ class CuroboPlanner(Node):
                                 and self._measured_tcp_tool_line_after_curobo_fallback
                                 and remaining_tool_line_m >= 0.020
                             ):
-                                self.get_logger().warn(
-                                    "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
-                                    f"{depth_m*1000:.0f}mm only; executing remaining "
-                                    f"{remaining_tool_line_m*1000:.0f}mm with TOOL +Z "
-                                    "MoveLine like the proven SW baseline")
-                                self.runtime_log.log(
-                                    "final_approach_tool_finish_requested",
-                                    reason="curobo_deep_final_approach_ik_fail",
-                                    curobo_depth_m=depth_m,
-                                    tool_finish_m=remaining_tool_line_m,
-                                    requested_total_m=requested_final_approach_distance,
-                                )
-                                # see horizontal-only rationale at the other
-                                # FINAL_APPROACH_TOOL_FINISH call site above —
-                                # gated on actual tilt, not target height.
-                                finish_direction = tool_finish_base_direction(
+                                (
+                                    tool_finish_ok,
+                                    tool_finish_delta,
+                                    tool_finish_executed_m,
+                                    tool_finish_executed_dir,
+                                ) = self._execute_final_approach_tool_finish(
+                                    remaining_tool_line_m,
+                                    depth_m,
+                                    requested_final_approach_distance,
                                     used_grasp_variant,
                                     used_approach_dir,
+                                    "cuRobo shallow fallback",
                                 )
-                                if finish_direction.use_base_line:
-                                    if finish_direction.is_published_roll:
-                                        self.get_logger().warn(
-                                            "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
-                                            "using BASE relative line; TOOL +Z returned "
-                                            "success/no-motion in this branch")
-                                    tool_finish_ok = self.execute_base_relative_line(
-                                        remaining_tool_line_m * finish_direction.direction,
-                                        "FINAL_APPROACH_TOOL_FINISH",
-                                        vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                                        acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                                    )
-                                    tool_finish_delta = (
-                                        remaining_tool_line_m * finish_direction.direction)
-                                    if tool_finish_ok:
-                                        tool_finish_executed_m = remaining_tool_line_m
-                                        tool_finish_executed_dir = finish_direction.direction
-                                else:
-                                    tool_finish_ok = self.execute_tool_z_line(
-                                        remaining_tool_line_m,
-                                        motion_label="FINAL_APPROACH_TOOL_FINISH",
-                                        vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                                        acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                                        min_distance_m=0.005,
-                                    )
-                                    tool_finish_delta = remaining_tool_line_m * np.array(
-                                        used_approach_dir, dtype=float)
                                 if not tool_finish_ok:
-                                    self.get_logger().error(
-                                        "FINAL_APPROACH_TOOL_FINISH failed after "
-                                        "cuRobo shallow fallback")
                                     fallback_ok = False
                                     break
                                 final_approach_distance = (
