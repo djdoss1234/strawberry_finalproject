@@ -960,6 +960,36 @@ class ScanExecutorNode(Node):
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
+        scan_order = self._compute_scan_order()
+        cell_detections: Dict[str, int] = {}
+        collect_then_pick_active = (
+            self._collect_then_pick
+            and self._enable_pick_integration
+            and self._target_cell != "all"
+            and len(scan_order) > 1
+        )
+        collected_poses: List[PoseStamped] = []
+        if collect_then_pick_active:
+            ready_cell = self._collect_pick_ready_cell or self._target_cell
+            self._pub_status(
+                "COLLECT_THEN_PICK_ENABLED scan_cells=%s pick_ready_cell=%s"
+                % (scan_order, ready_cell)
+            )
+
+        for cell_id in scan_order:
+            if not self._scan_one_cell(
+                cell_id, scan_order, collect_then_pick_active,
+                collected_poses, cell_detections,
+            ):
+                return
+
+        if collect_then_pick_active:
+            if not self._finish_collect_then_pick(collected_poses, cell_detections):
+                return
+
+        self._finish_scan_sequence(cell_detections)
+
+    def _compute_scan_order(self) -> List[str]:
         if self._target_cell == "all":
             scan_order = [c for c in _ALL_CELLS_ZORDER if c in self._targets]
             self._pub_status("TRAVERSAL_SCAN_STARTED cells=%s" % scan_order)
@@ -980,197 +1010,188 @@ class ScanExecutorNode(Node):
                 scan_order = [self._target_cell]
                 self._pub_status("SINGLE_CELL_SCAN_STARTED target=%s" % self._target_cell)
 
-        cell_detections: Dict[str, int] = {}
-        collect_then_pick_active = (
-            self._collect_then_pick
-            and self._enable_pick_integration
-            and self._target_cell != "all"
-            and len(scan_order) > 1
+        return scan_order
+
+    def _scan_one_cell(self, cell_id, scan_order, collect_then_pick_active,
+                       collected_poses, cell_detections) -> bool:
+        if cell_id not in self._targets:
+            self.get_logger().warn("%s not in candidates — skipping" % cell_id)
+            return True
+
+        target = self._targets[cell_id]
+        endpoint_deg = target.get("endpoint_joints_deg")
+        if endpoint_deg is None:
+            self._pub_status(
+                "CONFIG_ERROR %s missing endpoint_joints_deg in YAML — aborting" % cell_id
+            )
+            self._pub_state(cell_id, "PLANNING_FAIL")
+            return False
+
+        self._pub_state(cell_id, "SCANNING")
+        if self._runtime_curobo_preview_enabled:
+            self._start_runtime_curobo_preview(cell_id, target)
+        self._pub_status(
+            "MOVING_TO %s  endpoint_deg=[%s]  (direct MoveJoint, YAML pose)"
+            % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
         )
-        collected_poses: List[PoseStamped] = []
-        if collect_then_pick_active:
-            ready_cell = self._collect_pick_ready_cell or self._target_cell
-            self._pub_status(
-                "COLLECT_THEN_PICK_ENABLED scan_cells=%s pick_ready_cell=%s"
-                % (scan_order, ready_cell)
+
+        # 스캔 이동 시작 전 그리퍼 pre-close — 수 초 이동하는 동안 완료됨
+        _gmsg = Int32()
+        _gmsg.data = _GRIPPER_APPROACH_POS
+        self._gripper_pos_pub.publish(_gmsg)
+
+        if not self._movej(
+            endpoint_deg, vel=self._scan_movej_vel, acc=self._scan_movej_acc
+        ):
+            self._pub_status("EXEC_FAIL %s MoveJoint failed — aborting scan sequence" % cell_id)
+            self._pub_state(cell_id, "PLANNING_FAIL")
+            self._pub_status("RETURNING_TO_OVERVIEW after failure")
+            self._movej(
+                self._overview_joints_deg,
+                vel=self._overview_return_vel,
+                acc=self._overview_return_acc,
             )
+            return False
 
-        for cell_id in scan_order:
-            if cell_id not in self._targets:
-                self.get_logger().warn("%s not in candidates — skipping" % cell_id)
-                continue
-
-            target = self._targets[cell_id]
-            endpoint_deg = target.get("endpoint_joints_deg")
-            if endpoint_deg is None:
-                self._pub_status(
-                    "CONFIG_ERROR %s missing endpoint_joints_deg in YAML — aborting" % cell_id
-                )
-                self._pub_state(cell_id, "PLANNING_FAIL")
-                return
-
-            self._pub_state(cell_id, "SCANNING")
-            if self._runtime_curobo_preview_enabled:
-                self._start_runtime_curobo_preview(cell_id, target)
+        arrival_target_deg = self._last_movej_command_deg or endpoint_deg
+        endpoint_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
+        arrival_timeout = 90.0
+        arrived = self._wait_for_joints(endpoint_rad, 3.0, arrival_timeout)
+        if not arrived:
             self._pub_status(
-                "MOVING_TO %s  endpoint_deg=[%s]  (direct MoveJoint, YAML pose)"
-                % (cell_id, " ".join("%.1f" % d for d in endpoint_deg))
+                "EXEC_TIMEOUT %s — robot did not arrive at endpoint within %.0fs; aborting"
+                % (cell_id, arrival_timeout)
             )
+            self._pub_state(cell_id, "PLANNING_FAIL")
+            self._movej(
+                self._overview_joints_deg,
+                vel=self._overview_return_vel,
+                acc=self._overview_return_acc,
+            )
+            return False
 
-            # 스캔 이동 시작 전 그리퍼 pre-close — 수 초 이동하는 동안 완료됨
-            _gmsg = Int32()
-            _gmsg.data = _GRIPPER_APPROACH_POS
-            self._gripper_pos_pub.publish(_gmsg)
-
-            if not self._movej(
-                endpoint_deg, vel=self._scan_movej_vel, acc=self._scan_movej_acc
-            ):
-                self._pub_status("EXEC_FAIL %s MoveJoint failed — aborting scan sequence" % cell_id)
-                self._pub_state(cell_id, "PLANNING_FAIL")
-                self._pub_status("RETURNING_TO_OVERVIEW after failure")
-                self._movej(
-                    self._overview_joints_deg,
-                    vel=self._overview_return_vel,
-                    acc=self._overview_return_acc,
-                )
-                return
-
-            arrival_target_deg = self._last_movej_command_deg or endpoint_deg
-            endpoint_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
-            arrival_timeout = 90.0
-            arrived = self._wait_for_joints(endpoint_rad, 3.0, arrival_timeout)
-            if not arrived:
-                self._pub_status(
-                    "EXEC_TIMEOUT %s — robot did not arrive at endpoint within %.0fs; aborting"
-                    % (cell_id, arrival_timeout)
-                )
-                self._pub_state(cell_id, "PLANNING_FAIL")
-                self._movej(
-                    self._overview_joints_deg,
-                    vel=self._overview_return_vel,
-                    acc=self._overview_return_acc,
-                )
-                return
-
-            # Reset per-cell detection counter and pose buffer just before dwell.
+        # Reset per-cell detection counter and pose buffer just before dwell.
+        with self._detection_lock:
+            self._detection_count = 0
+            self._detection_poses = []
+        joints_now = self._current_joints or []
+        joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+        self._pub_status(
+            "AT_SCAN_POSE %s joints_deg=[%s] — adaptive detection wait up to %.1fs"
+            % (cell_id, joints_deg_str, self._scan_dwell_sec)
+        )
+        detection_deadline = time.time() + self._scan_dwell_sec
+        while time.time() < detection_deadline:
             with self._detection_lock:
-                self._detection_count = 0
-                self._detection_poses = []
-            joints_now = self._current_joints or []
-            joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+                if self._detection_count > 0 and not collect_then_pick_active:
+                    break
+            time.sleep(0.05)
+
+        with self._detection_lock:
+            count = self._detection_count
+            poses_snapshot = list(self._detection_poses)
+        cell_detections[cell_id] = count
+
+        if count > 0:
+            self._pub_state(cell_id, "TARGET_FOUND")
             self._pub_status(
-                "AT_SCAN_POSE %s joints_deg=[%s] — adaptive detection wait up to %.1fs"
-                % (cell_id, joints_deg_str, self._scan_dwell_sec)
+                "TARGET_FOUND %s %d pick candidate(s) detected" % (cell_id, count)
             )
-            detection_deadline = time.time() + self._scan_dwell_sec
-            while time.time() < detection_deadline:
-                with self._detection_lock:
-                    if self._detection_count > 0 and not collect_then_pick_active:
-                        break
-                time.sleep(0.05)
-
-            with self._detection_lock:
-                count = self._detection_count
-                poses_snapshot = list(self._detection_poses)
-            cell_detections[cell_id] = count
-
-            if count > 0:
-                self._pub_state(cell_id, "TARGET_FOUND")
-                self._pub_status(
-                    "TARGET_FOUND %s %d pick candidate(s) detected" % (cell_id, count)
-                )
-                if self._enable_pick_integration:
-                    unique = self._deduplicate_poses(poses_snapshot)
-                    if collect_then_pick_active:
-                        collected_poses.extend(unique)
-                        self._pub_status(
-                            "COLLECT_TARGETS %s kept=%d total_buffer=%d"
-                            % (cell_id, len(unique), len(collected_poses))
-                        )
-                    else:
-                        subgroups = self._group_poses_by_subcell(unique)
-                        subgroup_msg = "  ".join(
-                            "%s/%s:%d" % (cell_id, subcell, len(subposes))
-                            for subcell, subposes in subgroups
-                        )
-                        self._pub_status(
-                            "SUBCELL_SCAN_ORDER %s %s" % (cell_id, subgroup_msg)
-                        )
-                        for subcell, subposes in subgroups:
-                            logical_cell = "%s/%s" % (cell_id, subcell)
-                            self._pub_state(logical_cell, "SCANNING")
-                            if not subposes:
-                                self._pub_status(
-                                    "SUBCELL_EMPTY %s no pick candidate" % logical_cell
-                                )
-                                self._pub_state(logical_cell, "SCANNED_EMPTY")
-                                continue
-                            completed = self._trigger_picks_for_cell(logical_cell, subposes)
-                            self._pub_state(
-                                logical_cell,
-                                "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+            if self._enable_pick_integration:
+                unique = self._deduplicate_poses(poses_snapshot)
+                if collect_then_pick_active:
+                    collected_poses.extend(unique)
+                    self._pub_status(
+                        "COLLECT_TARGETS %s kept=%d total_buffer=%d"
+                        % (cell_id, len(unique), len(collected_poses))
+                    )
+                else:
+                    subgroups = self._group_poses_by_subcell(unique)
+                    subgroup_msg = "  ".join(
+                        "%s/%s:%d" % (cell_id, subcell, len(subposes))
+                        for subcell, subposes in subgroups
+                    )
+                    self._pub_status(
+                        "SUBCELL_SCAN_ORDER %s %s" % (cell_id, subgroup_msg)
+                    )
+                    for subcell, subposes in subgroups:
+                        logical_cell = "%s/%s" % (cell_id, subcell)
+                        self._pub_state(logical_cell, "SCANNING")
+                        if not subposes:
+                            self._pub_status(
+                                "SUBCELL_EMPTY %s no pick candidate" % logical_cell
                             )
-            else:
-                self._pub_state(cell_id, "SCANNED_EMPTY")
-                self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
+                            self._pub_state(logical_cell, "SCANNED_EMPTY")
+                            continue
+                        completed = self._trigger_picks_for_cell(logical_cell, subposes)
+                        self._pub_state(
+                            logical_cell,
+                            "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                        )
+        else:
+            self._pub_state(cell_id, "SCANNED_EMPTY")
+            self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
 
-            # After picks (or empty cell) go directly to next scan pose from current
-            # position. HOME/overview recovery is reserved for explicit recovery
-            # policy (e.g. future VLA after repeated failed pick attempts).
-            if cell_id != scan_order[-1]:
-                self._pub_status("INTER_CELL_DIRECT — no overview reset; continuing to next cell")
+        # After picks (or empty cell) go directly to next scan pose from current
+        # position. HOME/overview recovery is reserved for explicit recovery
+        # policy (e.g. future VLA after repeated failed pick attempts).
+        if cell_id != scan_order[-1]:
+            self._pub_status("INTER_CELL_DIRECT — no overview reset; continuing to next cell")
+        return True
 
-        if collect_then_pick_active:
-            unique_all = self._deduplicate_poses(collected_poses)
-            if not unique_all:
-                self._pub_status("COLLECT_THEN_PICK_EMPTY no candidates after full scan")
-            else:
-                ready_cell = self._collect_pick_ready_cell or self._target_cell
-                ready_target = self._targets.get(ready_cell)
-                ready_joints = ready_target.get("endpoint_joints_deg") if ready_target else None
-                if ready_joints is None:
-                    self._pub_status(
-                        "COLLECT_THEN_PICK_BLOCKED missing pick-ready pose %s" % ready_cell
-                    )
-                    self._pub_state(self._target_cell, "PLANNING_FAIL")
-                    return
-                unique_all = self._rank_poses_for_pick_ready(unique_all, ready_target)
+    def _finish_collect_then_pick(self, collected_poses, cell_detections) -> bool:
+        unique_all = self._deduplicate_poses(collected_poses)
+        if not unique_all:
+            self._pub_status("COLLECT_THEN_PICK_EMPTY no candidates after full scan")
+        else:
+            ready_cell = self._collect_pick_ready_cell or self._target_cell
+            ready_target = self._targets.get(ready_cell)
+            ready_joints = ready_target.get("endpoint_joints_deg") if ready_target else None
+            if ready_joints is None:
                 self._pub_status(
-                    "COLLECT_THEN_PICK_READY_MOVE %s candidates=%d best=(%.0f,%.0f,%.0f)mm"
-                    % (
-                        ready_cell,
-                        len(unique_all),
-                        unique_all[0].pose.position.x * 1000,
-                        unique_all[0].pose.position.y * 1000,
-                        unique_all[0].pose.position.z * 1000,
-                    )
+                    "COLLECT_THEN_PICK_BLOCKED missing pick-ready pose %s" % ready_cell
                 )
-                if not self._movej(
-                    ready_joints, vel=self._scan_movej_vel, acc=self._scan_movej_acc
-                ):
-                    self._pub_status(
-                        "COLLECT_THEN_PICK_BLOCKED pick-ready MoveJoint failed"
-                    )
-                    self._pub_state(self._target_cell, "PLANNING_FAIL")
-                    return
-                arrival_target_deg = self._last_movej_command_deg or ready_joints
-                ready_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
-                if not self._wait_for_joints(ready_rad, 3.0, 90.0):
-                    self._pub_status(
-                        "COLLECT_THEN_PICK_BLOCKED pick-ready pose not confirmed"
-                    )
-                    self._pub_state(self._target_cell, "PLANNING_FAIL")
-                    return
-                completed = self._trigger_picks_for_cell(
-                    "%s/best" % self._target_cell,
-                    unique_all,
-                    poses_are_ranked=True,
+                self._pub_state(self._target_cell, "PLANNING_FAIL")
+                return False
+            unique_all = self._rank_poses_for_pick_ready(unique_all, ready_target)
+            self._pub_status(
+                "COLLECT_THEN_PICK_READY_MOVE %s candidates=%d best=(%.0f,%.0f,%.0f)mm"
+                % (
+                    ready_cell,
+                    len(unique_all),
+                    unique_all[0].pose.position.x * 1000,
+                    unique_all[0].pose.position.y * 1000,
+                    unique_all[0].pose.position.z * 1000,
                 )
-                self._pub_state(
-                    self._target_cell,
-                    "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+            )
+            if not self._movej(
+                ready_joints, vel=self._scan_movej_vel, acc=self._scan_movej_acc
+            ):
+                self._pub_status(
+                    "COLLECT_THEN_PICK_BLOCKED pick-ready MoveJoint failed"
                 )
+                self._pub_state(self._target_cell, "PLANNING_FAIL")
+                return False
+            arrival_target_deg = self._last_movej_command_deg or ready_joints
+            ready_rad = [float(np.deg2rad(d)) for d in arrival_target_deg]
+            if not self._wait_for_joints(ready_rad, 3.0, 90.0):
+                self._pub_status(
+                    "COLLECT_THEN_PICK_BLOCKED pick-ready pose not confirmed"
+                )
+                self._pub_state(self._target_cell, "PLANNING_FAIL")
+                return False
+            completed = self._trigger_picks_for_cell(
+                "%s/best" % self._target_cell,
+                unique_all,
+                poses_are_ranked=True,
+            )
+            self._pub_state(
+                self._target_cell,
+                "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+            )
+        return True
 
+    def _finish_scan_sequence(self, cell_detections) -> None:
         # Return to overview is optional.  During harvest experiments we often
         # continue from the last cell pose so VLA/recovery logic can decide when
         # HOME is actually needed.
