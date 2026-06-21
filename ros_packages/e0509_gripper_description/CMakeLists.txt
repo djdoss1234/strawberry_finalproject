@@ -76,6 +76,7 @@ install(PROGRAMS
   scripts/harvest_result_policy.py
   scripts/marker_place_orientation_policy.py
   scripts/open_stem_descent_policy.py
+  scripts/pick_sequence_executor.py
   scripts/pick_target_policy.py
   scripts/place_sequence_policy.py
   scripts/planner_bootstrap.py
