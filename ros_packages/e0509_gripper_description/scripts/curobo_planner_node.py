@@ -1397,6 +1397,38 @@ class CuroboPlanner(Node):
             return False
         return True
 
+    def _handle_gripper_close_failed(self, final_approach_distance: float,
+                                     extra_advance_m: float,
+                                     tool_finish_executed_m: float,
+                                     tool_finish_executed_dir,
+                                     used_approach_dir):
+        self.get_logger().error(
+            "ABORT: gripper close failed twice — skip detach and retreat straight")
+        self.runtime_log.log(
+            "pick_sequence_stopped",
+            result_code="GRIPPER_CLOSE_FAILED",
+            action="straight_retreat_without_detach",
+        )
+        retreat_distance_m = (
+            final_approach_distance + extra_advance_m - tool_finish_executed_m)
+        retreat_ok = self._execute_retreat_steps(
+            build_straight_retreat_steps(
+                self._measured_tcp_model,
+                retreat_distance_m,
+                used_approach_dir,
+                tool_finish_executed_m,
+                tool_finish_executed_dir,
+                "CLOSE_FAIL_RETREAT_BASE",
+                "CLOSE_FAIL_RETREAT",
+            )
+        )
+        self._clear_neighbor_obstacles()
+        if retreat_ok:
+            self._reset_gripper()
+            self.pick_complete_pub.publish(Empty())
+        else:
+            self._hold_pick_sequence("gripper_close_failed_retreat_failed")
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2174,32 +2206,13 @@ class CuroboPlanner(Node):
         grasp_result, present_pos, present_current_raw, grasp_reason = (
             self._close_and_verify_grasp())
         if grasp_result == "GRIPPER_CLOSE_FAILED":
-            self.get_logger().error(
-                "ABORT: gripper close failed twice — skip detach and retreat straight")
-            self.runtime_log.log(
-                "pick_sequence_stopped",
-                result_code="GRIPPER_CLOSE_FAILED",
-                action="straight_retreat_without_detach",
+            self._handle_gripper_close_failed(
+                final_approach_distance,
+                extra_advance_m,
+                tool_finish_executed_m,
+                tool_finish_executed_dir,
+                used_approach_dir,
             )
-            retreat_distance_m = (
-                final_approach_distance + extra_advance_m - tool_finish_executed_m)
-            retreat_ok = self._execute_retreat_steps(
-                build_straight_retreat_steps(
-                    self._measured_tcp_model,
-                    retreat_distance_m,
-                    used_approach_dir,
-                    tool_finish_executed_m,
-                    tool_finish_executed_dir,
-                    "CLOSE_FAIL_RETREAT_BASE",
-                    "CLOSE_FAIL_RETREAT",
-                )
-            )
-            self._clear_neighbor_obstacles()
-            if retreat_ok:
-                self._reset_gripper()
-                self.pick_complete_pub.publish(Empty())
-            else:
-                self._hold_pick_sequence("gripper_close_failed_retreat_failed")
             return
         # 4. BASE -Z 당기기로 줄기 분리 후 직선 역진 retreat
         self.get_logger().info(
