@@ -32,13 +32,11 @@ from curobo.geom.types import Cuboid
 from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import (
     build_straight_retreat_steps,
-    final_approach_fallback_depths,
     FinalApproachState,
-    measured_tcp_approach_distance,
-    tool_finish_base_direction,
 )
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
+from final_approach_executor import FinalApproachExecutor
 from grasp_candidate_policy import (
     GraspSearchResult,
     grasp_offsets_for_target,
@@ -375,6 +373,24 @@ class CuroboPlanner(Node):
         self.trajectory_guards = TrajectoryGuards(
             logger=self.get_logger(),
             joint_names=self.JOINT_NAMES,
+        )
+        self.final_approach_executor = FinalApproachExecutor(
+            node=self,
+            runtime_log=self.runtime_log,
+            plan_fn=self.plan,
+            execute_spline_fn=self.execute_spline,
+            execute_base_relative_line_fn=self.execute_base_relative_line,
+            execute_tool_z_line_fn=self.execute_tool_z_line,
+            current_joints_getter=lambda: self.current_joints,
+            measured_tcp_model=self._measured_tcp_model,
+            flat_grasp_only=self._flat_grasp_only,
+            flat_grasp_target_plane_margin_m=self._flat_grasp_target_plane_margin_m,
+            direct_curobo_final_approach_for_measured_tcp=(
+                self._direct_curobo_final_approach_for_measured_tcp),
+            measured_tcp_tool_line_after_curobo_fallback=(
+                self._measured_tcp_tool_line_after_curobo_fallback),
+            nw_high_target_final_extra_m=self._nw_high_target_final_extra_m,
+            measured_tcp_max_approach_m=self._measured_tcp_max_approach_m,
         )
         self.planning_adapter = CuroboPlanningAdapter(
             node=self,
@@ -1152,339 +1168,15 @@ class CuroboPlanner(Node):
             used_grasp_ee_pos + extra_advance_m * used_approach_dir)
         return True, extra_advance_m, used_grasp_ee_pos
 
-    def _execute_final_approach_tool_finish(self, remaining_tool_line_m: float,
-                                            curobo_depth_m: float,
-                                            requested_total_m: float,
-                                            used_grasp_variant,
-                                            used_approach_dir,
-                                            failure_context: str):
-        self.get_logger().warn(
-            "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
-            f"{curobo_depth_m*1000:.0f}mm only; executing "
-            f"remaining {remaining_tool_line_m*1000:.0f}mm with "
-            "TOOL +Z MoveLine like the proven SW baseline")
-        self.runtime_log.log(
-            "final_approach_tool_finish_requested",
-            reason="curobo_deep_final_approach_ik_fail",
-            curobo_depth_m=curobo_depth_m,
-            tool_finish_m=remaining_tool_line_m,
-            requested_total_m=requested_total_m,
-        )
-        finish_direction = tool_finish_base_direction(
-            used_grasp_variant,
-            used_approach_dir,
-        )
-        if finish_direction.use_base_line:
-            if finish_direction.is_published_roll:
-                self.get_logger().warn(
-                    "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
-                    "using BASE relative line; TOOL +Z returned "
-                    "success/no-motion in this branch")
-            tool_finish_ok = self.execute_base_relative_line(
-                remaining_tool_line_m * finish_direction.direction,
-                "FINAL_APPROACH_TOOL_FINISH",
-                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-            )
-            tool_finish_delta = remaining_tool_line_m * finish_direction.direction
-            tool_finish_dir = finish_direction.direction if tool_finish_ok else None
-        else:
-            tool_finish_ok = self.execute_tool_z_line(
-                remaining_tool_line_m,
-                motion_label="FINAL_APPROACH_TOOL_FINISH",
-                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                min_distance_m=0.005,
-            )
-            tool_finish_delta = remaining_tool_line_m * np.array(
-                used_approach_dir, dtype=float)
-            tool_finish_dir = None
-
-        if not tool_finish_ok:
-            self.get_logger().error(
-                "FINAL_APPROACH_TOOL_FINISH failed after "
-                f"{failure_context}")
-        return tool_finish_ok, tool_finish_delta, remaining_tool_line_m, tool_finish_dir
-
     def _compute_final_approach_distance(self, raw_straw, straw,
                                          used_pre_ee_pos,
                                          used_approach_dir,
                                          used_grasp_offset: float,
                                          is_nw_high_target: bool):
-        if not self._measured_tcp_model:
-            return PRE_APPROACH_OFFSET - used_grasp_offset
-
-        approach_distance = measured_tcp_approach_distance(
-            raw_y_m=raw_straw[1],
-            straw=straw,
-            used_pre_ee_pos=used_pre_ee_pos,
-            used_approach_dir=used_approach_dir,
-            max_approach_m=self._measured_tcp_max_approach_m,
-            y_detection_bias_m=Y_DETECTION_BIAS_M,
-            pre_approach_offset_m=PRE_APPROACH_OFFSET,
-            final_standoff_m=MEASURED_TCP_FINAL_STANDOFF_M,
-            wall_surface_y_m=WALL_SURFACE_Y_M,
+        return self.final_approach_executor.compute_distance(
+            raw_straw, straw, used_pre_ee_pos, used_approach_dir,
+            used_grasp_offset, is_nw_high_target,
         )
-        target_plane_dist = approach_distance.target_plane_dist_m
-        uncapped_distance = approach_distance.uncapped_distance_m
-        final_approach_distance = approach_distance.final_distance_m
-
-        if self._flat_grasp_only:
-            before_flat_cap_m = final_approach_distance
-            flat_target_plane_m = (
-                target_plane_dist + self._flat_grasp_target_plane_margin_m
-            )
-            # In flat/SW-style validation the target plane distance is the
-            # physically meaningful straight segment.  The legacy measured-TCP
-            # baseline uses a negative standoff that forces 180 mm even when the
-            # target plane is only ~60-70 mm away, which makes Doosan MoveLine
-            # push past the fruit and frequently return success/no-motion.
-            # Keep a small configurable margin so the jaws reach past the
-            # detected KP1 plane instead of closing in front of the stem.
-            final_approach_distance = max(
-                0.0,
-                min(final_approach_distance, flat_target_plane_m),
-            )
-            if abs(before_flat_cap_m - final_approach_distance) > 1e-6:
-                self.get_logger().warn(
-                    "FLAT_GRASP_TARGET_PLANE_CAP: "
-                    f"{before_flat_cap_m*1000:.0f}mm -> "
-                    f"{final_approach_distance*1000:.0f}mm "
-                    "(SW-style flat approach uses target-plane distance "
-                    f"+ {self._flat_grasp_target_plane_margin_m*1000:.0f}mm margin)")
-                self.runtime_log.log(
-                    "flat_grasp_target_plane_cap",
-                    before_m=before_flat_cap_m,
-                    after_m=final_approach_distance,
-                    target_plane_distance_m=target_plane_dist,
-                    margin_m=self._flat_grasp_target_plane_margin_m,
-                )
-
-        if (
-            is_nw_high_target
-            and
-            abs(float(used_approach_dir[2])) > 1e-3
-            and self._nw_high_target_final_extra_m > 0.0
-        ):
-            before_extra_m = final_approach_distance
-            final_approach_distance = min(
-                MEASURED_TCP_MAX_APPROACH_CEILING_M,
-                final_approach_distance + self._nw_high_target_final_extra_m,
-            )
-            self.get_logger().warn(
-                "NW_HIGH_TARGET_FINAL_EXTRA: "
-                f"{before_extra_m*1000:.0f}mm -> "
-                f"{final_approach_distance*1000:.0f}mm "
-                f"(target_z={raw_straw[2]*1000:.0f}mm, "
-                "observed shallow by ~30mm)")
-            self.runtime_log.log(
-                "nw_high_target_final_extra",
-                target_z_m=float(raw_straw[2]),
-                before_m=before_extra_m,
-                after_m=final_approach_distance,
-                requested_extra_m=self._nw_high_target_final_extra_m,
-                ceiling_m=MEASURED_TCP_MAX_APPROACH_CEILING_M,
-            )
-        if final_approach_distance + 1e-6 < uncapped_distance:
-            self.get_logger().warn(
-                "MEASURED_TCP_APPROACH_CAPPED: requested "
-                f"{uncapped_distance*1000:.0f}mm -> "
-                f"{final_approach_distance*1000:.0f}mm "
-                f"(target_plane={target_plane_dist*1000:.0f}mm, "
-                "NW measured-TCP experimental depth cap)")
-            self.runtime_log.log(
-                "measured_tcp_approach_capped",
-                requested_distance_m=uncapped_distance,
-                capped_distance_m=final_approach_distance,
-                target_plane_distance_m=target_plane_dist,
-                max_approach_m=self._measured_tcp_max_approach_m,
-                reason="nw_measured_tcp_experimental_depth_cap",
-            )
-        return final_approach_distance
-
-    def _try_precomputed_final_approach(self, final_state: FinalApproachState,
-                                        ret_grasp,
-                                        measured_best_depth_m: float,
-                                        requested_distance_m: float,
-                                        used_pre_ee_pos,
-                                        used_grasp_variant,
-                                        used_approach_dir):
-        if (
-            not self._measured_tcp_model
-            or not self._direct_curobo_final_approach_for_measured_tcp
-        ):
-            return False, False
-
-        selected_curobo_depth_m = float(measured_best_depth_m)
-        depth_mismatch_m = abs(selected_curobo_depth_m - float(requested_distance_m))
-        if self._flat_grasp_only and depth_mismatch_m > 0.005:
-            self.get_logger().warn(
-                "FINAL_APPROACH_PRECOMPUTED_CUROBO_SKIPPED: "
-                f"probe depth {selected_curobo_depth_m*1000:.0f}mm differs from "
-                f"requested {requested_distance_m*1000:.0f}mm by "
-                f"{depth_mismatch_m*1000:.0f}mm (>5mm); planning exact "
-                "target-plane fallback instead")
-            return False, False
-        if selected_curobo_depth_m > float(requested_distance_m) + 1e-6:
-            self.get_logger().warn(
-                "FINAL_APPROACH_PRECOMPUTED_CUROBO_SKIPPED: "
-                f"probe depth {selected_curobo_depth_m*1000:.0f}mm is deeper "
-                f"than requested {requested_distance_m*1000:.0f}mm; "
-                "planning exact target-plane fallback instead")
-            return False, False
-        approach_ok = (
-            ret_grasp is not None
-            and selected_curobo_depth_m > 0.0
-            and self.execute_spline(*ret_grasp)
-        )
-        self.runtime_log.log(
-            "final_approach_precomputed_curobo",
-            controller="curobo_plus_doosan_move_spline_joint",
-            requested_distance_m=requested_distance_m,
-            executed_depth_m=selected_curobo_depth_m,
-            success=approach_ok,
-            approach_dir=used_approach_dir,
-        )
-        if approach_ok:
-            self.get_logger().info(
-                "FINAL_APPROACH_PRECOMPUTED_CUROBO "
-                f"depth={selected_curobo_depth_m*1000:.0f}mm "
-                "(reusing probe plan; no extra IK fallback search)")
-            final_state.distance_m = selected_curobo_depth_m
-            final_state.grasp_ee_pos = (
-                used_pre_ee_pos + final_state.distance_m * used_approach_dir)
-            remaining_tool_line_m = requested_distance_m - selected_curobo_depth_m
-            if (
-                self._measured_tcp_tool_line_after_curobo_fallback
-                and remaining_tool_line_m >= 0.020
-            ):
-                (
-                    tool_finish_ok,
-                    tool_finish_delta,
-                    _finish_m,
-                    tool_finish_dir,
-                ) = self._execute_final_approach_tool_finish(
-                    remaining_tool_line_m,
-                    selected_curobo_depth_m,
-                    requested_distance_m,
-                    used_grasp_variant,
-                    used_approach_dir,
-                    "precomputed cuRobo final approach",
-                )
-                if not tool_finish_ok:
-                    approach_ok = False
-                else:
-                    final_state.apply_tool_finish(
-                        selected_curobo_depth_m,
-                        remaining_tool_line_m,
-                        tool_finish_delta,
-                        tool_finish_dir,
-                    )
-                    self.runtime_log.log(
-                        "final_approach_tool_finish_success",
-                        executed_total_m=final_state.distance_m,
-                        horizontal_only=final_state.tool_finish_executed_dir is not None,
-                    )
-        else:
-            self.get_logger().warn(
-                "FINAL_APPROACH_PRECOMPUTED_CUROBO failed; "
-                "falling back to depth search")
-        return True, approach_ok
-
-    def _try_final_approach_fallback(self, final_state: FinalApproachState,
-                                     requested_final_approach_distance: float,
-                                     used_pre_ee_pos,
-                                     used_grasp_quat,
-                                     used_grasp_variant,
-                                     used_approach_dir,
-                                     precomputed_final_attempted: bool) -> bool:
-        fallback_ok = False
-        if not (
-            self._measured_tcp_model
-            and ENABLE_CUROBO_FINAL_APPROACH_FALLBACK
-            and not precomputed_final_attempted
-            and used_pre_ee_pos is not None
-            and used_grasp_quat is not None
-            and self.current_joints is not None
-        ):
-            return fallback_ok
-
-        depth_candidates = final_approach_fallback_depths(
-            requested_final_approach_distance,
-            self._direct_curobo_final_approach_for_measured_tcp,
-        )
-        for depth_m in depth_candidates:
-            fallback_target = (
-                used_pre_ee_pos
-                + depth_m * used_approach_dir
-            )
-            self.get_logger().warn(
-                "FINAL_APPROACH_STRAIGHT_BASE failed; trying cuRobo "
-                f"fallback depth={depth_m*1000:.0f}mm "
-                f"xyz={[round(v*1000, 1) for v in fallback_target]}mm")
-            self.runtime_log.log(
-                "final_approach_fallback_requested",
-                reason="doosan_moveline_failed_or_no_motion",
-                target_pos_m=fallback_target.tolist(),
-                approach_dir=used_approach_dir,
-                depth_m=depth_m,
-            )
-            fallback_plan = self.plan(
-                self.current_joints,
-                fallback_target.tolist(),
-                used_grasp_quat,
-                num_ik_seeds=24,
-                max_attempts=2,
-                timeout_sec=1.5,
-                max_joint_delta_deg=90.0,
-            )
-            if fallback_plan is None:
-                continue
-            fallback_ok = self.execute_spline(*fallback_plan)
-            if fallback_ok:
-                final_state.distance_m = depth_m
-                final_state.grasp_ee_pos = fallback_target.copy()
-                self.runtime_log.log(
-                    "final_approach_fallback_success",
-                    controller="curobo_plus_doosan_move_spline_joint",
-                    executed_depth_m=depth_m,
-                )
-                remaining_tool_line_m = (
-                    requested_final_approach_distance - depth_m)
-                if (
-                    self._direct_curobo_final_approach_for_measured_tcp
-                    and self._measured_tcp_tool_line_after_curobo_fallback
-                    and remaining_tool_line_m >= 0.020
-                ):
-                    (
-                        tool_finish_ok,
-                        tool_finish_delta,
-                        tool_finish_executed_m,
-                        tool_finish_executed_dir,
-                    ) = self._execute_final_approach_tool_finish(
-                        remaining_tool_line_m,
-                        depth_m,
-                        requested_final_approach_distance,
-                        used_grasp_variant,
-                        used_approach_dir,
-                        "cuRobo shallow fallback",
-                    )
-                    if not tool_finish_ok:
-                        fallback_ok = False
-                        break
-                    final_state.apply_tool_finish(
-                        depth_m,
-                        remaining_tool_line_m,
-                        tool_finish_delta,
-                        tool_finish_executed_dir,
-                    )
-                    self.runtime_log.log(
-                        "final_approach_tool_finish_success",
-                        executed_total_m=final_state.distance_m,
-                        horizontal_only=final_state.tool_finish_executed_dir is not None,
-                    )
-                break
-        return fallback_ok
 
     def _execute_final_approach(self, final_state: FinalApproachState,
                                 final_approach_distance: float,
@@ -1494,47 +1186,15 @@ class CuroboPlanner(Node):
                                 used_grasp_quat,
                                 used_grasp_variant,
                                 used_approach_dir) -> bool:
-        if final_approach_distance <= 0.001:
-            return True
-
-        requested_final_approach_distance = final_approach_distance
-        precomputed_final_attempted, approach_ok = (
-            self._try_precomputed_final_approach(
-                final_state,
-                ret_grasp,
-                measured_best_depth_m,
-                requested_final_approach_distance,
-                used_pre_ee_pos,
-                used_grasp_variant,
-                used_approach_dir,
-            )
+        ok = self.final_approach_executor.execute(
+            final_state, final_approach_distance, ret_grasp,
+            measured_best_depth_m, used_pre_ee_pos, used_grasp_quat,
+            used_grasp_variant, used_approach_dir,
         )
-        if not precomputed_final_attempted and self._measured_tcp_model:
-            approach_ok = self.execute_base_relative_line(
-                final_approach_distance * used_approach_dir,
-                "FINAL_APPROACH_STRAIGHT_BASE",
-                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-            )
-        elif not precomputed_final_attempted:
-            approach_ok = self.execute_tool_z_line(
-                final_approach_distance,
-                min_distance_m=0.005)
-        if not approach_ok:
-            fallback_ok = self._try_final_approach_fallback(
-                final_state,
-                requested_final_approach_distance,
-                used_pre_ee_pos,
-                used_grasp_quat,
-                used_grasp_variant,
-                used_approach_dir,
-                precomputed_final_attempted,
-            )
-            if not fallback_ok:
-                self.get_logger().error("ABORT: 직선 진입 실패")
-                self._abort_pick_with_complete()
-                return False
-        return True
+        if not ok:
+            self.get_logger().error("ABORT: 직선 진입 실패")
+            self._abort_pick_with_complete()
+        return ok
 
     def _prepare_pick_target_or_abort(self, p):
         target_info = prepare_pick_target(

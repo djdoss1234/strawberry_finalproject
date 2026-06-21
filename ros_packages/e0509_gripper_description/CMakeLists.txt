@@ -65,6 +65,7 @@ install(PROGRAMS
   scripts/curobo_planner_node.py
   scripts/curobo_planning_adapter.py
   scripts/doosan_motion_client.py
+  scripts/final_approach_executor.py
   scripts/fusion_bootstrap.py
   scripts/grasp_candidate_policy.py
   scripts/grasp_search_executor.py
