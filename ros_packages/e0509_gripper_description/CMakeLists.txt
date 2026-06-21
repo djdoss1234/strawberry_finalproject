@@ -66,6 +66,7 @@ install(PROGRAMS
   scripts/curobo_planning_adapter.py
   scripts/doosan_motion_client.py
   scripts/grasp_candidate_policy.py
+  scripts/grasp_search_executor.py
   scripts/gripper_client.py
   scripts/harvest_grasp_orientation.py
   scripts/harvest_math.py

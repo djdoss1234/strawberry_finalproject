@@ -49,17 +49,11 @@ from grasp_candidate_policy import (
     grasp_offsets_for_target,
     grasp_quat_variants_for_target,
     grasp_variant_pose,
-    legacy_grasp_endpoint,
     leftmost_depth_limited,
     leftmost_rejected_offsets,
-    measured_best_tuple,
-    measured_tcp_probe_log_message,
-    measured_tcp_probe_depths,
-    requested_measured_tcp_probe_depth,
-    should_replace_measured_best,
-    should_stop_measured_variant_search,
     variant_label,
 )
+from grasp_search_executor import GraspSearchExecutor
 from gripper_client import HarvestGripperClient
 from harvest_grasp_orientation import published_roll_grasp_candidate
 from harvest_math import (
@@ -413,6 +407,13 @@ class CuroboPlanner(Node):
             grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
             set_position_type=_SetPosition,
             get_state_type=_GetState,
+        )
+        self.grasp_search_executor = GraspSearchExecutor(
+            node=self,
+            runtime_log=self.runtime_log,
+            plan_fn=self.plan,
+            measured_tcp_max_approach_m=self._measured_tcp_max_approach_m,
+            ee_to_tcp_offset_m=self._ee_to_tcp_offset_m,
         )
         self.tray_place_policy = TrayPlacePolicy(
             node=self,
@@ -2012,139 +2013,6 @@ class CuroboPlanner(Node):
                 return False
         return True
 
-    def _run_measured_tcp_depth_probe(self, ee_pre, approach_dir, q_retry,
-                                      pre_joints, r_pre_for_variant, variant,
-                                      grasp_search: GraspSearchResult,
-                                      measured_best, is_nw_high_target: bool):
-        """Probe final-approach depths for one grasp_quat_variant.
-
-        Mutates `grasp_search` in place (attempt_count, measured_best_*) and
-        returns the possibly-updated `measured_best` tuple plus whether the
-        outer grasp_quat_variants loop should stop.
-        """
-        quat_frame, axis, quat_deg = variant
-        requested_probe_depth_m = requested_measured_tcp_probe_depth(
-            self._measured_tcp_max_approach_m)
-        probe_depths, probe_pruned = measured_tcp_probe_depths(
-            requested_probe_depth_m,
-            is_nw_high_target,
-            grasp_search.measured_best_depth_m,
-        )
-        probe_log_message = measured_tcp_probe_log_message(
-            probe_pruned,
-            grasp_search.measured_best_depth_m,
-            probe_depths,
-        )
-        if probe_log_message:
-            self.get_logger().info(probe_log_message)
-        for depth_m in probe_depths:
-            probe_target = ee_pre + depth_m * approach_dir
-            r_final_probe = self.plan(
-                pre_joints,
-                probe_target.tolist(),
-                q_retry,
-                num_ik_seeds=24,
-                max_attempts=2,
-                timeout_sec=1.5,
-                max_joint_delta_deg=90.0,
-            )
-            grasp_search.attempt_count += 1
-            if r_final_probe is None:
-                continue
-            candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
-            should_replace, candidate_alignment_deg, is_tied_but_better = (
-                should_replace_measured_best(
-                    depth_m=depth_m,
-                    candidate_j3_deg=candidate_j3_deg,
-                    quat_frame=quat_frame,
-                    quat_deg=quat_deg,
-                    measured_best=measured_best,
-                    measured_best_depth_m=grasp_search.measured_best_depth_m,
-                    measured_best_j3_deg=grasp_search.measured_best_j3_deg,
-                    measured_best_alignment_deg=grasp_search.measured_best_alignment_deg,
-                    is_nw_high_target=is_nw_high_target,
-                )
-            )
-            if should_replace:
-                measured_best = grasp_search.update_measured_best(
-                    depth_m,
-                    candidate_j3_deg,
-                    candidate_alignment_deg,
-                    measured_best_tuple(
-                        r_pre_for_variant,
-                        r_final_probe,
-                        (quat_frame, axis, quat_deg),
-                        approach_dir,
-                        q_retry,
-                        ee_pre,
-                        probe_target,
-                    ),
-                )
-                self.get_logger().info(
-                    "MEASURED_TCP_FINAL_PROBE_BEST "
-                    f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
-                    f"align={candidate_alignment_deg:.1f}deg "
-                    f"variant={(quat_frame, axis, quat_deg)}"
-                    + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
-            if depth_m >= requested_probe_depth_m - 1e-6:
-                break
-        should_stop, stop_reason, good_enough_j3_deg = (
-            should_stop_measured_variant_search(
-                grasp_search,
-                requested_probe_depth_m,
-                is_nw_high_target,
-            )
-        )
-        should_break_outer = False
-        if stop_reason == "reached_requested_depth":
-            should_break_outer = True
-        elif should_stop and stop_reason == "j3_good_enough":
-            self.get_logger().info(
-                "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
-                f"J3={grasp_search.measured_best_j3_deg:.1f}deg >= "
-                f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
-                "skipping remaining grasp_quat_variants")
-            should_break_outer = True
-        return measured_best, should_break_outer
-
-    def _try_legacy_grasp_offsets(self, grasp_retry_offsets, straw, approach_dir,
-                                  q_retry, pre_joints, r_pre_for_variant, variant,
-                                  ee_pre, grasp_search: GraspSearchResult):
-        """Try legacy grasp_retry_offsets for one grasp_quat_variant.
-
-        Mutates `grasp_search` in place via select_legacy_grasp() on the
-        first reachable offset, then stops (matching the historical
-        first-reachable-offset-wins behavior).
-        """
-        quat_frame, axis, quat_deg = variant
-        for grasp_offset in grasp_retry_offsets:
-            grasp_search.attempt_count += 1
-            # 2-step 구조에서 grasp endpoint는 pre-approach보다 target에
-            # 가까워야 한다. 6cm pre에서 7cm offset을 허용하면 직선 진입이
-            # 음수가 되어 정확도 보장 목적이 깨진다.
-            if grasp_offset >= PRE_APPROACH_OFFSET:
-                continue
-            ee_g_try = legacy_grasp_endpoint(
-                straw,
-                grasp_offset,
-                self._ee_to_tcp_offset_m,
-                approach_dir,
-            )
-            r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
-            if r_grasp is None:
-                continue
-            grasp_search.select_legacy_grasp(
-                r_pre_for_variant,
-                r_grasp,
-                grasp_offset,
-                (quat_frame, axis, quat_deg),
-                approach_dir,
-                q_retry,
-                ee_pre,
-                ee_g_try,
-            )
-            break
-
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2319,7 +2187,7 @@ class CuroboPlanner(Node):
                 # 실행 전 각 orientation의 final depth reachability를 probing해
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
                 measured_best, should_break_outer = (
-                    self._run_measured_tcp_depth_probe(
+                    self.grasp_search_executor.run_measured_tcp_depth_probe(
                         ee_pre,
                         approach_dir,
                         q_retry,
@@ -2335,7 +2203,7 @@ class CuroboPlanner(Node):
                     break
                 continue
 
-            self._try_legacy_grasp_offsets(
+            self.grasp_search_executor.try_legacy_grasp_offsets(
                 grasp_retry_offsets,
                 straw,
                 approach_dir,
