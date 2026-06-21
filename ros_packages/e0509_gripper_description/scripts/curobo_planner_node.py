@@ -2107,6 +2107,44 @@ class CuroboPlanner(Node):
             should_break_outer = True
         return measured_best, should_break_outer
 
+    def _try_legacy_grasp_offsets(self, grasp_retry_offsets, straw, approach_dir,
+                                  q_retry, pre_joints, r_pre_for_variant, variant,
+                                  ee_pre, grasp_search: GraspSearchResult):
+        """Try legacy grasp_retry_offsets for one grasp_quat_variant.
+
+        Mutates `grasp_search` in place via select_legacy_grasp() on the
+        first reachable offset, then stops (matching the historical
+        first-reachable-offset-wins behavior).
+        """
+        quat_frame, axis, quat_deg = variant
+        for grasp_offset in grasp_retry_offsets:
+            grasp_search.attempt_count += 1
+            # 2-step 구조에서 grasp endpoint는 pre-approach보다 target에
+            # 가까워야 한다. 6cm pre에서 7cm offset을 허용하면 직선 진입이
+            # 음수가 되어 정확도 보장 목적이 깨진다.
+            if grasp_offset >= PRE_APPROACH_OFFSET:
+                continue
+            ee_g_try = legacy_grasp_endpoint(
+                straw,
+                grasp_offset,
+                self._ee_to_tcp_offset_m,
+                approach_dir,
+            )
+            r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
+            if r_grasp is None:
+                continue
+            grasp_search.select_legacy_grasp(
+                r_pre_for_variant,
+                r_grasp,
+                grasp_offset,
+                (quat_frame, axis, quat_deg),
+                approach_dir,
+                q_retry,
+                ee_pre,
+                ee_g_try,
+            )
+            break
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2297,33 +2335,17 @@ class CuroboPlanner(Node):
                     break
                 continue
 
-            for grasp_offset in grasp_retry_offsets:
-                grasp_search.attempt_count += 1
-                # 2-step 구조에서 grasp endpoint는 pre-approach보다 target에
-                # 가까워야 한다. 6cm pre에서 7cm offset을 허용하면 직선 진입이
-                # 음수가 되어 정확도 보장 목적이 깨진다.
-                if grasp_offset >= PRE_APPROACH_OFFSET:
-                    continue
-                ee_g_try = legacy_grasp_endpoint(
-                    straw,
-                    grasp_offset,
-                    self._ee_to_tcp_offset_m,
-                    approach_dir,
-                )
-                r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
-                if r_grasp is None:
-                    continue
-                grasp_search.select_legacy_grasp(
-                    r_pre_for_variant,
-                    r_grasp,
-                    grasp_offset,
-                    (quat_frame, axis, quat_deg),
-                    approach_dir,
-                    q_retry,
-                    ee_pre,
-                    ee_g_try,
-                )
-                break
+            self._try_legacy_grasp_offsets(
+                grasp_retry_offsets,
+                straw,
+                approach_dir,
+                q_retry,
+                pre_joints,
+                r_pre_for_variant,
+                (quat_frame, axis, quat_deg),
+                ee_pre,
+                grasp_search,
+            )
             if grasp_search.found:
                 break
 
