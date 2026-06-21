@@ -61,6 +61,13 @@ class GraspSearchResult:
             self.grasp_ee_pos,
         ) = measured_best
 
+    def update_measured_best(self, depth_m: float, j3_deg: float,
+                             alignment_deg: float, measured_best):
+        self.measured_best_depth_m = depth_m
+        self.measured_best_j3_deg = j3_deg
+        self.measured_best_alignment_deg = alignment_deg
+        return measured_best
+
 
 def grasp_offsets_for_target(straw, measured_tcp_model: bool):
     if measured_tcp_model:
