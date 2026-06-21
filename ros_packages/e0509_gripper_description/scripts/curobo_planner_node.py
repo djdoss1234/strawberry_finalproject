@@ -2128,9 +2128,7 @@ class CuroboPlanner(Node):
             if not self.execute_base_z_relative(
                     -open_stem_descent_m, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
                 self.get_logger().error("ABORT: open stem descent 실패")
-                self._clear_neighbor_obstacles()
-                self._reset_gripper()
-                self.pick_complete_pub.publish(Empty())
+                self._abort_pick_with_complete()
                 return
 
         if is_nw_high_target and self._nw_high_target_base_y_nudge_m > 0.0:
@@ -2150,9 +2148,7 @@ class CuroboPlanner(Node):
                     FINAL_APPROACH_ACC_MM_S2):
                 self.get_logger().error(
                     "ABORT: NW high target BASE +Y nudge failed")
-                self._clear_neighbor_obstacles()
-                self._reset_gripper()
-                self.pick_complete_pub.publish(Empty())
+                self._abort_pick_with_complete()
                 return
 
         # 3. 그리퍼 닫기 + 파지 확인
