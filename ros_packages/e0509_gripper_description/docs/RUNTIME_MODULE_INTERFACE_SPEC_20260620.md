@@ -1,4 +1,4 @@
-# 딸기 자동수확 런타임 모듈/인터페이스 명세 (2026-06-20, 2026-06-21 갱신)
+# 딸기 자동수확 런타임 모듈/인터페이스 명세 (2026-06-20, 2026-06-21 갱신, 2026-06-21 재갱신)
 
 이 문서는 실기 자동수확에 실제로 관여하는 핵심 파일을 기준으로 작성한다.
 로그 분석/라벨링/회고 문서 등 실행 경로 밖의 파일은 별도 도구로 분류한다.
@@ -25,8 +25,10 @@ RealSense RGB-D
 
 | 파일 | 역할 | 현재 상태 |
 | --- | --- | --- |
-| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 **1,926 lines**. `_pick()`은 `_prepare_pick_target_or_abort()`(target 준비+x/z 가드) → `_search_grasp()`(quat variant 탐색) → 실행 시퀀스로 분리, 394→248줄. `__init__`(180줄)도 cuRobo 부트스트랩/파라미터는 `planner_bootstrap.py`로, 시작 로그 배너는 `_log_startup_banner()`로 분리됨 — 남은 부분은 subscription/client/executor 생성 wiring(`self` 의존 필수) |
-| `scripts/planner_bootstrap.py` | `__init__`에서 1회 실행되는 cuRobo MotionGen 구성(`build_curobo_motion_gen`)과 ~40개 ROS 파라미터 declare/load(`declare_and_load_params`) | 신규 분리 모듈(2026-06-21). 반복 실행되는 런타임 동작이 없어 클래스가 아닌 plain function 2개로 구성 |
+| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 **905 lines**(이전 1,926줄에서 final_approach_executor.py + pick_sequence_executor.py 분리로 추가 약 1,020줄 감소). `pick_pose_cb`는 `self.pick_sequence_executor.run(msg)`로 위임, `_compute_final_approach_distance`/`_execute_final_approach`는 `self.final_approach_executor`로 위임하는 thin wrapper만 남음. `__init__`도 cuRobo 부트스트랩/파라미터는 `planner_bootstrap.py`로, 시작 로그 배너는 `_log_startup_banner()`로 분리됨 — 남은 부분은 subscription/client/executor 생성 wiring(`self` 의존 필수) |
+| `scripts/final_approach_executor.py` | final approach 거리 계산(`compute_distance`), precomputed cuRobo depth-probe 재사용 판단(`try_precomputed`), cuRobo IK fallback 깊이 탐색(`try_fallback`), TOOL +Z 마무리 이동(`execute_tool_finish`), 전체 시퀀스(`execute`) | 신규 분리 모듈(2026-06-21, `9160aaa`). `curobo_planner_node.py`에서 final-approach 결정 로직 ~290줄을 node-dependent executor로 순수 이동. `flat_grasp_only` 모드에서 precomputed depth probe가 requested distance와 5mm 이상 차이나면 재사용을 거부하는 가드를 이 모듈에서 수정(`ed64d25`, NW-flat 얕은 파지 버그 1차 수정) |
+| `scripts/pick_sequence_executor.py` | `/dsr01/curobo/pick_pose` 콜백이 트리거하는 전체 pick 시퀀스(target 준비 → grasp 탐색 → pre-approach → final approach → open-stem descent → close/verify → detach+retreat → marker place 게이트 → scan pose 복귀) | 신규 분리 모듈(2026-06-21, `2245ab6`). `_pick()`과 9개 helper(`_prepare_pick_target_or_abort`, `_search_grasp`, `_execute_open_stem_descent_if_needed`, `_execute_nw_base_y_nudge_if_needed`, `_handle_gripper_close_failed`, `_execute_detach_and_retreat`, `_maybe_execute_place_after_retreat`, `_return_to_pick_start_and_complete`, `_execute_leftmost_extra_advance_if_needed`)를 `PickSequenceExecutor.run()`/같은 이름(언더스코어 제거)의 메서드로 이동. 진입점은 `run(msg)`. node는 `gripper_client`/`motion_gen`/`grasp_search_executor`/`tray_place_executor`/`final_approach_executor` 객체와 수십 개 motion/policy 콜백·ROS-param 값을 생성자로 주입 |
+| `scripts/planner_bootstrap.py` | `__init__`에서 1회 실행되는 cuRobo MotionGen 구성(`build_curobo_motion_gen`)과 ROS 파라미터 declare/load(`declare_and_load_params`) | 2026-06-21 `flat_grasp_only`(default false), `flat_grasp_target_plane_margin_m`(default 0.020m) 2개 파라미터 추가 — `root/nw_flat` 단일 스캔 셀에서 SW식 순수 수평(0도) 진입을 강제하는 실험 모드. 반복 실행되는 런타임 동작이 없어 클래스가 아닌 plain function 2개로 구성 |
 | `scripts/fusion_bootstrap.py` | `strawberry_fusion_node.__init__`에서 1회 실행되는 ~28개 ROS 파라미터 declare/load(`declare_and_load_fusion_params`), `_as_bool` 헬퍼 | 신규 분리 모듈(2026-06-21). `planner_bootstrap.py`와 동일 패턴 |
 | `scripts/approach_retreat_policy.py` | measured-TCP final approach 거리, fallback depth, tool-finish 방향, retreat step 계산 | 신규 분리 모듈. J2 한도초과 방지용 2단계 retreat와 tilted branch 수평 tool-finish 정책을 순수 함수로 분리 |
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
@@ -112,6 +114,8 @@ RealSense RGB-D
 | `nw_high_target_final_extra_m` | NW high/tilted branch 깊이 추가 |
 | `enable_marker_place_sequence` | pick 후 marker/tray place 시퀀스 실행 |
 | `use_safe_grasp_action` | gripper close를 SafeGrasp action으로 수행 |
+| `flat_grasp_only` | true면 0도 wall-normal grasp variant만 시도하고 final approach를 target-plane distance 기준으로 캡 (`root/nw_flat` 실험용, 2026-06-21 추가) |
+| `flat_grasp_target_plane_margin_m` | `flat_grasp_only`에서 target plane distance에 더하는 여유 거리 (default 0.020m) |
 
 ## 4. `strawberry_fusion_node.py` 인터페이스
 
@@ -350,6 +354,28 @@ curobo `__init__` 180줄, `declare_and_load_params` 140줄, `execute_marker_plac
 쪼개면 변수만 여러 메서드에 분산되고 가독성은 오히려 떨어진다고 판단, 의도적으로 분리 보류.
 모든 분리는 원본↔변환본 역치환 diff로 0줄 차이 확인 + py_compile/실제 import/git diff
 --check/colcon build/install space 확인 전부 통과. **실기 전부 미검증.**
+
+**2026-06-21 (같은 날, 세 번째 라운드) — NW-flat 얕은 파지 1차 수정 + "big boss split"**:
+
+Codex가 작성한 `HANDOFF_20260621_NW_FLAT_SHALLOW_AND_REFACTOR_FOR_CLAUDE.md` 우선순위를 따라 진행:
+
+- **1순위 수정** (`ed64d25`): `_try_precomputed_final_approach`(현 `FinalApproachExecutor.try_precomputed`)가
+  precomputed cuRobo depth-probe 깊이가 requested final approach distance보다 *깊을 때만*
+  재사용을 거부하던 기존 가드에 `flat_grasp_only` 전용 가드를 추가 — probe 깊이가 requested보다
+  **얕아도** 5mm 넘게 차이나면 재사용을 거부하고 target-plane distance대로 다시 계획하게 함.
+  실제 증상(probe=70mm, requested=80mm → 70mm로 재사용되어 10mm 짧게 파지)을 해결하는 변경.
+  같은 커밋에 Codex의 미커밋 작업(`root/nw_flat` 스캔 포즈, `perception_candidate_summary` KPI
+  이벤트, `flat_grasp_only`/`flat_grasp_target_plane_margin_m` 파라미터, scan_executor/scan_safety의
+  overview-gate vs move-target wrap-tolerance 분리)도 함께 커밋됨. **실기 미검증.**
+- **"big boss split"**: `final_approach_executor.py`(`9160aaa`)와 `pick_sequence_executor.py`
+  (`2245ab6`) 신규 분리 — 위 표 참조. `curobo_planner_node.py` 1,926→905줄. 두 분리 모두 원본↔변환본
+  역치환 diff(`pick_sequence_executor.py`는 10개 메서드 전체를 스크립트로 자동 비교)로 0줄 차이
+  확인 + py_compile/실제 import/git diff --check/colcon build/install space 확인 전부 통과.
+  **실기 전부 미검증.**
+
+**최종 상태**: `curobo_planner_node.py` 905줄. 남은 가장 큰 메서드는 `__init__`(전체 executor/client
+생성자 wiring, `self` 의존 심해 분리 보류)과 `_log_startup_banner`(순수 로깅). pick/final-approach
+관련 로직은 모두 node 밖으로 이동 완료.
 
 주의:
 
