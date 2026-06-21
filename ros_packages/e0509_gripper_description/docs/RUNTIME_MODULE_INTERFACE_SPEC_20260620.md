@@ -21,10 +21,11 @@ RealSense RGB-D
 
 | 파일 | 역할 | 현재 상태 |
 | --- | --- | --- |
-| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 여전히 주 실행 노드지만 1차 분리 후 약 2.4k lines. 실행 orchestration 위주로 축소 중 |
+| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 2,428 lines — `_pick()` 본문은 각 단계를 helper/policy/client/executor 호출로 위임하는 얇은 orchestration으로 축소됨 |
 | `scripts/approach_retreat_policy.py` | measured-TCP final approach 거리, fallback depth, tool-finish 방향, retreat step 계산 | 신규 분리 모듈. J2 한도초과 방지용 2단계 retreat와 tilted branch 수평 tool-finish 정책을 순수 함수로 분리 |
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
 | `scripts/gripper_client.py` | `/gripper_service/set_position`, `/get_state`, `/safe_grasp` 호출, approach open, close+verify logging, grasp result 판정 | 신규 분리 모듈. SafeGrasp + position fallback 동작 보존 |
+| `scripts/grasp_search_executor.py` | grasp_quat_variant별 measured-TCP depth probe와 legacy grasp offset 탐색 실행(`self.plan()` 호출 포함) | 신규 분리 모듈(2026-06-21). `HarvestGripperClient`와 동일한 node-dependent client 패턴 |
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
 | `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
@@ -206,11 +207,32 @@ RealSense RGB-D
 - `curobo_planner_node.py` 내부 helper화: open-stem descent, NW BASE+Y nudge, gripper-close failure recovery, detach/retreat, post-retreat place handling, return-to-scan completion, leftmost extra advance를 `_pick()` 본문에서 분리
 - `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1200줄 감소
 
+**2026-06-21 (Claude Code) 추가 완료** — `HANDOFF_20260621_REFACTOR_FOR_CLAUDE_CODE.md` 5절 기준:
+
+- `_try_final_approach_fallback(...)`: final approach 직선 진입 실패 시 cuRobo shallow fallback
+  depth 탐색 루프를 `_pick()`에서 분리 (`9f03bff`)
+- `_execute_final_approach(...)`: precomputed cuRobo 시도 → 직선 MoveLine → fallback 탐색 →
+  실패시 abort까지 final approach 전체 시퀀스를 한 번에 묶음 (`b81f83e`)
+- `grasp_search_executor.py` 신규 분리 (`5a42fec`): measured-TCP depth probe 루프와 legacy
+  grasp offset 루프를 `GraspSearchExecutor` 클래스로 이동(node-dependent client 패턴).
+  진행 중 `_run_measured_tcp_depth_probe`/`_try_legacy_grasp_offsets`를 먼저
+  `curobo_planner_node.py` 내부 메서드로 분리(`c28057b`, `ddbd810`)한 뒤 모듈로 옮김
+- 위 작업 중 CMakeLists.txt `install(PROGRAMS ...)`에 새 모듈을 안 넣으면 `colcon build`는
+  통과해도 install space에 안 복사돼 `ros2 run` 시 `ImportError`가 나는 것을 발견·수정.
+  새 모듈 추가 시 반드시 `ls ~/doosan_ws/install/.../lib/e0509_gripper_description/`로
+  설치 확인할 것
+- 전부 py_compile/diff --check/colcon build 통과 후 push 완료. **실기 미검증**(코드 이동만,
+  로직/거리/속도/로그 이벤트명 무변경)
+
 다음 분리 후보:
 
-1. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리
-2. `pick_sequence.py`: `_pick()` state machine 분리
-3. `grasp_search_executor.py`: 실제 plan 호출을 포함한 grasp probing loop 분리
+1. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리 — place는 row2 이슈가
+   아직 남아있어 final approach/grasp search보다 리스크가 높음. 진행 전 사용자와 우선순위
+   재확인 권장
+2. `pick_sequence.py`: `_pick()` state machine 자체를 별도 모듈로 분리 — 2026-06-21 기준
+   `_pick()`은 이미 각 단계를 위임하는 얇은 orchestration(약 390 lines)이라, 지금 더
+   쪼개는 건 같은 코드를 옮기기만 할 뿐 복잡도를 줄이지 못할 가능성이 큼. 분리할 명확한
+   이유(예: 여러 entry point에서 재사용 필요)가 생기기 전까지는 보류 권장
 
 주의:
 
