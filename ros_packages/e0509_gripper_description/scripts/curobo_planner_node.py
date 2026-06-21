@@ -1962,6 +1962,56 @@ class CuroboPlanner(Node):
                 break
         return fallback_ok
 
+    def _execute_final_approach(self, final_state: FinalApproachState,
+                                final_approach_distance: float,
+                                ret_grasp,
+                                measured_best_depth_m: float,
+                                used_pre_ee_pos,
+                                used_grasp_quat,
+                                used_grasp_variant,
+                                used_approach_dir) -> bool:
+        if final_approach_distance <= 0.001:
+            return True
+
+        requested_final_approach_distance = final_approach_distance
+        precomputed_final_attempted, approach_ok = (
+            self._try_precomputed_final_approach(
+                final_state,
+                ret_grasp,
+                measured_best_depth_m,
+                requested_final_approach_distance,
+                used_pre_ee_pos,
+                used_grasp_variant,
+                used_approach_dir,
+            )
+        )
+        if not precomputed_final_attempted and self._measured_tcp_model:
+            approach_ok = self.execute_base_relative_line(
+                final_approach_distance * used_approach_dir,
+                "FINAL_APPROACH_STRAIGHT_BASE",
+                vel_mm_s=FINAL_APPROACH_VEL_MM_S,
+                acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
+            )
+        elif not precomputed_final_attempted:
+            approach_ok = self.execute_tool_z_line(
+                final_approach_distance,
+                min_distance_m=0.005)
+        if not approach_ok:
+            fallback_ok = self._try_final_approach_fallback(
+                final_state,
+                requested_final_approach_distance,
+                used_pre_ee_pos,
+                used_grasp_quat,
+                used_grasp_variant,
+                used_approach_dir,
+                precomputed_final_attempted,
+            )
+            if not fallback_ok:
+                self.get_logger().error("ABORT: 직선 진입 실패")
+                self._abort_pick_with_complete()
+                return False
+        return True
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2334,44 +2384,17 @@ class CuroboPlanner(Node):
             f"before {final_approach_distance*1000:.0f}mm straight approach")
         time.sleep(PRE_APPROACH_SETTLE_SEC)
 
-        if final_approach_distance > 0.001:
-            requested_final_approach_distance = final_approach_distance
-            precomputed_final_attempted, approach_ok = (
-                self._try_precomputed_final_approach(
-                    final_state,
-                    ret_grasp,
-                    measured_best_depth_m,
-                    requested_final_approach_distance,
-                    used_pre_ee_pos,
-                    used_grasp_variant,
-                    used_approach_dir,
-                )
-            )
-            if not precomputed_final_attempted and self._measured_tcp_model:
-                approach_ok = self.execute_base_relative_line(
-                    final_approach_distance * used_approach_dir,
-                    "FINAL_APPROACH_STRAIGHT_BASE",
-                    vel_mm_s=FINAL_APPROACH_VEL_MM_S,
-                    acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
-                )
-            elif not precomputed_final_attempted:
-                approach_ok = self.execute_tool_z_line(
-                    final_approach_distance,
-                    min_distance_m=0.005)
-            if not approach_ok:
-                fallback_ok = self._try_final_approach_fallback(
-                    final_state,
-                    requested_final_approach_distance,
-                    used_pre_ee_pos,
-                    used_grasp_quat,
-                    used_grasp_variant,
-                    used_approach_dir,
-                    precomputed_final_attempted,
-                )
-                if not fallback_ok:
-                    self.get_logger().error("ABORT: 직선 진입 실패")
-                    self._abort_pick_with_complete()
-                    return
+        if not self._execute_final_approach(
+            final_state,
+            final_approach_distance,
+            ret_grasp,
+            measured_best_depth_m,
+            used_pre_ee_pos,
+            used_grasp_quat,
+            used_grasp_variant,
+            used_approach_dir,
+        ):
+            return
 
         # 실기 확인: 모든 벽면 딸기 줄기는 모델 벽 앞면보다 ~30mm 안쪽에 위치.
         # wall_margin=-30mm이면 available = offset+30mm → 80mm extra 자동 실행.
