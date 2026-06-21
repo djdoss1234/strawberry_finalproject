@@ -1483,31 +1483,7 @@ class CuroboPlanner(Node):
                 return False
         return True
 
-    def _pick(self, msg: PoseStamped):
-        p = msg.pose.position
-        input_quat_wxyz = quat_normalize_wxyz([
-            msg.pose.orientation.w,
-            msg.pose.orientation.x,
-            msg.pose.orientation.y,
-            msg.pose.orientation.z,
-        ])
-        # 같은 셀의 다음 target을 계속 처리할 수 있도록 이번 pick이 시작된
-        # taught scan pose를 저장한다. overview 복귀는 scan_executor가 담당한다.
-        pick_start_joints = list(self.current_joints)
-        self.runtime_log.log(
-            "pick_sequence_start",
-            input_frame=msg.header.frame_id,
-            input_target_m=[p.x, p.y, p.z],
-            input_quat_xyzw=[
-                msg.pose.orientation.x,
-                msg.pose.orientation.y,
-                msg.pose.orientation.z,
-                msg.pose.orientation.w,
-            ],
-            input_quat_wxyz=input_quat_wxyz,
-            start_joints_rad=pick_start_joints,
-        )
-
+    def _prepare_pick_target_or_abort(self, p):
         target_info = prepare_pick_target(
             p,
             self._measured_tcp_model,
@@ -1550,7 +1526,7 @@ class CuroboPlanner(Node):
                 f"ABORT: pick target x={raw_straw[0]*1000:.0f}mm outside "
                 f"[{x_min*1000:.0f}, {x_max*1000:.0f}]mm")
             self.pick_complete_pub.publish(Empty())
-            return
+            return None
         if not target_info["z_guard_ok"]:
             self.get_logger().warn(
                 f"SKIP: pick target z={raw_straw[2]*1000:.0f}mm > "
@@ -1564,35 +1540,11 @@ class CuroboPlanner(Node):
                 wall_y_clamped=wall_y_clamped,
             )
             self.pick_complete_pub.publish(Empty())
-            return
+            return None
+        return target_info
 
-        grasp_retry_offsets = self.grasp_candidates_for_target(straw)
-
-        self.get_logger().info(
-            f"=== PICK 딸기 raw=({raw_straw[0]*1000:.0f},{raw_straw[1]*1000:.0f},{raw_straw[2]*1000:.0f})mm "
-            f"grasp=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
-            f"x_bias={self._pick_target_x_bias_m*1000:+.0f}mm "
-            f"z_bias={self._pick_target_z_bias_m*1000:+.0f}mm ===")
-        self.runtime_log.log(
-            "pick_target_prepared",
-            raw_target_m=raw_straw,
-            grasp_target_m=straw,
-            grasp_x_bias_m=self._pick_target_x_bias_m,
-            grasp_z_bias_m=self._pick_target_z_bias_m,
-            wall_y_clamped=wall_y_clamped,
-            nw_high_target=is_nw_high_target,
-        )
-
-        # 접근 중 잎/과실을 집게로 미는 것을 줄이기 위해 수평 진입 전에
-        # 파지 파츠를 600으로 명시적으로 열어 둔다.
-        self.gripper_client.open_for_stem_descent()
-
-        self._register_neighbor_obstacles(straw)
-        self.motion_gen.detach_object_from_robot()
-
-        if raw_straw[0] < -0.30 and not self._measured_tcp_model:
-            straw[0] += LEFTMOST_GRASP_X_CORR_M
-
+    def _search_grasp(self, straw, is_nw_high_target, input_quat_wxyz,
+                       grasp_retry_offsets, crane_z_offset_m):
         # 2. Grasp (cuRobo 2-step): 6cm pre-approach → 직선 진입
         # 직전 측방 편차가 줄기 형상/검출점 영향인지 분리하기 위해 6cm를 재검증한다.
         grasp_quat_variants = grasp_quat_variants_for_target(
@@ -1696,6 +1648,78 @@ class CuroboPlanner(Node):
                 pre_ee_pos_m=grasp_search.pre_ee_pos.tolist(),
                 final_ee_pos_m=grasp_search.grasp_ee_pos.tolist(),
             )
+        return (
+            grasp_search, n_offsets, n_quats,
+            tool_finish_executed_m, tool_finish_executed_dir,
+        )
+
+    def _pick(self, msg: PoseStamped):
+        p = msg.pose.position
+        input_quat_wxyz = quat_normalize_wxyz([
+            msg.pose.orientation.w,
+            msg.pose.orientation.x,
+            msg.pose.orientation.y,
+            msg.pose.orientation.z,
+        ])
+        # 같은 셀의 다음 target을 계속 처리할 수 있도록 이번 pick이 시작된
+        # taught scan pose를 저장한다. overview 복귀는 scan_executor가 담당한다.
+        pick_start_joints = list(self.current_joints)
+        self.runtime_log.log(
+            "pick_sequence_start",
+            input_frame=msg.header.frame_id,
+            input_target_m=[p.x, p.y, p.z],
+            input_quat_xyzw=[
+                msg.pose.orientation.x,
+                msg.pose.orientation.y,
+                msg.pose.orientation.z,
+                msg.pose.orientation.w,
+            ],
+            input_quat_wxyz=input_quat_wxyz,
+            start_joints_rad=pick_start_joints,
+        )
+
+        target_info = self._prepare_pick_target_or_abort(p)
+        if target_info is None:
+            return
+        wall_y_clamped = target_info["wall_y_clamped"]
+        raw_straw = target_info["raw_straw"]
+        straw = target_info["straw"]
+        is_nw_high_target = target_info["is_nw_high_target"]
+        crane_z_offset_m = target_info["crane_z_offset_m"]
+
+        grasp_retry_offsets = self.grasp_candidates_for_target(straw)
+
+        self.get_logger().info(
+            f"=== PICK 딸기 raw=({raw_straw[0]*1000:.0f},{raw_straw[1]*1000:.0f},{raw_straw[2]*1000:.0f})mm "
+            f"grasp=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
+            f"x_bias={self._pick_target_x_bias_m*1000:+.0f}mm "
+            f"z_bias={self._pick_target_z_bias_m*1000:+.0f}mm ===")
+        self.runtime_log.log(
+            "pick_target_prepared",
+            raw_target_m=raw_straw,
+            grasp_target_m=straw,
+            grasp_x_bias_m=self._pick_target_x_bias_m,
+            grasp_z_bias_m=self._pick_target_z_bias_m,
+            wall_y_clamped=wall_y_clamped,
+            nw_high_target=is_nw_high_target,
+        )
+
+        # 접근 중 잎/과실을 집게로 미는 것을 줄이기 위해 수평 진입 전에
+        # 파지 파츠를 600으로 명시적으로 열어 둔다.
+        self.gripper_client.open_for_stem_descent()
+
+        self._register_neighbor_obstacles(straw)
+        self.motion_gen.detach_object_from_robot()
+
+        if raw_straw[0] < -0.30 and not self._measured_tcp_model:
+            straw[0] += LEFTMOST_GRASP_X_CORR_M
+
+        grasp_search, n_offsets, n_quats, tool_finish_executed_m, tool_finish_executed_dir = (
+            self._search_grasp(
+                straw, is_nw_high_target, input_quat_wxyz,
+                grasp_retry_offsets, crane_z_offset_m,
+            )
+        )
 
         ret_pre = grasp_search.ret_pre
         ret_grasp = grasp_search.ret_grasp
