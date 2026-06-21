@@ -44,6 +44,7 @@ from grasp_candidate_policy import (
     grasp_quat_variants_for_target,
     grasp_variant_pose,
     legacy_grasp_endpoint,
+    measured_best_tuple,
     measured_tcp_probe_log_message,
     measured_tcp_probe_depths,
     requested_measured_tcp_probe_depth,
@@ -1538,15 +1539,14 @@ class CuroboPlanner(Node):
                         grasp_search.measured_best_depth_m = depth_m
                         grasp_search.measured_best_j3_deg = candidate_j3_deg
                         grasp_search.measured_best_alignment_deg = candidate_alignment_deg
-                        measured_best = (
+                        measured_best = measured_best_tuple(
                             r_pre_for_variant,
                             r_final_probe,
-                            MEASURED_TCP_FINAL_STANDOFF_M,
                             (quat_frame, axis, quat_deg),
                             approach_dir,
                             q_retry,
-                            ee_pre.copy(),
-                            probe_target.copy(),
+                            ee_pre,
+                            probe_target,
                         )
                         self.get_logger().info(
                             "MEASURED_TCP_FINAL_PROBE_BEST "

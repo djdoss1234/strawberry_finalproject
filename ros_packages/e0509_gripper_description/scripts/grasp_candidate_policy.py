@@ -243,3 +243,18 @@ def should_replace_measured_best(
             )
         )
     return bool(is_deeper or is_tied_but_better), candidate_alignment_deg, is_tied_but_better
+
+
+def measured_best_tuple(r_pre_for_variant, r_final_probe, variant,
+                        approach_dir, q_retry, ee_pre, probe_target):
+    """Pack the historical measured-best tuple format in one place."""
+    return (
+        r_pre_for_variant,
+        r_final_probe,
+        MEASURED_TCP_FINAL_STANDOFF_M,
+        variant,
+        approach_dir,
+        q_retry,
+        ee_pre.copy(),
+        probe_target.copy(),
+    )
