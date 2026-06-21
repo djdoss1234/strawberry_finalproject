@@ -2012,6 +2012,101 @@ class CuroboPlanner(Node):
                 return False
         return True
 
+    def _run_measured_tcp_depth_probe(self, ee_pre, approach_dir, q_retry,
+                                      pre_joints, r_pre_for_variant, variant,
+                                      grasp_search: GraspSearchResult,
+                                      measured_best, is_nw_high_target: bool):
+        """Probe final-approach depths for one grasp_quat_variant.
+
+        Mutates `grasp_search` in place (attempt_count, measured_best_*) and
+        returns the possibly-updated `measured_best` tuple plus whether the
+        outer grasp_quat_variants loop should stop.
+        """
+        quat_frame, axis, quat_deg = variant
+        requested_probe_depth_m = requested_measured_tcp_probe_depth(
+            self._measured_tcp_max_approach_m)
+        probe_depths, probe_pruned = measured_tcp_probe_depths(
+            requested_probe_depth_m,
+            is_nw_high_target,
+            grasp_search.measured_best_depth_m,
+        )
+        probe_log_message = measured_tcp_probe_log_message(
+            probe_pruned,
+            grasp_search.measured_best_depth_m,
+            probe_depths,
+        )
+        if probe_log_message:
+            self.get_logger().info(probe_log_message)
+        for depth_m in probe_depths:
+            probe_target = ee_pre + depth_m * approach_dir
+            r_final_probe = self.plan(
+                pre_joints,
+                probe_target.tolist(),
+                q_retry,
+                num_ik_seeds=24,
+                max_attempts=2,
+                timeout_sec=1.5,
+                max_joint_delta_deg=90.0,
+            )
+            grasp_search.attempt_count += 1
+            if r_final_probe is None:
+                continue
+            candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
+            should_replace, candidate_alignment_deg, is_tied_but_better = (
+                should_replace_measured_best(
+                    depth_m=depth_m,
+                    candidate_j3_deg=candidate_j3_deg,
+                    quat_frame=quat_frame,
+                    quat_deg=quat_deg,
+                    measured_best=measured_best,
+                    measured_best_depth_m=grasp_search.measured_best_depth_m,
+                    measured_best_j3_deg=grasp_search.measured_best_j3_deg,
+                    measured_best_alignment_deg=grasp_search.measured_best_alignment_deg,
+                    is_nw_high_target=is_nw_high_target,
+                )
+            )
+            if should_replace:
+                measured_best = grasp_search.update_measured_best(
+                    depth_m,
+                    candidate_j3_deg,
+                    candidate_alignment_deg,
+                    measured_best_tuple(
+                        r_pre_for_variant,
+                        r_final_probe,
+                        (quat_frame, axis, quat_deg),
+                        approach_dir,
+                        q_retry,
+                        ee_pre,
+                        probe_target,
+                    ),
+                )
+                self.get_logger().info(
+                    "MEASURED_TCP_FINAL_PROBE_BEST "
+                    f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
+                    f"align={candidate_alignment_deg:.1f}deg "
+                    f"variant={(quat_frame, axis, quat_deg)}"
+                    + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
+            if depth_m >= requested_probe_depth_m - 1e-6:
+                break
+        should_stop, stop_reason, good_enough_j3_deg = (
+            should_stop_measured_variant_search(
+                grasp_search,
+                requested_probe_depth_m,
+                is_nw_high_target,
+            )
+        )
+        should_break_outer = False
+        if stop_reason == "reached_requested_depth":
+            should_break_outer = True
+        elif should_stop and stop_reason == "j3_good_enough":
+            self.get_logger().info(
+                "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
+                f"J3={grasp_search.measured_best_j3_deg:.1f}deg >= "
+                f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
+                "skipping remaining grasp_quat_variants")
+            should_break_outer = True
+        return measured_best, should_break_outer
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2185,86 +2280,20 @@ class CuroboPlanner(Node):
                 # NW처럼 자세가 빡빡한 영역에서 final 접근 IK가 계속 막힌다.
                 # 실행 전 각 orientation의 final depth reachability를 probing해
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
-                requested_probe_depth_m = requested_measured_tcp_probe_depth(
-                    self._measured_tcp_max_approach_m)
-                probe_depths, probe_pruned = measured_tcp_probe_depths(
-                    requested_probe_depth_m,
-                    is_nw_high_target,
-                    grasp_search.measured_best_depth_m,
-                )
-                probe_log_message = measured_tcp_probe_log_message(
-                    probe_pruned,
-                    grasp_search.measured_best_depth_m,
-                    probe_depths,
-                )
-                if probe_log_message:
-                    self.get_logger().info(probe_log_message)
-                for depth_m in probe_depths:
-                    probe_target = ee_pre + depth_m * approach_dir
-                    r_final_probe = self.plan(
-                        pre_joints,
-                        probe_target.tolist(),
+                measured_best, should_break_outer = (
+                    self._run_measured_tcp_depth_probe(
+                        ee_pre,
+                        approach_dir,
                         q_retry,
-                        num_ik_seeds=24,
-                        max_attempts=2,
-                        timeout_sec=1.5,
-                        max_joint_delta_deg=90.0,
-                    )
-                    grasp_search.attempt_count += 1
-                    if r_final_probe is None:
-                        continue
-                    candidate_j3_deg = abs(float(np.rad2deg(r_final_probe[0][-1][2])))
-                    should_replace, candidate_alignment_deg, is_tied_but_better = (
-                        should_replace_measured_best(
-                            depth_m=depth_m,
-                            candidate_j3_deg=candidate_j3_deg,
-                            quat_frame=quat_frame,
-                            quat_deg=quat_deg,
-                            measured_best=measured_best,
-                            measured_best_depth_m=grasp_search.measured_best_depth_m,
-                            measured_best_j3_deg=grasp_search.measured_best_j3_deg,
-                            measured_best_alignment_deg=grasp_search.measured_best_alignment_deg,
-                            is_nw_high_target=is_nw_high_target,
-                        )
-                    )
-                    if should_replace:
-                        measured_best = grasp_search.update_measured_best(
-                            depth_m,
-                            candidate_j3_deg,
-                            candidate_alignment_deg,
-                            measured_best_tuple(
-                                r_pre_for_variant,
-                                r_final_probe,
-                                (quat_frame, axis, quat_deg),
-                                approach_dir,
-                                q_retry,
-                                ee_pre,
-                                probe_target,
-                            ),
-                        )
-                        self.get_logger().info(
-                            "MEASURED_TCP_FINAL_PROBE_BEST "
-                            f"depth={depth_m*1000:.0f}mm J3={candidate_j3_deg:.1f}deg "
-                            f"align={candidate_alignment_deg:.1f}deg "
-                            f"variant={(quat_frame, axis, quat_deg)}"
-                            + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
-                    if depth_m >= requested_probe_depth_m - 1e-6:
-                        break
-                should_stop, stop_reason, good_enough_j3_deg = (
-                    should_stop_measured_variant_search(
+                        pre_joints,
+                        r_pre_for_variant,
+                        (quat_frame, axis, quat_deg),
                         grasp_search,
-                        requested_probe_depth_m,
+                        measured_best,
                         is_nw_high_target,
                     )
                 )
-                if stop_reason == "reached_requested_depth":
-                    break
-                if should_stop and stop_reason == "j3_good_enough":
-                    self.get_logger().info(
-                        "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
-                        f"J3={grasp_search.measured_best_j3_deg:.1f}deg >= "
-                        f"{good_enough_j3_deg:.0f}deg good-enough threshold — "
-                        "skipping remaining grasp_quat_variants")
+                if should_break_outer:
                     break
                 continue
 
