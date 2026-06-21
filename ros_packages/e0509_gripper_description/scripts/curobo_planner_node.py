@@ -44,8 +44,11 @@ from grasp_candidate_policy import (
     grasp_quat_variants_for_target,
     grasp_variant_pose,
     legacy_grasp_endpoint,
+    measured_tcp_probe_log_message,
     measured_tcp_probe_depths,
+    requested_measured_tcp_probe_depth,
     should_replace_measured_best,
+    should_stop_measured_variant_search,
     variant_label,
 )
 from gripper_client import HarvestGripperClient
@@ -1489,24 +1492,20 @@ class CuroboPlanner(Node):
                 # NW처럼 자세가 빡빡한 영역에서 final 접근 IK가 계속 막힌다.
                 # 실행 전 각 orientation의 final depth reachability를 probing해
                 # 가장 깊게 들어갈 수 있는 자세를 고른다.
-                requested_probe_depth_m = max(
-                    0.060, min(MEASURED_TCP_MAX_APPROACH_CEILING_M, self._measured_tcp_max_approach_m))
+                requested_probe_depth_m = requested_measured_tcp_probe_depth(
+                    self._measured_tcp_max_approach_m)
                 probe_depths, probe_pruned = measured_tcp_probe_depths(
                     requested_probe_depth_m,
                     is_nw_high_target,
                     grasp_search.measured_best_depth_m,
                 )
-                if probe_pruned:
-                    self.get_logger().info(
-                        "MEASURED_TCP_PROBE_PRUNED: existing best depth="
-                        f"{grasp_search.measured_best_depth_m*1000:.0f}mm; "
-                        f"next depths={[round(d*1000) for d in probe_depths]}mm")
-                elif grasp_search.measured_best_depth_m > 0.0:
-                    self.get_logger().info(
-                        "MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth="
-                        f"{grasp_search.measured_best_depth_m*1000:.0f}mm < "
-                        f"{MEASURED_TCP_MIN_PRUNE_DEPTH_M*1000:.0f}mm minimum; "
-                        "later variants may still reach the proven 90mm TOOL finish branch")
+                probe_log_message = measured_tcp_probe_log_message(
+                    probe_pruned,
+                    grasp_search.measured_best_depth_m,
+                    probe_depths,
+                )
+                if probe_log_message:
+                    self.get_logger().info(probe_log_message)
                 for depth_m in probe_depths:
                     probe_target = ee_pre + depth_m * approach_dir
                     r_final_probe = self.plan(
@@ -1557,19 +1556,16 @@ class CuroboPlanner(Node):
                             + (" (tie-break: flatter safe branch)" if is_tied_but_better else ""))
                     if depth_m >= requested_probe_depth_m - 1e-6:
                         break
-                if grasp_search.measured_best_depth_m >= requested_probe_depth_m - 1e-6:
+                should_stop, stop_reason, good_enough_j3_deg = (
+                    should_stop_measured_variant_search(
+                        grasp_search,
+                        requested_probe_depth_m,
+                        is_nw_high_target,
+                    )
+                )
+                if stop_reason == "reached_requested_depth":
                     break
-                if (
-                    grasp_search.measured_best_j3_deg is not None
-                    and grasp_search.measured_best_j3_deg >= (
-                        NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
-                        if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
-                    )
-                ):
-                    good_enough_j3_deg = (
-                        NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
-                        if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
-                    )
+                if should_stop and stop_reason == "j3_good_enough":
                     self.get_logger().info(
                         "MEASURED_TCP_VARIANT_SEARCH_STOPPED "
                         f"J3={grasp_search.measured_best_j3_deg:.1f}deg >= "

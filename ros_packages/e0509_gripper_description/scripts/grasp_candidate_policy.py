@@ -14,9 +14,12 @@ from harvest_motion_params import (
     GRASP_QUAT_RETRY_VARIANTS,
     GRASP_RETRY_OFFSETS,
     LEFTMOST_GRASP_RETRY_OFFSETS,
+    MEASURED_TCP_J3_GOOD_ENOUGH_DEG,
+    MEASURED_TCP_MAX_APPROACH_CEILING_M,
     MEASURED_TCP_FINAL_STANDOFF_M,
     MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS,
     MEASURED_TCP_MIN_PRUNE_DEPTH_M,
+    NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG,
     NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS,
     NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG,
     NW_HIGH_TARGET_PROBE_DEPTHS_M,
@@ -139,6 +142,48 @@ def measured_tcp_probe_depths(requested_depth_m: float, is_nw_high_target: bool,
             probe_depths = [measured_best_depth_m]
         pruned = True
     return probe_depths, pruned
+
+
+def requested_measured_tcp_probe_depth(max_approach_m: float):
+    return max(0.060, min(MEASURED_TCP_MAX_APPROACH_CEILING_M, float(max_approach_m)))
+
+
+def measured_tcp_probe_log_message(probe_pruned: bool, measured_best_depth_m: float,
+                                   probe_depths):
+    if probe_pruned:
+        return (
+            "MEASURED_TCP_PROBE_PRUNED: existing best depth="
+            f"{measured_best_depth_m*1000:.0f}mm; "
+            f"next depths={[round(d*1000) for d in probe_depths]}mm"
+        )
+    if measured_best_depth_m > 0.0:
+        return (
+            "MEASURED_TCP_PROBE_NOT_PRUNED: existing best depth="
+            f"{measured_best_depth_m*1000:.0f}mm < "
+            f"{MEASURED_TCP_MIN_PRUNE_DEPTH_M*1000:.0f}mm minimum; "
+            "later variants may still reach the proven 90mm TOOL finish branch"
+        )
+    return None
+
+
+def measured_tcp_good_enough_j3_deg(is_nw_high_target: bool):
+    return (
+        NW_HIGH_TARGET_J3_GOOD_ENOUGH_DEG
+        if is_nw_high_target else MEASURED_TCP_J3_GOOD_ENOUGH_DEG
+    )
+
+
+def should_stop_measured_variant_search(search_result: GraspSearchResult,
+                                        requested_depth_m: float,
+                                        is_nw_high_target: bool):
+    if search_result.measured_best_depth_m >= requested_depth_m - 1e-6:
+        return True, "reached_requested_depth", None
+    if search_result.measured_best_j3_deg is None:
+        return False, None, None
+    threshold = measured_tcp_good_enough_j3_deg(is_nw_high_target)
+    if search_result.measured_best_j3_deg >= threshold:
+        return True, "j3_good_enough", threshold
+    return False, None, threshold
 
 
 def should_replace_measured_best(
