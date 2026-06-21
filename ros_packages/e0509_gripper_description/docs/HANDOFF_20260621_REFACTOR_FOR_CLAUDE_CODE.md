@@ -274,9 +274,17 @@ scripts/grasp_search_executor.py
 
 바로 전부 빼지 말고, 먼저 다음을 더 줄이는 것을 권장:
 
-- measured probe depth loop helper화
-- legacy grasp offset loop helper화
-- `GraspSearchResult`를 반환하는 executor로 이동
+- measured probe depth loop helper화 — **완료 (2026-06-21, Claude Code, `c28057b`)**.
+  `_run_measured_tcp_depth_probe(...)`로 분리. probe depth 순서/로그 텍스트
+  (`MEASURED_TCP_FINAL_PROBE_BEST`/`MEASURED_TCP_VARIANT_SEARCH_STOPPED`)/`GraspSearchResult`
+  갱신/outer loop의 break·continue 분기 그대로 유지.
+- legacy grasp offset loop helper화 — **완료 (2026-06-21, Claude Code, `ddbd810`)**.
+  `_try_legacy_grasp_offsets(...)`로 분리. offset 순서/`PRE_APPROACH_OFFSET` 가드/
+  first-reachable-offset-wins `break` 그대로 유지.
+- `GraspSearchResult`를 반환하는 executor로 이동 — **아직 안 함.** 위 두 helper도 여전히
+  `curobo_planner_node.py` 내부 메서드다. `grasp_search_executor.py`로 옮기는 건 다음 단계.
+  두 helper 모두 py_compile/diff --check/colcon build 통과 후 push 완료, 실기 미검증
+  (코드 이동만, 로직 무변경).
 
 ### 5.4 place executor 분리
 
