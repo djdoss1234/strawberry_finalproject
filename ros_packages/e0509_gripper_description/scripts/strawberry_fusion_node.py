@@ -651,85 +651,349 @@ class StrawberryFusionNode(Node):
         }
 
     # ── main loop ─────────────────────────────────────────────────────────────
+    def _capture_frame_and_guards(self):
+        frames  = self.pipeline.wait_for_frames()
+        aligned = self.align.process(frames)
+        color_f = aligned.get_color_frame()
+        depth_f = aligned.get_depth_frame()
+        if not color_f or not depth_f:
+            return None
+
+        self._frame_n += 1
+        img  = np.asanyarray(color_f.get_data())
+        intr = depth_f.profile.as_video_stream_profile().intrinsics
+        vis  = img.copy()
+
+        # Joint state guard
+        with self._jlock:
+            joint_ok = self.current_joints is not None
+        if not joint_ok:
+            cv2.putText(vis, "NO JOINT STATE — waiting",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            self._show(vis)
+            return None
+        return img, intr, vis, depth_f
+
+    def _run_or_reuse_inference(self, img):
+        # ── YOLO inference (throttled) — use cached results on skipped frames ──
+        run_infer = (self._frame_n % self._infer_n == 0)
+        if run_infer:
+            seg_res  = self.seg_model(img,  conf=self._conf, verbose=False)[0]
+            pose_res = self.pose_model(img, conf=self._conf, verbose=False)[0]
+
+            seg_items = []
+            if seg_res.masks is not None and seg_res.boxes is not None:
+                for i, polygon in enumerate(seg_res.masks.xy):
+                    cls_id = int(seg_res.boxes.cls[i].item())
+                    seg_items.append((cls_id, polygon))
+
+            pose_items = []
+            if pose_res.keypoints is not None and pose_res.boxes is not None:
+                for i, kps in enumerate(pose_res.keypoints.data):
+                    bbox   = pose_res.boxes.xyxy[i].cpu().numpy()
+                    kps_np = kps.cpu().numpy()
+                    pose_items.append((bbox, kps_np))
+
+            self._last_seg_items  = seg_items
+            self._last_pose_items = pose_items
+        else:
+            # Reuse last frame's detections so the overlay doesn't flicker
+            seg_items  = self._last_seg_items
+            pose_items = self._last_pose_items
+        return seg_items, pose_items, run_infer
+
+    def _draw_seg_overlays(self, vis, seg_items, cls_color):
+        overlay   = vis.copy()
+        for cls_id, polygon in seg_items:
+            if len(polygon) >= 3:
+                color = cls_color.get(cls_id, (200, 200, 200))
+                cv2.fillPoly(overlay, [polygon.astype(np.int32)], color)
+        cv2.addWeighted(overlay, SEG_ALPHA, vis, 1 - SEG_ALPHA, 0, vis)
+        for cls_id, polygon in seg_items:
+            if len(polygon) >= 3:
+                cv2.polylines(vis, [polygon.astype(np.int32)],
+                              True, cls_color.get(cls_id, (200, 200, 200)), 1)
+
+    def _publish_scene_positions(self, run_infer, seg_items, depth_f, intr):
+        if run_infer:
+            scene_flat = []
+            for cls_id, polygon in seg_items:
+                if cls_id == RIPE_CLASS_ID and len(polygon) >= 3:
+                    pt3d = self._polygon_centroid_3d(depth_f, intr, polygon)
+                    if pt3d is not None:
+                        scene_flat.extend([float(pt3d[0]), float(pt3d[1]), float(pt3d[2])])
+            if scene_flat:
+                smsg = Float64MultiArray()
+                smsg.data = scene_flat
+                self.scene_pub.publish(smsg)
+                self.runtime_log.log(
+                    "scene_positions_published",
+                    topic="/strawberry/detection/scene_positions",
+                    positions_m=np.asarray(scene_flat).reshape(-1, 3),
+                )
+
+    def _process_pose_detection(self, pose_bbox, kps_np, vis, img, seg_items,
+                                 depth_f, intr, run_infer, kp_colors, kp_labels,
+                                 cls_color):
+        pose_cx = (pose_bbox[0] + pose_bbox[2]) / 2.0
+        pose_cy = (pose_bbox[1] + pose_bbox[3]) / 2.0
+
+        # Draw pose bounding box
+        cv2.rectangle(vis,
+            (int(pose_bbox[0]), int(pose_bbox[1])),
+            (int(pose_bbox[2]), int(pose_bbox[3])),
+            (200, 200, 0), 1)
+
+        # Draw visible keypoints
+        for ki in range(min(3, len(kps_np))):
+            kx, ky, kconf = kps_np[ki]
+            if kconf >= self._kp_min:
+                cv2.circle(vis, (int(kx), int(ky)), 5, kp_colors[ki], -1)
+                cv2.putText(vis, kp_labels[ki],
+                            (int(kx) + 6, int(ky) - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.35, kp_colors[ki], 1)
+
+        # Find which seg mask belongs to this pose detection.
+        match = self._match_seg_for_pose(pose_bbox, kps_np, seg_items)
+        if match is None:
+            cv2.putText(vis, "no-seg",
+                        (int(pose_cx), int(pose_cy) - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 120, 120), 1)
+            return None
+        matched_cls = int(match["cls_id"])
+
+        cls_str = {0: "ripe", 1: "unripe", 2: "sick"}.get(matched_cls, str(matched_cls))
+        cv2.putText(vis, f"[{cls_str}:{match['evidence']}]",
+                    (int(pose_bbox[0]), int(pose_bbox[1]) - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    cls_color.get(matched_cls, (200, 200, 200)), 1)
+
+        if matched_cls != RIPE_CLASS_ID:
+            return None  # only harvest ripe
+
+        ripe_metrics = ripe_metrics_in_polygon(img, match["polygon"])
+        if not ripe_metrics_pass(ripe_metrics):
+            cv2.putText(
+                vis,
+                "skip ripe-low-red "
+                f"R:{ripe_metrics['red_ratio']:.2f} "
+                f"SR:{ripe_metrics['strong_red_ratio']:.2f} "
+                f"S:{ripe_metrics['sat_mean']:.0f}",
+                (int(pose_bbox[0]), int(pose_bbox[3]) + 24),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.36,
+                (0, 0, 220),
+                1,
+            )
+            return None
+
+        kp_conf = [
+            float(kps_np[ki][2]) if ki < len(kps_np) else 0.0
+            for ki in range(3)
+        ]
+        match_evidence = set(match["evidence"].split(","))
+        # The seg mask describes the fruit body, while KP0/KP1 are
+        # stem-side points and are expected to lie outside that mask.
+        # Do not reject center-only matches here. Target safety still
+        # depends on ripe metrics, keypoint confidence, 3D stem
+        # geometry, and stable multi-frame tracking below.
+
+        required_kps = (0, 1, 2) if self._require_all_stem_kps else (0,)
+        low_conf_kps = [ki for ki in required_kps if kp_conf[ki] < self._pick_kp_min]
+        if low_conf_kps:
+            if run_infer:
+                self._reject_target(
+                    "stem_keypoint_low_confidence",
+                    low_conf_keypoints=low_conf_kps,
+                    kp_conf=kp_conf,
+                    match_evidence=sorted(match_evidence),
+                    ripe_metrics=ripe_metrics,
+                )
+            return None
+
+        # ── compute 3D keypoint positions ─────────────────────────────
+        # KP0 = stem_base (grasp target — nearest to fruit)
+        # KP1 = stem_mid
+        # KP2 = stem_tip (direction reference)
+        kp3d = {}
+        for ki in range(min(3, len(kps_np))):
+            kx, ky, kconf = kps_np[ki]
+            if kconf >= self._pick_kp_min:
+                pt3d = self._px_to_3d(depth_f, intr, kx, ky, radius=6)
+                if pt3d is not None:
+                    kp3d[ki] = pt3d
+
+        missing_depth_kps = [ki for ki in required_kps if ki not in kp3d]
+        if missing_depth_kps:
+            if run_infer:
+                self._reject_target(
+                    "stem_keypoint_depth_invalid",
+                    missing_depth_keypoints=missing_depth_kps,
+                    kp_conf=kp_conf,
+                    match_evidence=sorted(match_evidence),
+                )
+            cv2.putText(vis, "no-depth",
+                        (int(pose_cx), int(pose_cy) + 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 220), 1)
+            return None
+
+        stem_vec = kp3d[2] - kp3d[0] if 2 in kp3d else None
+
+        segment_lengths = {}
+        if 0 in kp3d and 1 in kp3d:
+            segment_lengths["kp0_kp1_m"] = float(np.linalg.norm(kp3d[1] - kp3d[0]))
+        if 1 in kp3d and 2 in kp3d:
+            segment_lengths["kp1_kp2_m"] = float(np.linalg.norm(kp3d[2] - kp3d[1]))
+        if 0 in kp3d and 2 in kp3d:
+            segment_lengths["kp0_kp2_m"] = float(np.linalg.norm(kp3d[2] - kp3d[0]))
+
+        invalid_segments = {
+            name: length for name, length in segment_lengths.items()
+            if name != "kp0_kp2_m"
+            and not self._stem_segment_min_m <= length <= self._stem_segment_max_m
+        }
+        total_length = segment_lengths.get("kp0_kp2_m")
+        if total_length is not None and total_length > self._stem_total_max_m:
+            invalid_segments["kp0_kp2_m"] = total_length
+        if invalid_segments:
+            if run_infer:
+                self._reject_target(
+                    "stem_geometry_implausible",
+                    invalid_segments=invalid_segments,
+                    segment_lengths=segment_lengths,
+                    kp_conf=kp_conf,
+                    kp3d_base_m=kp3d,
+                    match_evidence=sorted(match_evidence),
+                )
+            return None
+
+        # The grasp point is close to KP0, so use the local KP0->KP1
+        # tangent. KP0->KP2 is only a chord and shifts the target
+        # sideways when the stem is bent.
+        kp0_to_kp1 = kp3d[1] - kp3d[0]
+        kp0_to_kp2 = kp3d[2] - kp3d[0]
+        kp0_to_kp1_len = float(np.linalg.norm(kp0_to_kp1))
+        kp0_to_kp2_len = float(np.linalg.norm(kp0_to_kp2))
+        use_local_direction = (
+            self._stem_grasp_direction_mode == "kp0_to_kp1"
+            and kp0_to_kp1_len > 1e-6
+        )
+        grasp_vector = kp0_to_kp1 if use_local_direction else kp0_to_kp2
+        grasp_vector_len = (
+            kp0_to_kp1_len if use_local_direction else kp0_to_kp2_len
+        )
+        if grasp_vector_len <= 1e-6:
+            if run_infer:
+                self._reject_target(
+                    "stem_grasp_direction_degenerate",
+                    mode=self._stem_grasp_direction_mode,
+                    kp3d_base_m=kp3d,
+                )
+            return None
+        grasp_step_m = min(
+            self._stem_grasp_offset_m,
+            0.8 * grasp_vector_len,
+        )
+        grasp_direction = grasp_vector / grasp_vector_len
+        grasp_pt = kp3d[0] + grasp_step_m * grasp_direction
+        grasp_pt[2] += self._grasp_target_base_z_trim_m
+
+        bend_angle_deg = 0.0
+        if kp0_to_kp1_len > 1e-6 and kp0_to_kp2_len > 1e-6:
+            bend_cos = float(np.dot(
+                kp0_to_kp1 / kp0_to_kp1_len,
+                kp0_to_kp2 / kp0_to_kp2_len,
+            ))
+            bend_angle_deg = float(np.degrees(np.arccos(np.clip(
+                bend_cos, -1.0, 1.0))))
+
+        target_quality = {
+            "kp_conf": kp_conf,
+            "kp_pixels": [
+                [float(kps_np[ki][0]), float(kps_np[ki][1])]
+                for ki in range(min(3, len(kps_np)))
+            ],
+            "kp3d_base_m": kp3d,
+            "match_evidence": sorted(match_evidence),
+            "match_score": float(match["score"]),
+            "ripe_metrics": ripe_metrics,
+            "stem_segment_lengths_m": segment_lengths,
+            "grasp_target_source": (
+                "kp0_toward_kp1_local_plus_base_z_trim"
+                if use_local_direction
+                else "kp0_toward_kp2_chord_plus_base_z_trim"
+            ),
+            "grasp_offset_from_kp0_m": grasp_step_m,
+            "grasp_direction_base": grasp_direction,
+            "stem_bend_angle_deg": bend_angle_deg,
+            "grasp_target_base_z_trim_m": self._grasp_target_base_z_trim_m,
+            "grasp_target_base_m": grasp_pt,
+        }
+
+        local_stem_vec = kp0_to_kp1 if use_local_direction else stem_vec
+        quat_xyzw = (stem_vec_to_quat_xyzw(local_stem_vec)
+                     if local_stem_vec is not None
+                     else np.array([0.0, 0.0, 0.0, 1.0]))
+
+        if run_infer:
+            track_id, track = self._update_track(grasp_pt, quat_xyzw, target_quality)
+        else:
+            # Visualization only — find nearest existing track without updating
+            best_id, best_dist = None, float("inf")
+            for tid, t in self._tracks.items():
+                d = float(np.linalg.norm(grasp_pt - t["pos"]))
+                if d < best_dist:
+                    best_id, best_dist = tid, d
+            if best_id is None or best_dist > self._track_match_dist:
+                return None
+            track_id, track = best_id, self._tracks[best_id]
+
+        stable = self._track_is_stable(track)
+        candidate = None
+        if stable:
+            # Use image-center priority for the current view, but publish
+            # only one locked target after all candidates are processed.
+            img_cx = img.shape[1] * 0.5
+            img_cy = img.shape[0] * 0.5
+            center_dist_px = float(np.hypot(pose_cx - img_cx, pose_cy - img_cy))
+            candidate = {
+                "track_id": track_id,
+                "track": track,
+                "center_dist_px": center_dist_px,
+            }
+
+        gx, gy, gz = track["pos"]
+        label = "PICK" if stable else "WAIT"
+        cv2.putText(vis,
+            f"{label}#{track_id} h={track['hits']} "
+            f"s={track['position_spread_m']*1000:.0f}mm "
+            f"({gx:.3f},{gy:.3f},{gz:.3f})",
+            (int(pose_bbox[0]), int(pose_bbox[3]) + 12),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.38, COLOR_MATCH, 1)
+
+        # Draw stem direction arrow (KP0 → KP2 in image)
+        if stem_vec is not None and 0 in kp3d and 2 in kp3d:
+            kp0_px = (int(kps_np[0][0]), int(kps_np[0][1]))
+            kp2_px = (int(kps_np[2][0]), int(kps_np[2][1]))
+            cv2.arrowedLine(vis, kp0_px, kp2_px,
+                            (0, 200, 255), 2, tipLength=0.3)
+        return candidate
+
     def _loop(self):
         try:
-            frames  = self.pipeline.wait_for_frames()
-            aligned = self.align.process(frames)
-            color_f = aligned.get_color_frame()
-            depth_f = aligned.get_depth_frame()
-            if not color_f or not depth_f:
+            captured = self._capture_frame_and_guards()
+            if captured is None:
                 return
+            img, intr, vis, depth_f = captured
 
-            self._frame_n += 1
-            img  = np.asanyarray(color_f.get_data())
-            intr = depth_f.profile.as_video_stream_profile().intrinsics
-            vis  = img.copy()
-
-            # Joint state guard
-            with self._jlock:
-                joint_ok = self.current_joints is not None
-            if not joint_ok:
-                cv2.putText(vis, "NO JOINT STATE — waiting",
-                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                self._show(vis)
-                return
-
-            # ── YOLO inference (throttled) — use cached results on skipped frames ──
-            run_infer = (self._frame_n % self._infer_n == 0)
-            if run_infer:
-                seg_res  = self.seg_model(img,  conf=self._conf, verbose=False)[0]
-                pose_res = self.pose_model(img, conf=self._conf, verbose=False)[0]
-
-                seg_items = []
-                if seg_res.masks is not None and seg_res.boxes is not None:
-                    for i, polygon in enumerate(seg_res.masks.xy):
-                        cls_id = int(seg_res.boxes.cls[i].item())
-                        seg_items.append((cls_id, polygon))
-
-                pose_items = []
-                if pose_res.keypoints is not None and pose_res.boxes is not None:
-                    for i, kps in enumerate(pose_res.keypoints.data):
-                        bbox   = pose_res.boxes.xyxy[i].cpu().numpy()
-                        kps_np = kps.cpu().numpy()
-                        pose_items.append((bbox, kps_np))
-
-                self._last_seg_items  = seg_items
-                self._last_pose_items = pose_items
-            else:
-                # Reuse last frame's detections so the overlay doesn't flicker
-                seg_items  = self._last_seg_items
-                pose_items = self._last_pose_items
+            seg_items, pose_items, run_infer = self._run_or_reuse_inference(img)
 
             # ── draw seg overlays ─────────────────────────────────────────────
             cls_color = {0: COLOR_RIPE, 1: COLOR_UNRIPE, 2: COLOR_SICK}
-            overlay   = vis.copy()
-            for cls_id, polygon in seg_items:
-                if len(polygon) >= 3:
-                    color = cls_color.get(cls_id, (200, 200, 200))
-                    cv2.fillPoly(overlay, [polygon.astype(np.int32)], color)
-            cv2.addWeighted(overlay, SEG_ALPHA, vis, 1 - SEG_ALPHA, 0, vis)
-            for cls_id, polygon in seg_items:
-                if len(polygon) >= 3:
-                    cv2.polylines(vis, [polygon.astype(np.int32)],
-                                  True, cls_color.get(cls_id, (200, 200, 200)), 1)
+            self._draw_seg_overlays(vis, seg_items, cls_color)
 
             # ── scene positions (only on fresh inference frames) ─────────────
-            if run_infer:
-                scene_flat = []
-                for cls_id, polygon in seg_items:
-                    if cls_id == RIPE_CLASS_ID and len(polygon) >= 3:
-                        pt3d = self._polygon_centroid_3d(depth_f, intr, polygon)
-                        if pt3d is not None:
-                            scene_flat.extend([float(pt3d[0]), float(pt3d[1]), float(pt3d[2])])
-                if scene_flat:
-                    smsg = Float64MultiArray()
-                    smsg.data = scene_flat
-                    self.scene_pub.publish(smsg)
-                    self.runtime_log.log(
-                        "scene_positions_published",
-                        topic="/strawberry/detection/scene_positions",
-                        positions_m=np.asarray(scene_flat).reshape(-1, 3),
-                    )
+            self._publish_scene_positions(run_infer, seg_items, depth_f, intr)
 
             # ── fusion: match each pose detection to a seg mask ───────────────
             kp_colors = [COLOR_KP0, COLOR_KP1, COLOR_KP2]
@@ -737,247 +1001,11 @@ class StrawberryFusionNode(Node):
             ripe_candidates = []
 
             for pose_bbox, kps_np in pose_items:
-                pose_cx = (pose_bbox[0] + pose_bbox[2]) / 2.0
-                pose_cy = (pose_bbox[1] + pose_bbox[3]) / 2.0
-
-                # Draw pose bounding box
-                cv2.rectangle(vis,
-                    (int(pose_bbox[0]), int(pose_bbox[1])),
-                    (int(pose_bbox[2]), int(pose_bbox[3])),
-                    (200, 200, 0), 1)
-
-                # Draw visible keypoints
-                for ki in range(min(3, len(kps_np))):
-                    kx, ky, kconf = kps_np[ki]
-                    if kconf >= self._kp_min:
-                        cv2.circle(vis, (int(kx), int(ky)), 5, kp_colors[ki], -1)
-                        cv2.putText(vis, kp_labels[ki],
-                                    (int(kx) + 6, int(ky) - 4),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, kp_colors[ki], 1)
-
-                # Find which seg mask belongs to this pose detection.
-                match = self._match_seg_for_pose(pose_bbox, kps_np, seg_items)
-                if match is None:
-                    cv2.putText(vis, "no-seg",
-                                (int(pose_cx), int(pose_cy) - 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 120, 120), 1)
-                    continue
-                matched_cls = int(match["cls_id"])
-
-                cls_str = {0: "ripe", 1: "unripe", 2: "sick"}.get(matched_cls, str(matched_cls))
-                cv2.putText(vis, f"[{cls_str}:{match['evidence']}]",
-                            (int(pose_bbox[0]), int(pose_bbox[1]) - 5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                            cls_color.get(matched_cls, (200, 200, 200)), 1)
-
-                if matched_cls != RIPE_CLASS_ID:
-                    continue  # only harvest ripe
-
-                ripe_metrics = ripe_metrics_in_polygon(img, match["polygon"])
-                if not ripe_metrics_pass(ripe_metrics):
-                    cv2.putText(
-                        vis,
-                        "skip ripe-low-red "
-                        f"R:{ripe_metrics['red_ratio']:.2f} "
-                        f"SR:{ripe_metrics['strong_red_ratio']:.2f} "
-                        f"S:{ripe_metrics['sat_mean']:.0f}",
-                        (int(pose_bbox[0]), int(pose_bbox[3]) + 24),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.36,
-                        (0, 0, 220),
-                        1,
-                    )
-                    continue
-
-                kp_conf = [
-                    float(kps_np[ki][2]) if ki < len(kps_np) else 0.0
-                    for ki in range(3)
-                ]
-                match_evidence = set(match["evidence"].split(","))
-                # The seg mask describes the fruit body, while KP0/KP1 are
-                # stem-side points and are expected to lie outside that mask.
-                # Do not reject center-only matches here. Target safety still
-                # depends on ripe metrics, keypoint confidence, 3D stem
-                # geometry, and stable multi-frame tracking below.
-
-                required_kps = (0, 1, 2) if self._require_all_stem_kps else (0,)
-                low_conf_kps = [ki for ki in required_kps if kp_conf[ki] < self._pick_kp_min]
-                if low_conf_kps:
-                    if run_infer:
-                        self._reject_target(
-                            "stem_keypoint_low_confidence",
-                            low_conf_keypoints=low_conf_kps,
-                            kp_conf=kp_conf,
-                            match_evidence=sorted(match_evidence),
-                            ripe_metrics=ripe_metrics,
-                        )
-                    continue
-
-                # ── compute 3D keypoint positions ─────────────────────────────
-                # KP0 = stem_base (grasp target — nearest to fruit)
-                # KP1 = stem_mid
-                # KP2 = stem_tip (direction reference)
-                kp3d = {}
-                for ki in range(min(3, len(kps_np))):
-                    kx, ky, kconf = kps_np[ki]
-                    if kconf >= self._pick_kp_min:
-                        pt3d = self._px_to_3d(depth_f, intr, kx, ky, radius=6)
-                        if pt3d is not None:
-                            kp3d[ki] = pt3d
-
-                missing_depth_kps = [ki for ki in required_kps if ki not in kp3d]
-                if missing_depth_kps:
-                    if run_infer:
-                        self._reject_target(
-                            "stem_keypoint_depth_invalid",
-                            missing_depth_keypoints=missing_depth_kps,
-                            kp_conf=kp_conf,
-                            match_evidence=sorted(match_evidence),
-                        )
-                    cv2.putText(vis, "no-depth",
-                                (int(pose_cx), int(pose_cy) + 10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 220), 1)
-                    continue
-
-                stem_vec = kp3d[2] - kp3d[0] if 2 in kp3d else None
-
-                segment_lengths = {}
-                if 0 in kp3d and 1 in kp3d:
-                    segment_lengths["kp0_kp1_m"] = float(np.linalg.norm(kp3d[1] - kp3d[0]))
-                if 1 in kp3d and 2 in kp3d:
-                    segment_lengths["kp1_kp2_m"] = float(np.linalg.norm(kp3d[2] - kp3d[1]))
-                if 0 in kp3d and 2 in kp3d:
-                    segment_lengths["kp0_kp2_m"] = float(np.linalg.norm(kp3d[2] - kp3d[0]))
-
-                invalid_segments = {
-                    name: length for name, length in segment_lengths.items()
-                    if name != "kp0_kp2_m"
-                    and not self._stem_segment_min_m <= length <= self._stem_segment_max_m
-                }
-                total_length = segment_lengths.get("kp0_kp2_m")
-                if total_length is not None and total_length > self._stem_total_max_m:
-                    invalid_segments["kp0_kp2_m"] = total_length
-                if invalid_segments:
-                    if run_infer:
-                        self._reject_target(
-                            "stem_geometry_implausible",
-                            invalid_segments=invalid_segments,
-                            segment_lengths=segment_lengths,
-                            kp_conf=kp_conf,
-                            kp3d_base_m=kp3d,
-                            match_evidence=sorted(match_evidence),
-                        )
-                    continue
-
-                # The grasp point is close to KP0, so use the local KP0->KP1
-                # tangent. KP0->KP2 is only a chord and shifts the target
-                # sideways when the stem is bent.
-                kp0_to_kp1 = kp3d[1] - kp3d[0]
-                kp0_to_kp2 = kp3d[2] - kp3d[0]
-                kp0_to_kp1_len = float(np.linalg.norm(kp0_to_kp1))
-                kp0_to_kp2_len = float(np.linalg.norm(kp0_to_kp2))
-                use_local_direction = (
-                    self._stem_grasp_direction_mode == "kp0_to_kp1"
-                    and kp0_to_kp1_len > 1e-6
-                )
-                grasp_vector = kp0_to_kp1 if use_local_direction else kp0_to_kp2
-                grasp_vector_len = (
-                    kp0_to_kp1_len if use_local_direction else kp0_to_kp2_len
-                )
-                if grasp_vector_len <= 1e-6:
-                    if run_infer:
-                        self._reject_target(
-                            "stem_grasp_direction_degenerate",
-                            mode=self._stem_grasp_direction_mode,
-                            kp3d_base_m=kp3d,
-                        )
-                    continue
-                grasp_step_m = min(
-                    self._stem_grasp_offset_m,
-                    0.8 * grasp_vector_len,
-                )
-                grasp_direction = grasp_vector / grasp_vector_len
-                grasp_pt = kp3d[0] + grasp_step_m * grasp_direction
-                grasp_pt[2] += self._grasp_target_base_z_trim_m
-
-                bend_angle_deg = 0.0
-                if kp0_to_kp1_len > 1e-6 and kp0_to_kp2_len > 1e-6:
-                    bend_cos = float(np.dot(
-                        kp0_to_kp1 / kp0_to_kp1_len,
-                        kp0_to_kp2 / kp0_to_kp2_len,
-                    ))
-                    bend_angle_deg = float(np.degrees(np.arccos(np.clip(
-                        bend_cos, -1.0, 1.0))))
-
-                target_quality = {
-                    "kp_conf": kp_conf,
-                    "kp_pixels": [
-                        [float(kps_np[ki][0]), float(kps_np[ki][1])]
-                        for ki in range(min(3, len(kps_np)))
-                    ],
-                    "kp3d_base_m": kp3d,
-                    "match_evidence": sorted(match_evidence),
-                    "match_score": float(match["score"]),
-                    "ripe_metrics": ripe_metrics,
-                    "stem_segment_lengths_m": segment_lengths,
-                    "grasp_target_source": (
-                        "kp0_toward_kp1_local_plus_base_z_trim"
-                        if use_local_direction
-                        else "kp0_toward_kp2_chord_plus_base_z_trim"
-                    ),
-                    "grasp_offset_from_kp0_m": grasp_step_m,
-                    "grasp_direction_base": grasp_direction,
-                    "stem_bend_angle_deg": bend_angle_deg,
-                    "grasp_target_base_z_trim_m": self._grasp_target_base_z_trim_m,
-                    "grasp_target_base_m": grasp_pt,
-                }
-
-                local_stem_vec = kp0_to_kp1 if use_local_direction else stem_vec
-                quat_xyzw = (stem_vec_to_quat_xyzw(local_stem_vec)
-                             if local_stem_vec is not None
-                             else np.array([0.0, 0.0, 0.0, 1.0]))
-
-                if run_infer:
-                    track_id, track = self._update_track(grasp_pt, quat_xyzw, target_quality)
-                else:
-                    # Visualization only — find nearest existing track without updating
-                    best_id, best_dist = None, float("inf")
-                    for tid, t in self._tracks.items():
-                        d = float(np.linalg.norm(grasp_pt - t["pos"]))
-                        if d < best_dist:
-                            best_id, best_dist = tid, d
-                    if best_id is None or best_dist > self._track_match_dist:
-                        continue
-                    track_id, track = best_id, self._tracks[best_id]
-
-                stable = self._track_is_stable(track)
-                if stable:
-                    # Use image-center priority for the current view, but publish
-                    # only one locked target after all candidates are processed.
-                    img_cx = img.shape[1] * 0.5
-                    img_cy = img.shape[0] * 0.5
-                    center_dist_px = float(np.hypot(pose_cx - img_cx, pose_cy - img_cy))
-                    ripe_candidates.append({
-                        "track_id": track_id,
-                        "track": track,
-                        "center_dist_px": center_dist_px,
-                    })
-
-                gx, gy, gz = track["pos"]
-                label = "PICK" if stable else "WAIT"
-                cv2.putText(vis,
-                    f"{label}#{track_id} h={track['hits']} "
-                    f"s={track['position_spread_m']*1000:.0f}mm "
-                    f"({gx:.3f},{gy:.3f},{gz:.3f})",
-                    (int(pose_bbox[0]), int(pose_bbox[3]) + 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, COLOR_MATCH, 1)
-
-                # Draw stem direction arrow (KP0 → KP2 in image)
-                if stem_vec is not None and 0 in kp3d and 2 in kp3d:
-                    kp0_px = (int(kps_np[0][0]), int(kps_np[0][1]))
-                    kp2_px = (int(kps_np[2][0]), int(kps_np[2][1]))
-                    cv2.arrowedLine(vis, kp0_px, kp2_px,
-                                    (0, 200, 255), 2, tipLength=0.3)
+                candidate = self._process_pose_detection(
+                    pose_bbox, kps_np, vis, img, seg_items, depth_f, intr,
+                    run_infer, kp_colors, kp_labels, cls_color)
+                if candidate is not None:
+                    ripe_candidates.append(candidate)
 
             active_candidate = self._select_active_track(ripe_candidates)
             if run_infer and active_candidate is not None:
