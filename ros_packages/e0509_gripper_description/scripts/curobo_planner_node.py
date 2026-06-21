@@ -586,6 +586,12 @@ class CuroboPlanner(Node):
     def _set_gripper_position(self, position: int, timeout_sec: float = 5.0) -> bool:
         return self.gripper_client.set_position(position, timeout_sec)
 
+    def _abort_pick_with_complete(self, reset_gripper: bool = True):
+        self._clear_neighbor_obstacles()
+        if reset_gripper:
+            self._reset_gripper()
+        self.pick_complete_pub.publish(Empty())
+
     # ── 콜백 ──────────────────────────────────────────────────────────────────
 
     def joint_state_cb(self, msg: JointState):
@@ -1649,9 +1655,7 @@ class CuroboPlanner(Node):
                 f"ABORT: grasp 전체 실패 — {grasp_search.attempt_count}개 후보 모두 reject "
                 f"(target=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
                 f"start_J=[{', '.join(f'{np.rad2deg(v):.0f}' for v in self.current_joints)}]°)")
-            self._clear_neighbor_obstacles()
-            self._reset_gripper()
-            self.pick_complete_pub.publish(Empty())
+            self._abort_pick_with_complete()
             return
 
         if self._measured_tcp_model and self._measured_tcp_plan_only:
@@ -1748,9 +1752,7 @@ class CuroboPlanner(Node):
             final_approach_distance = PRE_APPROACH_OFFSET - used_grasp_offset
         if not self.execute_spline(*ret_pre):
             self.get_logger().error("ABORT: pre-approach spline 실패")
-            self._clear_neighbor_obstacles()
-            self._reset_gripper()
-            self.pick_complete_pub.publish(Empty())
+            self._abort_pick_with_complete()
             return
         self.get_logger().info(
             f"PRE_APPROACH_REACHED — settling {PRE_APPROACH_SETTLE_SEC:.1f}s "
@@ -1999,9 +2001,7 @@ class CuroboPlanner(Node):
                             break
                 if not fallback_ok:
                     self.get_logger().error("ABORT: 직선 진입 실패")
-                    self._clear_neighbor_obstacles()
-                    self._reset_gripper()
-                    self.pick_complete_pub.publish(Empty())
+                    self._abort_pick_with_complete()
                     return
 
         # 실기 확인: 모든 벽면 딸기 줄기는 모델 벽 앞면보다 ~30mm 안쪽에 위치.
