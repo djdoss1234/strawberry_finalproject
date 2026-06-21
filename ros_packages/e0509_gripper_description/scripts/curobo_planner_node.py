@@ -37,6 +37,7 @@ from curobo.geom.types import WorldConfig, Cuboid
 from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import (
     build_straight_retreat_steps,
+    final_approach_fallback_depths,
     measured_tcp_approach_distance,
     tool_finish_base_direction,
 )
@@ -1887,11 +1888,10 @@ class CuroboPlanner(Node):
                     and used_grasp_quat is not None
                     and self.current_joints is not None
                 ):
-                    depth_candidates = [final_approach_distance]
-                    if self._direct_curobo_final_approach_for_measured_tcp:
-                        for depth_m in [0.130, 0.110, 0.090, 0.070, 0.060]:
-                            if 0.001 < depth_m < final_approach_distance - 0.005:
-                                depth_candidates.append(depth_m)
+                    depth_candidates = final_approach_fallback_depths(
+                        final_approach_distance,
+                        self._direct_curobo_final_approach_for_measured_tcp,
+                    )
                     for depth_m in depth_candidates:
                         fallback_target = (
                             used_pre_ee_pos

@@ -51,6 +51,16 @@ def tool_finish_base_direction(grasp_variant, approach_dir,
     return ToolFinishDirection(True, is_published_roll, horiz_dir)
 
 
+def final_approach_fallback_depths(final_approach_distance_m: float,
+                                   include_shallow_fallbacks: bool):
+    depths = [float(final_approach_distance_m)]
+    if include_shallow_fallbacks:
+        for depth_m in [0.130, 0.110, 0.090, 0.070, 0.060]:
+            if 0.001 < depth_m < final_approach_distance_m - 0.005:
+                depths.append(depth_m)
+    return depths
+
+
 def measured_tcp_approach_distance(raw_y_m: float,
                                    straw,
                                    used_pre_ee_pos,
