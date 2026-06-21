@@ -826,6 +826,12 @@ class CuroboPlanner(Node):
                     vel_mm_s=vel_mm_s or RETREAT_VEL_MM_S,
                     acc_mm_s2=acc_mm_s2 or RETREAT_ACC_MM_S2,
                 )
+            self.runtime_log.log(
+                "retreat_step_complete",
+                label=step["label"],
+                ok=ok,
+                current_joints_rad=self.current_joints,
+            )
             if not ok:
                 return False
         return True
