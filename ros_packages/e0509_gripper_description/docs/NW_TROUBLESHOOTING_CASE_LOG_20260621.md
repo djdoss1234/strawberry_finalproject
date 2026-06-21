@@ -21,6 +21,7 @@
 | 10 | grasp 방향이 실제 줄기 방향(`kp0_to_kp1`)을 무시하고 항상 고정 라이브러리에서만 선택됨 | (발견만) | ❌ 미수정 — blast radius 커서 보류 |
 | 11 | `gripper_client.py` import 오타로 `ros2 run` 자체가 기동 실패 | import명 수정 | ✅ 해결·검증 |
 | 12 | `curobo_planner_node.py`가 비대해져 구조 파악·확장이 어려움 | 정책/실행 모듈로 분리(리팩토링) | ✅ 완료(기능 무변경 확인됨) |
+| 13 | 항목12 이후에도 전체 코드베이스에 394줄까지의 큰 단일 메서드 다수 잔존 | 전수 AST 실측 후 순위대로 추가 분리 | ✅ 완료(최대 248줄까지 축소, 기능 무변경 확인됨), 실기 미검증 |
 
 ## 상세
 
@@ -168,6 +169,37 @@ scene position publish, per-pose 융합/필터링/grasp 계산/트래킹의 5단
 per-pose 필터에서도 재사용되므로 파라미터로 전달. py_compile/실제 import/git diff --check/
 colcon build/install space 확인 전부 통과. **버그(항목 10, `stem_keypoint_depth_invalid`)는
 그대로 옮기기만 했고 고치지 않음, 실기 미검증.**
+
+### 13. 전체 코드베이스 "남은 큰 메서드" 전수 분리 (2026-06-21)
+
+**상황**: 사용자가 "전부 다 진행해. 문제 있으면 보고하고 없으면 진행해 전부" — 항목12 이후에도
+남아있던 큰 단일 메서드 전체를 AST로 실측해서 순위대로 처리.
+
+**시도/결과**:
+- `_pick`(394줄, `curobo_planner_node.py`) — 이번 세션 최대 단일 메서드. `_prepare_pick_target_or_abort`
+  (target 준비+x/z 가드, 실패시 None) / `_search_grasp`(quat variant 탐색 루프, 순수 이동)로 분리.
+  394→**248줄** (`d4f1dce`).
+- `tray_place_executor.py`의 두 메서드 — `execute_marker_place_after_retreat`(183줄)에서
+  clearance/orientation 후보 탐색 루프를 `_search_marker_place_above`로 분리(183→**130줄**).
+  `execute_taught_slot0_place_reference_after_retreat`(225줄)에서 슬롯 검증+위치 계산을
+  `_compute_taught_slot_above_target`으로 분리(225→**194줄**) (`17cb269`).
+- `_scan_one_cell`(126줄, `scan_executor_node.py`) — 이동+도착대기(`_move_to_scan_cell_and_wait`)와
+  검출처리(`_process_cell_detections`)로 분리. 126→**42줄** (`8970a55`).
+- `__init__` 3종 추가 분리 — `strawberry_fusion_node.py`(189줄)는 `planner_bootstrap.py`와 동일
+  패턴으로 `fusion_bootstrap.py` 신규 생성, 파라미터 declare/load 80줄 이동(189→**109줄**,
+  `10f0852`, `_as_bool`도 단일 사용처라 같이 이동). `scan_executor_node.py`(165줄)는 이 패키지에
+  아직 모듈 분리 컨벤션이 없어 in-class 메서드(`_declare_and_load_params`)로 60줄 이동
+  (165→**105줄**, `56ab209`). `curobo_planner_node.py`(278줄)는 객체 생성/wiring 부분(180줄,
+  `self` 의존 심해 분리 보류 재확인)은 그대로 두고, 순수 로깅 100줄만 `_log_startup_banner`로
+  분리(278→**180줄**, `9ed5554`).
+
+**최종 상태(AST 실측)**: 전체 코드베이스에서 가장 큰 단일 메서드가 248줄(`_pick`)까지 줄어듦.
+남은 100줄 이상 메서드(`_process_pose_detection` 246줄, `execute_taught_slot0_place_reference_after_retreat`
+194줄, curobo `__init__` 180줄, `declare_and_load_params` 140줄, `execute_marker_place_after_retreat`
+130줄)는 공통적으로 "독립적인 실패 조건이 없는 단일 개념의 순차 파이프라인이거나 순수
+선언/로딩 나열"이라 더 쪼개면 변수만 여러 메서드에 분산되고 가독성은 오히려 떨어진다고 판단,
+의도적으로 보류. 모든 분리는 원본↔변환본 역치환 diff로 0줄 차이 확인 + py_compile/실제
+import/git diff --check/colcon build/install space 확인 전부 통과. **실기 미검증.**
 
 ## 다음에 확인할 것
 
