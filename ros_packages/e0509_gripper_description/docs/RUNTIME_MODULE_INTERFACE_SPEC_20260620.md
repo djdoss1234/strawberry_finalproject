@@ -203,6 +203,7 @@ RealSense RGB-D
 - `row2_place_policy.py` 분리: row2 place line deviation threshold 판정
 - `marker_place_orientation_policy.py` 분리: marker place orientation/clearance 후보와 measured-TCP contact 보정 target 계산
 - `approach_retreat_policy.py` 확장: measured-TCP adaptive approach distance, tilted branch horizontal tool-finish direction, cuRobo final fallback depth 후보 계산 분리
+- `curobo_planner_node.py` 내부 helper화: open-stem descent, NW BASE+Y nudge, gripper-close failure recovery, detach/retreat, post-retreat place handling, return-to-scan completion, leftmost extra advance를 `_pick()` 본문에서 분리
 - `curobo_planner_node.py`는 위 모듈을 import하도록 변경. 1차 분리로 약 1200줄 감소
 
 다음 분리 후보:
