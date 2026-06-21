@@ -1012,13 +1012,7 @@ class ScanExecutorNode(Node):
 
         return scan_order
 
-    def _scan_one_cell(self, cell_id, scan_order, collect_then_pick_active,
-                       collected_poses, cell_detections) -> bool:
-        if cell_id not in self._targets:
-            self.get_logger().warn("%s not in candidates — skipping" % cell_id)
-            return True
-
-        target = self._targets[cell_id]
+    def _move_to_scan_cell_and_wait(self, cell_id, target) -> bool:
         endpoint_deg = target.get("endpoint_joints_deg")
         if endpoint_deg is None:
             self._pub_status(
@@ -1069,29 +1063,10 @@ class ScanExecutorNode(Node):
                 acc=self._overview_return_acc,
             )
             return False
+        return True
 
-        # Reset per-cell detection counter and pose buffer just before dwell.
-        with self._detection_lock:
-            self._detection_count = 0
-            self._detection_poses = []
-        joints_now = self._current_joints or []
-        joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
-        self._pub_status(
-            "AT_SCAN_POSE %s joints_deg=[%s] — adaptive detection wait up to %.1fs"
-            % (cell_id, joints_deg_str, self._scan_dwell_sec)
-        )
-        detection_deadline = time.time() + self._scan_dwell_sec
-        while time.time() < detection_deadline:
-            with self._detection_lock:
-                if self._detection_count > 0 and not collect_then_pick_active:
-                    break
-            time.sleep(0.05)
-
-        with self._detection_lock:
-            count = self._detection_count
-            poses_snapshot = list(self._detection_poses)
-        cell_detections[cell_id] = count
-
+    def _process_cell_detections(self, cell_id, count, poses_snapshot,
+                                  collect_then_pick_active, collected_poses) -> None:
         if count > 0:
             self._pub_state(cell_id, "TARGET_FOUND")
             self._pub_status(
@@ -1131,6 +1106,42 @@ class ScanExecutorNode(Node):
         else:
             self._pub_state(cell_id, "SCANNED_EMPTY")
             self._pub_status("SCANNED_EMPTY %s no detection in dwell window" % cell_id)
+
+    def _scan_one_cell(self, cell_id, scan_order, collect_then_pick_active,
+                       collected_poses, cell_detections) -> bool:
+        if cell_id not in self._targets:
+            self.get_logger().warn("%s not in candidates — skipping" % cell_id)
+            return True
+
+        target = self._targets[cell_id]
+        if not self._move_to_scan_cell_and_wait(cell_id, target):
+            return False
+
+        # Reset per-cell detection counter and pose buffer just before dwell.
+        with self._detection_lock:
+            self._detection_count = 0
+            self._detection_poses = []
+        joints_now = self._current_joints or []
+        joints_deg_str = " ".join("%.1f" % np.rad2deg(j) for j in joints_now)
+        self._pub_status(
+            "AT_SCAN_POSE %s joints_deg=[%s] — adaptive detection wait up to %.1fs"
+            % (cell_id, joints_deg_str, self._scan_dwell_sec)
+        )
+        detection_deadline = time.time() + self._scan_dwell_sec
+        while time.time() < detection_deadline:
+            with self._detection_lock:
+                if self._detection_count > 0 and not collect_then_pick_active:
+                    break
+            time.sleep(0.05)
+
+        with self._detection_lock:
+            count = self._detection_count
+            poses_snapshot = list(self._detection_poses)
+        cell_detections[cell_id] = count
+
+        self._process_cell_detections(
+            cell_id, count, poses_snapshot, collect_then_pick_active,
+            collected_poses)
 
         # After picks (or empty cell) go directly to next scan pose from current
         # position. HOME/overview recovery is reserved for explicit recovery
