@@ -1731,6 +1731,68 @@ class CuroboPlanner(Node):
                 f"{failure_context}")
         return tool_finish_ok, tool_finish_delta, remaining_tool_line_m, tool_finish_dir
 
+    def _compute_final_approach_distance(self, raw_straw, straw,
+                                         used_pre_ee_pos,
+                                         used_approach_dir,
+                                         used_grasp_offset: float):
+        if not self._measured_tcp_model:
+            return PRE_APPROACH_OFFSET - used_grasp_offset
+
+        approach_distance = measured_tcp_approach_distance(
+            raw_y_m=raw_straw[1],
+            straw=straw,
+            used_pre_ee_pos=used_pre_ee_pos,
+            used_approach_dir=used_approach_dir,
+            max_approach_m=self._measured_tcp_max_approach_m,
+            y_detection_bias_m=Y_DETECTION_BIAS_M,
+            pre_approach_offset_m=PRE_APPROACH_OFFSET,
+            final_standoff_m=MEASURED_TCP_FINAL_STANDOFF_M,
+            wall_surface_y_m=WALL_SURFACE_Y_M,
+        )
+        target_plane_dist = approach_distance.target_plane_dist_m
+        uncapped_distance = approach_distance.uncapped_distance_m
+        final_approach_distance = approach_distance.final_distance_m
+
+        if (
+            abs(float(used_approach_dir[2])) > 1e-3
+            and self._nw_high_target_final_extra_m > 0.0
+        ):
+            before_extra_m = final_approach_distance
+            final_approach_distance = min(
+                MEASURED_TCP_MAX_APPROACH_CEILING_M,
+                final_approach_distance + self._nw_high_target_final_extra_m,
+            )
+            self.get_logger().warn(
+                "NW_HIGH_TARGET_FINAL_EXTRA: "
+                f"{before_extra_m*1000:.0f}mm -> "
+                f"{final_approach_distance*1000:.0f}mm "
+                f"(target_z={raw_straw[2]*1000:.0f}mm, "
+                "observed shallow by ~30mm)")
+            self.runtime_log.log(
+                "nw_high_target_final_extra",
+                target_z_m=float(raw_straw[2]),
+                before_m=before_extra_m,
+                after_m=final_approach_distance,
+                requested_extra_m=self._nw_high_target_final_extra_m,
+                ceiling_m=MEASURED_TCP_MAX_APPROACH_CEILING_M,
+            )
+        if final_approach_distance + 1e-6 < uncapped_distance:
+            self.get_logger().warn(
+                "MEASURED_TCP_APPROACH_CAPPED: requested "
+                f"{uncapped_distance*1000:.0f}mm -> "
+                f"{final_approach_distance*1000:.0f}mm "
+                f"(target_plane={target_plane_dist*1000:.0f}mm, "
+                "NW measured-TCP experimental depth cap)")
+            self.runtime_log.log(
+                "measured_tcp_approach_capped",
+                requested_distance_m=uncapped_distance,
+                capped_distance_m=final_approach_distance,
+                target_plane_distance_m=target_plane_dist,
+                max_approach_m=self._measured_tcp_max_approach_m,
+                reason="nw_measured_tcp_experimental_depth_cap",
+            )
+        return final_approach_distance
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2081,73 +2143,13 @@ class CuroboPlanner(Node):
             return
 
         # pre-approach 실행 후 직선 진입
-        if self._measured_tcp_model:
-            # 딸기마다 실제 깊이가 다름 → wall clamp 이후의 유효 Y로 진입 거리 계산.
-            # clamp 전 detection_raw_y를 쓰면 FK drift가 final approach를 벽 뒤로
-            # 밀어 넣어 cuRobo fallback goal이 Y>wall로 튄다.
-            # baseline(180mm)보다 깊은 딸기만 추가 진입; baseline 미만으로 줄이지 않음
-            approach_distance = measured_tcp_approach_distance(
-                raw_y_m=raw_straw[1],
-                straw=straw,
-                used_pre_ee_pos=used_pre_ee_pos,
-                used_approach_dir=used_approach_dir,
-                max_approach_m=self._measured_tcp_max_approach_m,
-                y_detection_bias_m=Y_DETECTION_BIAS_M,
-                pre_approach_offset_m=PRE_APPROACH_OFFSET,
-                final_standoff_m=MEASURED_TCP_FINAL_STANDOFF_M,
-                wall_surface_y_m=WALL_SURFACE_Y_M,
-            )
-            target_plane_dist = approach_distance.target_plane_dist_m
-            uncapped_distance = approach_distance.uncapped_distance_m
-            final_approach_distance = approach_distance.final_distance_m
-            # 2026-06-20 실기 확인: z=717mm 타겟(is_nw_high_target=False, 750mm
-            # 미달)도 동일한 +15deg 틸트 variant를 골랐는데, wall_y_clamped로
-            # adaptive_dist가 baseline(180mm)에 floor-lock되면서 final_extra가
-            # 전혀 안 붙어 깊이가 그대로 얕았다(measured_tcp_max_approach_m을
-            # 200mm로 올려도 효과 없음 — uncapped_distance 자체가 180mm라
-            # max approach cap이 발동할 일이 없었음). 다른 두 틸트 보정과
-            # 동일하게 높이 대신 실제 틸트로 게이팅한다. 틸트가 0이면
-            # (SW) 동작 변화 없음.
-            if (
-                abs(float(used_approach_dir[2])) > 1e-3
-                and self._nw_high_target_final_extra_m > 0.0
-            ):
-                before_extra_m = final_approach_distance
-                final_approach_distance = min(
-                    MEASURED_TCP_MAX_APPROACH_CEILING_M,
-                    final_approach_distance + self._nw_high_target_final_extra_m,
-                )
-                self.get_logger().warn(
-                    "NW_HIGH_TARGET_FINAL_EXTRA: "
-                    f"{before_extra_m*1000:.0f}mm -> "
-                    f"{final_approach_distance*1000:.0f}mm "
-                    f"(target_z={raw_straw[2]*1000:.0f}mm, "
-                    "observed shallow by ~30mm)")
-                self.runtime_log.log(
-                    "nw_high_target_final_extra",
-                    target_z_m=float(raw_straw[2]),
-                    before_m=before_extra_m,
-                    after_m=final_approach_distance,
-                    requested_extra_m=self._nw_high_target_final_extra_m,
-                    ceiling_m=MEASURED_TCP_MAX_APPROACH_CEILING_M,
-                )
-            if final_approach_distance + 1e-6 < uncapped_distance:
-                self.get_logger().warn(
-                    "MEASURED_TCP_APPROACH_CAPPED: requested "
-                    f"{uncapped_distance*1000:.0f}mm -> "
-                    f"{final_approach_distance*1000:.0f}mm "
-                    f"(target_plane={target_plane_dist*1000:.0f}mm, "
-                    "NW measured-TCP experimental depth cap)")
-                self.runtime_log.log(
-                    "measured_tcp_approach_capped",
-                    requested_distance_m=uncapped_distance,
-                    capped_distance_m=final_approach_distance,
-                    target_plane_distance_m=target_plane_dist,
-                    max_approach_m=self._measured_tcp_max_approach_m,
-                    reason="nw_measured_tcp_experimental_depth_cap",
-                )
-        else:
-            final_approach_distance = PRE_APPROACH_OFFSET - used_grasp_offset
+        final_approach_distance = self._compute_final_approach_distance(
+            raw_straw,
+            straw,
+            used_pre_ee_pos,
+            used_approach_dir,
+            used_grasp_offset,
+        )
         if not self.execute_spline(*ret_pre):
             self.get_logger().error("ABORT: pre-approach spline 실패")
             self._abort_pick_with_complete()
