@@ -58,7 +58,7 @@ debug/nw-return-to-depth-good
 
 ```bash
 cd /home/user/doosan_ws/src/e0509_gripper_description
-python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py
+python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py scripts/grasp_search_executor.py
 
 git -C /home/user/doosan_ws/src/strawberry_finalproject diff --check
 
@@ -99,6 +99,7 @@ Codex는 다음 방식으로 진행했다.
 scripts/curobo_planner_node.py
 scripts/approach_retreat_policy.py
 scripts/grasp_candidate_policy.py
+scripts/grasp_search_executor.py
 scripts/gripper_client.py
 scripts/doosan_motion_client.py
 scripts/curobo_planning_adapter.py
@@ -261,30 +262,37 @@ _execute_final_approach(...)
 
 단, 이 단계는 실행 의미가 커지므로 fallback loop 분리 후 한 번 빌드/커밋하고 진행할 것.
 
-### 5.3 grasp search loop 분리
+### 5.3 grasp search loop 분리 — **완료 (2026-06-21, Claude Code)**
 
-다음 큰 목표:
+`scripts/grasp_search_executor.py` 신규 생성, 커밋 `5a42fec`. 진행 순서:
 
-```text
-scripts/grasp_search_executor.py
-```
+1. measured probe depth loop helper화 (`c28057b`, `_run_measured_tcp_depth_probe(...)`로
+   `curobo_planner_node.py` 내부 메서드로 먼저 분리)
+2. legacy grasp offset loop helper화 (`ddbd810`, `_try_legacy_grasp_offsets(...)`로 동일하게
+   내부 메서드로 분리)
+3. 위 두 메서드를 `GraspSearchExecutor` 클래스(`grasp_search_executor.py`)로 이동(`5a42fec`).
+   `HarvestGripperClient`와 동일한 "node-dependent client" 패턴 — 생성자가
+   `node`/`runtime_log`/`plan_fn`(=`self.plan` bound method)/`measured_tcp_max_approach_m`/
+   `ee_to_tcp_offset_m`를 받음. `__init__`에서 `self.grasp_search_executor = GraspSearchExecutor(...)`로
+   1회 생성, `_pick()`은 `self.grasp_search_executor.run_measured_tcp_depth_probe(...)` /
+   `.try_legacy_grasp_offsets(...)`로 호출. `curobo_planner_node.py`에서 이제 안 쓰는
+   `grasp_candidate_policy` 함수 import(`legacy_grasp_endpoint`, `measured_best_tuple`,
+   `measured_tcp_probe_log_message`, `measured_tcp_probe_depths`,
+   `requested_measured_tcp_probe_depth`, `should_replace_measured_best`,
+   `should_stop_measured_variant_search`) 제거.
 
-현재 `grasp_candidate_policy.py`는 정책/컨테이너까지만 분리되어 있고,
-실제 `self.plan(...)` 호출이 들어간 loop는 아직 `_pick()` 내부에 남아있다.
+**중요 — CMakeLists.txt 등록 빠뜨리면 실기에서 ImportError**: 이 패키지는 ament_python이
+아니라 CMake `install(PROGRAMS ...)`로 스크립트를 명시적으로 나열해서 설치한다. 새 모듈
+파일을 추가했는데 이 리스트에 안 넣으면 `py_compile`/`colcon build`는 둘 다 조용히
+통과하지만(소스 디렉토리 자체는 문제없으니), install space(`~/doosan_ws/install/.../lib/...`)에
+파일이 안 복사돼서 `ros2 run`이 실제로 그 모듈을 import하는 순간 `ImportError`가 난다.
+이번에 `grasp_search_executor.py`를 처음 빠뜨렸다가 `ls install/.../lib/e0509_gripper_description/`로
+직접 확인해서 잡았다(`py_compile`만 믿지 말 것). CMakeLists.txt에
+`scripts/grasp_search_executor.py` 한 줄 추가하고 재빌드해서 install space에 실제로
+복사되는 것까지 확인 후 커밋함. **앞으로 새 스크립트 모듈을 추가할 때마다 이 체크리스트에
+"install(PROGRAMS) 등록 + install space에 실제로 복사됐는지 `ls`로 확인"을 반드시 추가할 것.**
 
-바로 전부 빼지 말고, 먼저 다음을 더 줄이는 것을 권장:
-
-- measured probe depth loop helper화 — **완료 (2026-06-21, Claude Code, `c28057b`)**.
-  `_run_measured_tcp_depth_probe(...)`로 분리. probe depth 순서/로그 텍스트
-  (`MEASURED_TCP_FINAL_PROBE_BEST`/`MEASURED_TCP_VARIANT_SEARCH_STOPPED`)/`GraspSearchResult`
-  갱신/outer loop의 break·continue 분기 그대로 유지.
-- legacy grasp offset loop helper화 — **완료 (2026-06-21, Claude Code, `ddbd810`)**.
-  `_try_legacy_grasp_offsets(...)`로 분리. offset 순서/`PRE_APPROACH_OFFSET` 가드/
-  first-reachable-offset-wins `break` 그대로 유지.
-- `GraspSearchResult`를 반환하는 executor로 이동 — **아직 안 함.** 위 두 helper도 여전히
-  `curobo_planner_node.py` 내부 메서드다. `grasp_search_executor.py`로 옮기는 건 다음 단계.
-  두 helper 모두 py_compile/diff --check/colcon build 통과 후 push 완료, 실기 미검증
-  (코드 이동만, 로직 무변경).
+py_compile/diff --check/colcon build 통과, push 완료. 실기 미검증(코드 이동만, 로직 무변경).
 
 ### 5.4 place executor 분리
 
@@ -325,7 +333,7 @@ final approach / grasp search 분리보다 낮다.
 
 ```bash
 cd /home/user/doosan_ws/src/e0509_gripper_description
-python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py
+python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py scripts/grasp_search_executor.py
 
 git -C /home/user/doosan_ws/src/strawberry_finalproject diff --check
 
@@ -347,6 +355,13 @@ SW/NW 실기 전에 반드시 저속/단일 target으로 확인할 것.
 - 새 helper를 만들면 기존 로그 이벤트명은 유지.
 - 실패/hold/pick_complete publish 여부가 case별로 다르므로 cleanup을 무리하게 통합하지 말 것.
 - `pick_complete`는 성공률이 아니라 sequence 종료 이벤트다.
+- **새 `.py` 모듈 파일을 추가하면 반드시 `CMakeLists.txt`의 `install(PROGRAMS ...)` 목록에도
+  추가할 것.** 이 패키지는 ament_python이 아니라 CMake로 스크립트를 명시적으로 나열해서
+  설치한다. 안 넣으면 `py_compile`/`colcon build`는 조용히 통과하지만 install space에 파일이
+  안 복사돼서 `ros2 run` 시점에 `ImportError`가 난다. `colcon build` 후
+  `ls ~/doosan_ws/install/e0509_gripper_description/lib/e0509_gripper_description/ | grep <새파일>`로
+  실제로 복사됐는지 확인할 것 (2026-06-21에 `grasp_search_executor.py`를 처음 빠뜨렸다가
+  이렇게 잡음).
 
 ## 9. Claude Code에게 바로 시킬 다음 작업
 
@@ -367,7 +382,7 @@ _try_final_approach_fallback(...) helper로 분리하는 것이다.
 - pick_complete/hold 동작 바꾸지 말 것
 
 분리 후 아래 검증:
-python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py
+python3 -m py_compile scripts/curobo_planner_node.py scripts/approach_retreat_policy.py scripts/grasp_candidate_policy.py scripts/grasp_search_executor.py
 git -C /home/user/doosan_ws/src/strawberry_finalproject diff --check
 colcon build --packages-select e0509_gripper_description strawberry_motion --allow-overriding e0509_gripper_description
 
