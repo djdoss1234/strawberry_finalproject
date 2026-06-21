@@ -1,7 +1,11 @@
-# 딸기 자동수확 런타임 모듈/인터페이스 명세 (2026-06-20)
+# 딸기 자동수확 런타임 모듈/인터페이스 명세 (2026-06-20, 2026-06-21 갱신)
 
 이 문서는 실기 자동수확에 실제로 관여하는 핵심 파일을 기준으로 작성한다.
 로그 분석/라벨링/회고 문서 등 실행 경로 밖의 파일은 별도 도구로 분류한다.
+
+시뮬레이션 팀 인계용 상위 개요(활성 노드 전체 목록/launch 구조/외부 패키지 의존성/
+설정 파일 의미)는 별도 문서 `SIM_TEAM_HANDOFF_NODE_AND_CONFIG_OVERVIEW_20260621.md`를
+참고. 이 문서는 모듈/인터페이스 상세(토픽·서비스·액션 타입, 함수 시그니처) 전용이다.
 
 ## 1. 현재 주 실행 파이프라인
 
@@ -21,12 +25,14 @@ RealSense RGB-D
 
 | 파일 | 역할 | 현재 상태 |
 | --- | --- | --- |
-| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 2,069 lines — `_pick()` 본문은 각 단계를 helper/policy/client/executor 호출로 위임하는 얇은 orchestration으로 축소됨. place 실행 로직도 분리되어 남은 큰 단일 블록은 `__init__`(ROS 보일러플레이트)뿐 |
+| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 **1,926 lines**. `_pick()`은 `_prepare_pick_target_or_abort()`(target 준비+x/z 가드) → `_search_grasp()`(quat variant 탐색) → 실행 시퀀스로 분리, 394→248줄. `__init__`(180줄)도 cuRobo 부트스트랩/파라미터는 `planner_bootstrap.py`로, 시작 로그 배너는 `_log_startup_banner()`로 분리됨 — 남은 부분은 subscription/client/executor 생성 wiring(`self` 의존 필수) |
+| `scripts/planner_bootstrap.py` | `__init__`에서 1회 실행되는 cuRobo MotionGen 구성(`build_curobo_motion_gen`)과 ~40개 ROS 파라미터 declare/load(`declare_and_load_params`) | 신규 분리 모듈(2026-06-21). 반복 실행되는 런타임 동작이 없어 클래스가 아닌 plain function 2개로 구성 |
+| `scripts/fusion_bootstrap.py` | `strawberry_fusion_node.__init__`에서 1회 실행되는 ~28개 ROS 파라미터 declare/load(`declare_and_load_fusion_params`), `_as_bool` 헬퍼 | 신규 분리 모듈(2026-06-21). `planner_bootstrap.py`와 동일 패턴 |
 | `scripts/approach_retreat_policy.py` | measured-TCP final approach 거리, fallback depth, tool-finish 방향, retreat step 계산 | 신규 분리 모듈. J2 한도초과 방지용 2단계 retreat와 tilted branch 수평 tool-finish 정책을 순수 함수로 분리 |
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
 | `scripts/gripper_client.py` | `/gripper_service/set_position`, `/get_state`, `/safe_grasp` 호출, approach open, close+verify logging, grasp result 판정 | 신규 분리 모듈. SafeGrasp + position fallback 동작 보존 |
 | `scripts/grasp_search_executor.py` | grasp_quat_variant별 measured-TCP depth probe와 legacy grasp offset 탐색 실행(`self.plan()` 호출 포함) | 신규 분리 모듈(2026-06-21). `HarvestGripperClient`와 동일한 node-dependent client 패턴 |
-| `scripts/tray_place_executor.py` | marker-place와 taught-slot0-grid place 시퀀스 실행(`self.plan()`/`execute_spline()`/`execute_base_z_relative()` 호출 포함, row2 분기 포함) | 신규 분리 모듈(2026-06-21). `curobo_planner_node.py`에서 마지막으로 남은 큰 실행 블록(408줄)이었음. row2 known 이슈는 그대로 이동(미수정) |
+| `scripts/tray_place_executor.py` | marker-place와 taught-slot0-grid place 시퀀스 실행(`self.plan()`/`execute_spline()`/`execute_base_z_relative()` 호출 포함, row2 분기 포함) | 신규 분리 모듈(2026-06-21), 같은 날 추가로 내부 분리됨: `execute_marker_place_after_retreat`(183→130줄)에서 clearance/orientation 후보 탐색 루프를 `_search_marker_place_above()`로, `execute_taught_slot0_place_reference_after_retreat`(225→194줄)에서 슬롯 검증+위치 계산을 `_compute_taught_slot_above_target()`으로 분리. row2 known 이슈는 그대로 이동(미수정) |
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
 | `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
@@ -42,8 +48,9 @@ RealSense RGB-D
 | `scripts/harvest_grasp_orientation.py` | perception이 보낸 줄기 방향을 wall-normal roll 후보로 변환 | 신규 분리 모듈 |
 | `scripts/harvest_motion_params.py` | 실험 상수, 티칭 pose, 속도/거리/한계값 | 신규 분리 모듈. 값 자체는 debug branch 현행값 유지 |
 | `scripts/marker_place_orientation_policy.py` | marker place orientation 후보, clearance 후보, measured-TCP contact 보정 target 계산 | 신규 분리 모듈. place orientation 탐색의 순수 계산 분리 |
-| `scripts/strawberry_fusion_node.py` | YOLO/keypoint/depth 기반 target fusion, stem direction orientation 생성, pick pose publish | NW 인식/깊이 실패가 많은 현재 병목 |
-| `scripts/strawberry_yolo_node.py` | 이전/단일 카메라 YOLO baseline, pick pose publish | 현재 주 NW 실험은 fusion node 우선 |
+| `scripts/strawberry_fusion_node.py` | YOLO/keypoint/depth 기반 target fusion, stem direction orientation 생성, pick pose publish | NW 인식/깊이 실패가 많은 현재 병목. 2026-06-21 기준 994 lines. `_loop()`(매 프레임 호출, 372줄)을 `_capture_frame_and_guards`/`_run_or_reuse_inference`/`_draw_seg_overlays`/`_publish_scene_positions`/`_process_pose_detection`(241줄, 가장 큰 블록) 5단계로 분리 |
+| `src/strawberry_motion/execution/scan_executor_node.py` | 쿼드트리 셀 순회 스캔, dwell 중 detection 수집, pick trigger 순차 전달, collect-then-pick 버퍼링 | `strawberry_motion` 패키지(별도 ROS 패키지, 이 디렉터리 밖). 2026-06-21 기준 1,261 lines. `_scan_sequence()`(245줄)를 `_compute_scan_order`/`_scan_one_cell`/`_finish_collect_then_pick`/`_finish_scan_sequence`로, `_scan_one_cell`(126줄)을 다시 `_move_to_scan_cell_and_wait`/`_process_cell_detections`로, `__init__`(165줄)의 파라미터 블록을 `_declare_and_load_params()`로 분리. 이 패키지엔 아직 policy/executor 모듈 분리 컨벤션이 없어 전부 in-class 메서드로 유지(새 파일 미생성) |
+| `scripts/strawberry_yolo_node.py` | 이전/단일 카메라 YOLO baseline, pick pose publish | **확인된 죽은 코드**(2026-06-21) — 활성 `workspace_scan.launch.py`는 `strawberry_fusion_node.py`만 실행, 이 파일은 미니프로젝트 시절 Grounding DINO 데모용 `curobo_vision.launch.py`에만 남아있음 |
 | `scripts/joint_jog_control.py` | 수동 joint/pose 이동, TCP 확인, gripper 위치 테스트 | 실기 티칭/복구 도구 |
 | `scripts/runtime_jsonl_logger.py` | 각 노드 runtime JSONL 저장 | KPI/디버깅의 원자료 |
 | `scripts/summarize_runtime_kpis.py` | runtime JSONL 요약 | 자동 KPI 추출 |
@@ -133,7 +140,46 @@ RealSense RGB-D
 | `target_position_window_size` | target 안정화 window |
 | `target_position_max_spread_m` | 안정 target spread 제한 |
 
-## 5. Gripper 서비스 계층
+## 5. `scan_executor_node.py` 인터페이스 (strawberry_motion 패키지)
+
+### Subscriptions
+
+| Topic | Type | 사용 |
+| --- | --- | --- |
+| `/dsr01/joint_states` | `sensor_msgs/JointState` | 현재 joint state, 도착 확인 |
+| `/strawberry/detection/pick_pose` | `geometry_msgs/PoseStamped` | YOLO/fusion → scan_executor (dwell 중 버퍼링) |
+| `/dsr01/curobo/pick_complete` | `std_msgs/Empty` | planner pick 완료 신호, 다음 target 트리거 |
+
+### Publishers
+
+| Topic | Type | 의미 |
+| --- | --- | --- |
+| `/dsr01/curobo/pick_pose` | `geometry_msgs/PoseStamped` | scan_executor → planner, target 1개씩 순차 전달 |
+| `/dsr01/gripper/position_cmd` | `std_msgs/Int32` | 스캔 이동 시작 전 그리퍼 pre-close |
+| `/strawberry/exploration/set_cell_state` | `std_msgs/String` | cell 상태(SCANNING/TARGET_FOUND/HARVESTED/SCANNED_EMPTY 등) → `workspace_marker_node` |
+| `/strawberry/scan/status` | `std_msgs/String` | 사람이 읽는 진행 로그 |
+
+### Services
+
+| Service | Type | 역할 |
+| --- | --- | --- |
+| `/strawberry/scan/start` | `std_srvs/srv/Trigger` (server) | 스캔 시퀀스 명시적 시작(이 노드가 server) |
+| `/dsr01/motion/move_spline_joint` | `dsr_msgs2/srv/MoveSplineJoint` (client) | (runtime cuRobo preview 진단용, 실행은 MoveJoint 사용) |
+| `/dsr01/motion/move_joint` | `dsr_msgs2/srv/MoveJoint` (client) | YAML `endpoint_joints_deg` 직접 이동 (실제 셀 이동 수단) |
+
+### 주요 ROS Parameters
+
+| Parameter | 의미 |
+| --- | --- |
+| `execute_motion` | false면 등록만 하고 실제 이동 없음(dry-run) |
+| `target_cell` | 순회 대상(`all` 또는 `root/nw` 등 단일 셀) |
+| `manual_validation_mode` | 단일 셀 MoveJoint 검증만 허용 |
+| `enable_pick_integration` | dwell 중 감지된 pose를 pick으로 전달할지 |
+| `collect_then_pick` | true면 서브셀 전체 스캔 후 한 곳에서 모아 pick |
+| `scan_dwell_sec` | 각 셀에서 안정 target을 기다리는 최대 시간 |
+| `enable_runtime_curobo_preview` | 실행 전 cuRobo plan을 로그만 남기는 진단 모드 |
+
+## 6. Gripper 서비스 계층
 
 현재 권장 계층은 `dsr_gripper_tcp`의 `/gripper_service/*`다.
 
@@ -151,7 +197,7 @@ RealSense RGB-D
 - `GRASP_EMPTY`는 jaw가 700까지 닫힌 상태를 의미하며, 실제 수확 실패에 가깝다.
 - `GRASP_UNVERIFIED`는 통신 실패 또는 current/position 판정 불확실 상태다.
 
-## 6. 런타임 로그/KPI
+## 7. 런타임 로그/KPI
 
 | 파일/도구 | 역할 |
 | --- | --- |
@@ -176,7 +222,7 @@ RealSense RGB-D
 - retreat 중 유지됐는지
 - tray place 성공 여부
 
-## 7. 현재 리팩토링 진행상황
+## 8. 현재 리팩토링 진행상황
 
 완료:
 
@@ -233,11 +279,28 @@ RealSense RGB-D
   `row2_place_policy`, `SciR`)도 함께 정리(`curobo_planner_node.py` 2,461→2,069 lines).
   py_compile/실제 import/diff --check/colcon build 전부 통과, **실기 미검증**.
 
-다음 분리 후보: 없음. `__init__`(ROS 보일러플레이트, declare_parameter/create_client 등 52개
-호출)이 유일하게 남은 큰 블록이지만 분리해도 코드가 줄지 않고 간접화만 늘어남 — 분리 대상
-아님. `pick_sequence.py`(`_pick()` 자체를 별도 모듈로)도 2026-06-21 기준 `_pick()`이 이미
-각 단계를 위임하는 얇은 orchestration(약 390 lines)이라 이득 없음 — 분리할 명확한 이유(예:
-여러 entry point에서 재사용 필요)가 생기기 전까지는 보류.
+**2026-06-21 (같은 날, 두 번째 라운드) — 전체 코드베이스 "남은 큰 메서드" 전수 분리**:
+
+사용자가 "전부 다 진행해" 요청 → AST로 전체 파일 메서드 줄수 실측, 큰 것부터 순서대로 추가 분리:
+
+- `_pick`(394줄, 이 시점 코드베이스 최대 단일 메서드) → `_prepare_pick_target_or_abort` +
+  `_search_grasp`로 분리, 394→**248줄** (`d4f1dce`)
+- `tray_place_executor.py`의 두 메서드(위 표 참조) — 183→130줄, 225→194줄 (`17cb269`)
+- `scan_executor_node.py`의 `_scan_one_cell`(126줄) → `_move_to_scan_cell_and_wait` +
+  `_process_cell_detections`로 분리, 126→**42줄** (`8970a55`)
+- `__init__` 3종: `strawberry_fusion_node.py`(189→109줄, `fusion_bootstrap.py` 신규 —
+  `planner_bootstrap.py`와 동일 패턴) (`10f0852`), `scan_executor_node.py`(165→105줄,
+  in-class `_declare_and_load_params`, 이 패키지는 아직 모듈 분리 컨벤션 없음) (`56ab209`),
+  `curobo_planner_node.py`(278→180줄, 순수 로깅만 `_log_startup_banner`로 분리, wiring
+  180줄은 `self` 의존 심해 분리 보류 재확인) (`9ed5554`)
+
+**최종 상태**: 전체 코드베이스 최대 단일 메서드 248줄(`_pick`). 남은 100줄대 메서드
+(`_process_pose_detection` 246줄, `execute_taught_slot0_place_reference_after_retreat` 194줄,
+curobo `__init__` 180줄, `declare_and_load_params` 140줄, `execute_marker_place_after_retreat`
+130줄)는 공통적으로 "독립 실패조건 없는 단일 파이프라인이거나 순수 선언/로딩 나열"이라 더
+쪼개면 변수만 여러 메서드에 분산되고 가독성은 오히려 떨어진다고 판단, 의도적으로 분리 보류.
+모든 분리는 원본↔변환본 역치환 diff로 0줄 차이 확인 + py_compile/실제 import/git diff
+--check/colcon build/install space 확인 전부 통과. **실기 전부 미검증.**
 
 주의:
 
