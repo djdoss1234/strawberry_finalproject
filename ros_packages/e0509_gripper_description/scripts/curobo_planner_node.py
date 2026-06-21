@@ -1209,7 +1209,8 @@ class CuroboPlanner(Node):
     def _compute_final_approach_distance(self, raw_straw, straw,
                                          used_pre_ee_pos,
                                          used_approach_dir,
-                                         used_grasp_offset: float):
+                                         used_grasp_offset: float,
+                                         is_nw_high_target: bool):
         if not self._measured_tcp_model:
             return PRE_APPROACH_OFFSET - used_grasp_offset
 
@@ -1228,7 +1229,40 @@ class CuroboPlanner(Node):
         uncapped_distance = approach_distance.uncapped_distance_m
         final_approach_distance = approach_distance.final_distance_m
 
+        if self._flat_grasp_only:
+            before_flat_cap_m = final_approach_distance
+            flat_target_plane_m = (
+                target_plane_dist + self._flat_grasp_target_plane_margin_m
+            )
+            # In flat/SW-style validation the target plane distance is the
+            # physically meaningful straight segment.  The legacy measured-TCP
+            # baseline uses a negative standoff that forces 180 mm even when the
+            # target plane is only ~60-70 mm away, which makes Doosan MoveLine
+            # push past the fruit and frequently return success/no-motion.
+            # Keep a small configurable margin so the jaws reach past the
+            # detected KP1 plane instead of closing in front of the stem.
+            final_approach_distance = max(
+                0.0,
+                min(final_approach_distance, flat_target_plane_m),
+            )
+            if abs(before_flat_cap_m - final_approach_distance) > 1e-6:
+                self.get_logger().warn(
+                    "FLAT_GRASP_TARGET_PLANE_CAP: "
+                    f"{before_flat_cap_m*1000:.0f}mm -> "
+                    f"{final_approach_distance*1000:.0f}mm "
+                    "(SW-style flat approach uses target-plane distance "
+                    f"+ {self._flat_grasp_target_plane_margin_m*1000:.0f}mm margin)")
+                self.runtime_log.log(
+                    "flat_grasp_target_plane_cap",
+                    before_m=before_flat_cap_m,
+                    after_m=final_approach_distance,
+                    target_plane_distance_m=target_plane_dist,
+                    margin_m=self._flat_grasp_target_plane_margin_m,
+                )
+
         if (
+            is_nw_high_target
+            and
             abs(float(used_approach_dir[2])) > 1e-3
             and self._nw_high_target_final_extra_m > 0.0
         ):
@@ -1281,7 +1315,23 @@ class CuroboPlanner(Node):
         ):
             return False, False
 
-        selected_curobo_depth_m = measured_best_depth_m
+        selected_curobo_depth_m = float(measured_best_depth_m)
+        depth_mismatch_m = abs(selected_curobo_depth_m - float(requested_distance_m))
+        if self._flat_grasp_only and depth_mismatch_m > 0.005:
+            self.get_logger().warn(
+                "FINAL_APPROACH_PRECOMPUTED_CUROBO_SKIPPED: "
+                f"probe depth {selected_curobo_depth_m*1000:.0f}mm differs from "
+                f"requested {requested_distance_m*1000:.0f}mm by "
+                f"{depth_mismatch_m*1000:.0f}mm (>5mm); planning exact "
+                "target-plane fallback instead")
+            return False, False
+        if selected_curobo_depth_m > float(requested_distance_m) + 1e-6:
+            self.get_logger().warn(
+                "FINAL_APPROACH_PRECOMPUTED_CUROBO_SKIPPED: "
+                f"probe depth {selected_curobo_depth_m*1000:.0f}mm is deeper "
+                f"than requested {requested_distance_m*1000:.0f}mm; "
+                "planning exact target-plane fallback instead")
+            return False, False
         approach_ok = (
             ret_grasp is not None
             and selected_curobo_depth_m > 0.0
@@ -1554,8 +1604,16 @@ class CuroboPlanner(Node):
             self._measured_tcp_model,
             is_nw_high_target,
         )
+        if self._flat_grasp_only:
+            grasp_quat_variants = [
+                v for v in grasp_quat_variants
+                if abs(float(v[2])) < 1e-6
+            ]
+            self.get_logger().warn(
+                "FLAT_GRASP_ONLY: using 0deg wall-normal grasp variant "
+                "for SW-style horizontal final approach")
         published_roll_variant = self._published_roll_grasp_variant(input_quat_wxyz)
-        if published_roll_variant is not None:
+        if published_roll_variant is not None and not self._flat_grasp_only:
             grasp_quat_variants = [published_roll_variant] + grasp_quat_variants
 
         n_offsets = len(grasp_retry_offsets)
@@ -1684,6 +1742,7 @@ class CuroboPlanner(Node):
         target_info = self._prepare_pick_target_or_abort(p)
         if target_info is None:
             return
+        detection_raw_y = target_info["detection_raw_y"]
         wall_y_clamped = target_info["wall_y_clamped"]
         raw_straw = target_info["raw_straw"]
         straw = target_info["straw"]
@@ -1695,10 +1754,12 @@ class CuroboPlanner(Node):
         self.get_logger().info(
             f"=== PICK 딸기 raw=({raw_straw[0]*1000:.0f},{raw_straw[1]*1000:.0f},{raw_straw[2]*1000:.0f})mm "
             f"grasp=({straw[0]*1000:.0f},{straw[1]*1000:.0f},{straw[2]*1000:.0f})mm "
+            f"det_y={detection_raw_y*1000:.0f}mm "
             f"x_bias={self._pick_target_x_bias_m*1000:+.0f}mm "
             f"z_bias={self._pick_target_z_bias_m*1000:+.0f}mm ===")
         self.runtime_log.log(
             "pick_target_prepared",
+            detection_raw_y_m=detection_raw_y,
             raw_target_m=raw_straw,
             grasp_target_m=straw,
             grasp_x_bias_m=self._pick_target_x_bias_m,
@@ -1784,6 +1845,7 @@ class CuroboPlanner(Node):
             used_pre_ee_pos,
             used_approach_dir,
             used_grasp_offset,
+            is_nw_high_target,
         )
         final_state = FinalApproachState(
             final_approach_distance,

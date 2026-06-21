@@ -48,6 +48,85 @@ ros_packages/e0509_gripper_description/config/camera_calibration_eye_in_hand.yam
 > "순수 코드 이동, 로직/파라미터/로그 이벤트명 무변경"이고, 단 하나(J2 retreat 수정)만
 > 실제 동작이 바뀐 수정이며 이것만 부분적으로 실기 검증됨. 나머지 전부 실기 미검증.**
 
+## 1-B. 2026-06-21 Codex 추가 변경: 단일 중심 scan pose + perception KPI
+
+리팩토링 완료 후 사용자가 4개 세부 관측 자세 기반 수확을 보류하고, SW에서 안정적이었던
+방식처럼 **그리퍼가 수평에 가깝고 딸기가 한 화면에 보이는 단일 중심 자세**에서 바로 scan/pick
+하는 실험을 제안했다. 4세부 scan은 raw detection 수가 늘어도 target이 바뀌거나 pick
+정확도가 떨어지는 문제가 있었기 때문에, 단일 중심 자세의 타당성을 KPI로 비교하기 위해
+아래 변경을 추가했다.
+
+### 새 scan target
+
+`config/scan_pose_candidates_refit_candidate.yaml`에 `root/nw_flat` 추가.
+
+```text
+joint_deg = [-205.49, 2.38, 42.72, -75.77, 71.08, -46.02]
+TCP BASE [mm, deg] = [-245.67, 292.38, 851.58, 87.75, 86.32, -89.49]
+```
+
+의도:
+
+```text
+target_cell:=root/nw_flat
+collect_then_pick:=false
+```
+
+로 실행하면 `root/nw/nw`, `root/nw/ne`, `root/nw/se`, `root/nw/sw` 4개 세부 pose를
+돌지 않고, SW와 같은 단일 scan pose 방식으로 detection 후 바로 pick target을 전달한다.
+이를 위해 `scan_executor_node.py`의 single-cell validation allowlist에도 `root/nw_flat`을
+추가했다. 기존 `root/nw` 및 4세부 pose는 삭제하지 않았다.
+
+### 정상 딸기 인식/후보 KPI
+
+`strawberry_fusion_node.py`에 runtime JSONL 이벤트를 추가했다.
+
+```text
+event: perception_candidate_summary
+```
+
+기록 필드:
+
+| Field | 의미 |
+| --- | --- |
+| `seg_ripe_count` | segmentation 기준 ripe mask 수 |
+| `scene_ripe_3d_count` | ripe mask 중 depth까지 잡혀 3D 위치가 나온 수 |
+| `pose_detection_count` | pose/keypoint detection 수 |
+| `valid_stable_pick_candidate_count` | ripe, keypoint, depth, stem geometry, multi-frame stability를 통과한 pick 후보 수 |
+| `stable_track_count` | 안정적으로 추적 중인 target 수 |
+| `active_target_selected` | active target 선택 여부 |
+| `active_target_pos_m` | 선택된 target 좌표 |
+| `published_target` | `/strawberry/detection/pick_pose` publish 여부 |
+
+이 KPI는 “화면에 딸기가 몇 개 보였는가”와 “실제로 pick 가능한 안정 후보가 몇 개였는가”를
+분리해서 보기 위한 것이다. 4세부 scan 방식과 단일 중심 scan 방식은 단순 검출 수가 아니라
+`valid_stable_pick_candidate_count`, `published_target`, 이후 실제 grasp/retreat 결과로
+비교해야 한다.
+
+### 현재 딸기 선택 기준
+
+fusion node는 먼저 보이는 딸기를 바로 따지 않는다. 현재 target 선택 기준은 다음 순서다.
+
+```text
+ripe segmentation mask
+ -> pose/keypoint 매칭
+ -> ripe HSV/color safety filter
+ -> keypoint confidence 통과
+ -> keypoint depth 유효
+ -> stem segment 길이/형상 유효
+ -> multi-frame stable track
+ -> base Z range gate
+ -> 낮은 stem-level 후보 우선
+ -> 비슷하면 image center에 가까운 후보 우선
+ -> /strawberry/detection/pick_pose publish
+```
+
+PPT/보고서 문장:
+
+> 여러 관측 자세에서 raw detection을 늘리는 것보다, 실제 pick 가능한 안정 후보가 생성되는지가
+> 중요하다고 판단했다. 따라서 ripe mask 수, 3D depth 유효 수, stable pick 후보 수, 실제
+> publish 여부를 단계별 KPI로 기록하고 단일 중심 scan 방식과 비교한다.
+
 ## 2. 완료된 작업 전체 (커밋 순서대로)
 
 ### 2-A. 원래 핸드오프 5.1~5.3 (오전, Codex 요청사항)
@@ -237,6 +316,10 @@ ls ~/doosan_ws/install/e0509_gripper_description/lib/e0509_gripper_description/ 
 - 대형 추출은 역치환 diff로 0줄 차이 증명 후에만 적용.
 - `NW_TROUBLESHOOTING_CASE_LOG_20260621.md`는 발표 자료로 쓰이고 있으니 새 사고/수정이
   생기면 결과(해결/미해결 무관) 추가 기록할 것.
+- 그리퍼 startup에서 `INITIALIZE status 3`이 반복되면 먼저
+  `docs/GRIPPER_STARTUP_RECOVERY_20260621.md`를 볼 것. 최신 `dsr_gripper_tcp` 코드는
+  평소 루틴에서 `stop_existing_drl:=true`를 권장하지 않는다. 기본은
+  `scripts/clean_gripper_runtime.sh` 후 `scripts/start_gripper_service_stable.sh`다.
 
 ## 7. Codex에게 바로 시킬 다음 작업 (추천 프롬프트)
 

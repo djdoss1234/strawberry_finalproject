@@ -110,6 +110,8 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
     node.declare_parameter("use_published_grasp_orientation", False)
     node.declare_parameter("published_grasp_roll_align_axis", "x")
     node.declare_parameter("published_grasp_roll_max_abs_deg", 75.0)
+    node.declare_parameter("flat_grasp_only", False)
+    node.declare_parameter("flat_grasp_target_plane_margin_m", 0.020)
     node.declare_parameter("pick_target_x_bias_m", 0.0)
     node.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
     node.declare_parameter(
@@ -191,6 +193,11 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
     node._published_grasp_roll_max_abs_deg = max(
         0.0, float(
             node.get_parameter("published_grasp_roll_max_abs_deg").value))
+    node._flat_grasp_only = bool(
+        node.get_parameter("flat_grasp_only").value)
+    node._flat_grasp_target_plane_margin_m = max(
+        0.0, float(
+            node.get_parameter("flat_grasp_target_plane_margin_m").value))
     node._pick_target_x_bias_m = float(
         node.get_parameter("pick_target_x_bias_m").value)
     node._pick_target_z_bias_m = float(

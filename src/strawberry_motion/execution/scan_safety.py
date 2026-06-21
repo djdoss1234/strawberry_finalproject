@@ -35,10 +35,19 @@ def joints_within_tolerance_deg(
     if len(actual) != len(expected):
         return False
     rad_to_deg = 180.0 / 3.141592653589793
-    return all(
-        abs(measured * rad_to_deg - taught) <= tolerance_deg
-        for measured, taught in zip(actual, expected)
-    )
+    wrap_equivalent_idx = {0, 3, 5}
+    for idx, (measured_rad, taught_deg) in enumerate(zip(actual, expected)):
+        measured_deg = measured_rad * rad_to_deg
+        if idx in wrap_equivalent_idx:
+            diff = min(
+                abs(measured_deg - taught_deg + 360.0 * k)
+                for k in range(-2, 3)
+            )
+        else:
+            diff = abs(measured_deg - taught_deg)
+        if diff > tolerance_deg:
+            return False
+    return True
 
 
 def single_cell_request_allowed(target_cell: str, allowed_cells: Iterable[str]) -> Tuple[bool, str]:

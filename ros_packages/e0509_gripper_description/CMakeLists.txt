@@ -98,6 +98,9 @@ install(PROGRAMS
   scripts/run_safe_grasp_trial.py
   scripts/diagnose_gripper_read.py
   scripts/prime_gripper_serial_drl.py
+  scripts/clean_gripper_runtime.sh
+  scripts/start_gripper_service_stable.sh
+  scripts/restart_gripper_drl_then_start.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -67,12 +67,12 @@ GRASP_QUAT_RETRY_VARIANTS = [
     ("base", [1, 0, 0], +5.0),
 ]
 MEASURED_TCP_GRASP_QUAT_RETRY_VARIANTS = [
-    ("base", [1, 0, 0], +15.0),
-    ("base", [1, 0, 0], +10.0),
-    ("base", [1, 0, 0], +5.0),
     ("base", [1, 0, 0], 0.0),
+    ("base", [1, 0, 0], +5.0),
     ("base", [1, 0, 0], -5.0),
+    ("base", [1, 0, 0], +10.0),
     ("base", [1, 0, 0], -10.0),
+    ("base", [1, 0, 0], +15.0),
 ]
 NW_HIGH_TARGET_GRASP_QUAT_RETRY_VARIANTS = [
     ("base", [1, 0, 0], +15.0),

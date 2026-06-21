@@ -85,6 +85,54 @@ scan_pose_candidates:
       - 93.42
       - 108.68
     use_for_automated_motion: true
+  - cell_id: root/nw_flat
+    approach: manual_teach_dart_2026_06_21
+    standoff_m: taught
+    curobo_status: PHYSICAL_VIEW_CONFIRMED_GRIPPER_HORIZONTAL
+    note: 2026-06-21 manually taught as an SW-style single scan/pick pose for
+      NW-area validation. The 4-subpose collect-then-pick path is intentionally
+      bypassed for this experiment because multi-view target fusion produced
+      poor pick accuracy. This pose keeps the gripper approximately horizontal
+      and sees the strawberries from a single centered view, using the same
+      scan/pick style that worked better in the SW single-fruit validation.
+      DART task pose x=-245.67mm y=292.38mm z=851.58mm rx=87.75 ry=86.32
+      rz=-89.49. The taught DART J1 was -205.49deg, but that branch leaves
+      only ~20deg before the -225deg operational limit and makes final approach
+      candidates reject at J1=-226..-227deg. Store the equivalent +154.51deg
+      representation instead so the physical pose is the same while the harvest
+      branch matches the successful SW-style side.
+    dart_tcp_pose_base_mm_deg:
+    - -245.67
+    - 292.38
+    - 851.58
+    - 87.75
+    - 86.32
+    - -89.49
+    tcp_transform_base:
+    - - 0.039138237
+      - 0.006447025
+      - 0.999213007
+      - -0.24567
+    - - 0.997162976
+      - -0.064597689
+      - -0.038641148
+      - 0.29238
+    - - 0.064297731
+      - 0.997890562
+      - -0.008956975
+      - 0.85158
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+    endpoint_joints_deg:
+    - 154.51
+    - 2.38
+    - 42.72
+    - -75.77
+    - 71.08
+    - -46.02
+    use_for_automated_motion: true
   - cell_id: root/nw/nw
     approach: manual_teach_dart_2026_06_17
     standoff_m: taught

@@ -140,6 +140,54 @@ RealSense RGB-D
 | `target_position_window_size` | target 안정화 window |
 | `target_position_max_spread_m` | 안정 target spread 제한 |
 
+### Target Selection 기준
+
+`strawberry_fusion_node.py`는 화면에 먼저 보인 딸기를 바로 publish하지 않는다. 현재
+pick target은 다음 단계를 통과한 후보 중에서 선택한다.
+
+```text
+ripe segmentation mask
+ -> pose/keypoint 매칭
+ -> ripe HSV/color safety filter
+ -> keypoint confidence 통과
+ -> keypoint depth 유효
+ -> stem segment 길이/형상 유효
+ -> multi-frame stable track
+ -> base Z range gate
+ -> 낮은 stem-level 후보 우선
+ -> 비슷하면 image center에 가까운 후보 우선
+ -> /strawberry/detection/pick_pose publish
+```
+
+현재 우선순위는 `prefer_lower_z_target:=true`일 때 **낮은 base-Z 후보**를 먼저 고르고,
+Z가 비슷하면 **화면 중심에 가까운 후보**를 고른다. 이유는 높은 후보가 잎, 과실 상단,
+잘못 잡힌 keypoint일 가능성이 높고, 단일 중심 scan pose에서는 화면 중심 후보가 현재
+자세에서 접근성이 가장 좋은 target일 가능성이 크기 때문이다.
+
+### Perception KPI 로그
+
+2026-06-21부터 fusion runtime JSONL에 다음 이벤트를 추가했다.
+
+```text
+event: perception_candidate_summary
+```
+
+| Field | 의미 |
+| --- | --- |
+| `seg_ripe_count` | segmentation 기준 ripe mask 수 |
+| `scene_ripe_3d_count` | ripe mask 중 depth까지 잡혀 3D 위치가 나온 수 |
+| `pose_detection_count` | pose/keypoint detection 수 |
+| `valid_stable_pick_candidate_count` | ripe, keypoint, depth, stem geometry, multi-frame stability를 통과한 pick 후보 수 |
+| `stable_track_count` | 안정적으로 추적 중인 target 수 |
+| `active_target_selected` | 이번 frame에서 active target을 선택했는지 |
+| `active_target_pos_m` | 선택된 target의 base 좌표 |
+| `published_target` | `/strawberry/detection/pick_pose`로 실제 publish했는지 |
+
+이 로그는 “여러 관측 자세에서 많이 보이는 것”과 “실제로 딸 수 있는 안정 후보가 생기는
+것”을 구분하기 위한 KPI다. 4개 세부 관측 자세와 단일 중심 자세(`root/nw_flat`)를 비교할
+때, 단순 검출 수(`seg_ripe_count`)보다 `valid_stable_pick_candidate_count`와
+`published_target`을 우선 본다.
+
 ## 5. `scan_executor_node.py` 인터페이스 (strawberry_motion 패키지)
 
 ### Subscriptions
@@ -210,6 +258,7 @@ RealSense RGB-D
 
 - plan latency
 - IK fail / plan OK count
+- perception candidate count (`perception_candidate_summary`)
 - selected grasp variant
 - final approach distance/depth
 - SafeGrasp result, present_position/current

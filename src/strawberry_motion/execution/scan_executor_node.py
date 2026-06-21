@@ -67,7 +67,13 @@ _COLLISION_WORLD_FNAME = "scan_collision_world.yaml"
 _JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 
 # Single-cell test gate — all 4 cells validated (RUN-20260527-012)
-_INITIAL_SINGLE_CELL_CANDIDATES = ["root/nw", "root/ne", "root/se", "root/sw"]
+_INITIAL_SINGLE_CELL_CANDIDATES = [
+    "root/nw",
+    "root/nw_flat",
+    "root/ne",
+    "root/se",
+    "root/sw",
+]
 # Full traversal Z-order (nw→ne top row, sw→se bottom row)
 _ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
 
@@ -104,7 +110,8 @@ _JOINT_LIMITS_RAD = [
     (-2.346194, 2.346194),
     (-6.273185, 6.273185),
 ]
-_WRAP_EQUIVALENT_JOINT_IDX = {0, 3, 5}  # J1/J4/J6: same physical angle every 360 deg
+_OVERVIEW_WRAP_EQUIVALENT_JOINT_IDX = {0, 3, 5}
+_MOVE_TARGET_WRAP_EQUIVALENT_JOINT_IDX = {3, 5}  # keep J1 branch explicit in taught YAML
 
 
 def _as_bool(value) -> bool:
@@ -118,7 +125,7 @@ def _wrap_aware_joints_within_tolerance_deg(current_rad, target_deg, tolerance_d
         return False
     current_deg = np.rad2deg(current_rad).tolist()
     for idx, (cur, target) in enumerate(zip(current_deg, target_deg)):
-        if idx in _WRAP_EQUIVALENT_JOINT_IDX:
+        if idx in _OVERVIEW_WRAP_EQUIVALENT_JOINT_IDX:
             diff = min(abs((target + 360.0 * k) - cur) for k in range(-2, 3))
         else:
             diff = abs(target - cur)
@@ -601,7 +608,7 @@ class ScanExecutorNode(Node):
             return [float(v) for v in target_deg]
 
         adjusted = [float(v) for v in target_deg]
-        for idx in _WRAP_EQUIVALENT_JOINT_IDX:
+        for idx in _MOVE_TARGET_WRAP_EQUIVALENT_JOINT_IDX:
             lo = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][0]))
             hi = float(np.rad2deg(_JOINT_LIMITS_RAD[idx][1]))
             base = adjusted[idx]

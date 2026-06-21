@@ -223,6 +223,7 @@ class StrawberryFusionNode(Node):
         self._last_reject_log = {}
         self._last_seg_items = []   # cached from last inference for smooth viz
         self._last_pose_items = []
+        self._last_perception_summary_log = 0.0
         self.timer = self.create_timer(1.0 / 30.0, self._loop)
         self.get_logger().info(
             "StrawberryFusionNode ready.  q=quit in display window")
@@ -630,6 +631,7 @@ class StrawberryFusionNode(Node):
                               True, cls_color.get(cls_id, (200, 200, 200)), 1)
 
     def _publish_scene_positions(self, run_infer, seg_items, depth_f, intr):
+        scene_ripe_3d_count = 0
         if run_infer:
             scene_flat = []
             for cls_id, polygon in seg_items:
@@ -637,6 +639,7 @@ class StrawberryFusionNode(Node):
                     pt3d = self._polygon_centroid_3d(depth_f, intr, polygon)
                     if pt3d is not None:
                         scene_flat.extend([float(pt3d[0]), float(pt3d[1]), float(pt3d[2])])
+            scene_ripe_3d_count = len(scene_flat) // 3
             if scene_flat:
                 smsg = Float64MultiArray()
                 smsg.data = scene_flat
@@ -646,6 +649,45 @@ class StrawberryFusionNode(Node):
                     topic="/strawberry/detection/scene_positions",
                     positions_m=np.asarray(scene_flat).reshape(-1, 3),
                 )
+        return scene_ripe_3d_count
+
+    def _log_perception_summary(self, *, run_infer, seg_items, pose_items,
+                                scene_ripe_3d_count, ripe_candidates,
+                                active_candidate, published_target):
+        """Log compact perception counts for KPI and scan-view comparison."""
+        if not run_infer:
+            return
+        now = time.monotonic()
+        if now - self._last_perception_summary_log < 1.0:
+            return
+        self._last_perception_summary_log = now
+
+        seg_ripe_count = sum(1 for cls_id, _ in seg_items if cls_id == RIPE_CLASS_ID)
+        stable_track_count = sum(
+            1 for track in self._tracks.values()
+            if self._track_is_stable(track)
+        )
+        active_pos_m = None
+        active_track_id = None
+        if active_candidate is not None:
+            active_track_id = int(active_candidate["track_id"])
+            active_pos_m = active_candidate["track"]["pos"]
+        self.runtime_log.log(
+            "perception_candidate_summary",
+            seg_ripe_count=seg_ripe_count,
+            scene_ripe_3d_count=scene_ripe_3d_count,
+            pose_detection_count=len(pose_items),
+            valid_stable_pick_candidate_count=len(ripe_candidates),
+            stable_track_count=stable_track_count,
+            active_target_selected=active_candidate is not None,
+            active_track_id=active_track_id,
+            active_target_pos_m=active_pos_m,
+            published_target=bool(published_target),
+            note=(
+                "Counts are staged: ripe segmentation -> ripe with 3D depth -> "
+                "stable stem/keypoint pick candidate -> published target."
+            ),
+        )
 
     def _process_pose_detection(self, pose_bbox, kps_np, vis, img, seg_items,
                                  depth_f, intr, run_infer, kp_colors, kp_labels,
@@ -908,7 +950,8 @@ class StrawberryFusionNode(Node):
             self._draw_seg_overlays(vis, seg_items, cls_color)
 
             # ── scene positions (only on fresh inference frames) ─────────────
-            self._publish_scene_positions(run_infer, seg_items, depth_f, intr)
+            scene_ripe_3d_count = self._publish_scene_positions(
+                run_infer, seg_items, depth_f, intr)
 
             # ── fusion: match each pose detection to a seg mask ───────────────
             kp_colors = [COLOR_KP0, COLOR_KP1, COLOR_KP2]
@@ -923,10 +966,22 @@ class StrawberryFusionNode(Node):
                     ripe_candidates.append(candidate)
 
             active_candidate = self._select_active_track(ripe_candidates)
+            published_target = False
             if run_infer and active_candidate is not None:
                 active_track = active_candidate["track"]
                 if self._should_publish_track(active_track):
                     self._publish_pick_track(active_track)
+                    published_target = True
+
+            self._log_perception_summary(
+                run_infer=run_infer,
+                seg_items=seg_items,
+                pose_items=pose_items,
+                scene_ripe_3d_count=scene_ripe_3d_count,
+                ripe_candidates=ripe_candidates,
+                active_candidate=active_candidate,
+                published_target=published_target,
+            )
 
             if active_candidate is not None:
                 ax, ay, az = active_candidate["track"]["pos"]
