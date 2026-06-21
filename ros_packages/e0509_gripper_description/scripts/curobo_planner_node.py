@@ -126,6 +126,107 @@ class CuroboPlanner(Node):
         (-6.273185, 6.273185),
     ]
 
+    def _log_startup_banner(self) -> None:
+        self.get_logger().info("cuRobo Planner Ready!")
+        self.get_logger().info(f"Runtime JSONL: {self.runtime_log.path}")
+        self.runtime_log.log(
+            "node_start",
+            wall_quat_wxyz=WALL_QUAT_WXYZ,
+            grasp_retry_offsets_m=GRASP_RETRY_OFFSETS,
+            leftmost_grasp_retry_offsets_m=LEFTMOST_GRASP_RETRY_OFFSETS,
+            leftmost_grasp_x_correction_m=LEFTMOST_GRASP_X_CORR_M,
+            leftmost_extra_advance_request_m=self._leftmost_extra_advance_request_m,
+            leftmost_wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
+            leftmost_allow_wall_model_override=self._leftmost_allow_wall_model_override,
+            pre_approach_offset_m=PRE_APPROACH_OFFSET,
+            tool_model_profile=self._tool_model_profile,
+            measured_tcp_plan_only=self._measured_tcp_plan_only,
+            ee_to_tcp_offset_m=self._ee_to_tcp_offset_m,
+            legacy_ee_to_tcp_offset_m=LEGACY_EE_TO_TCP_OFFSET_M,
+            measured_flange_to_gripper_m=MEASURED_FLANGE_TO_GRIPPER_M,
+            measured_flange_to_part_tip_m=MEASURED_FLANGE_TO_PART_TIP_M,
+            measured_flange_to_grasp_center_m=MEASURED_FLANGE_TO_GRASP_CENTER_M,
+            tcp_model_shortfall_m=TCP_MODEL_SHORTFALL_M,
+            open_stem_descent_m=CRANE_Z_OFFSET_M,
+            nw_high_target_base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
+            enable_marker_place=self._enable_marker_place,
+            execute_marker_place_release=self._execute_marker_place_release,
+            use_taught_slot0_place_reference=self._use_taught_slot0_place_reference,
+            hold_after_taught_slot0_place=self._hold_after_taught_slot0_place,
+            initial_place_slot_index=self._marker_place_slot_idx,
+            allow_generated_tray_slot_release=self._allow_generated_tray_slot_release,
+            allow_unverified_grasp_place=self._allow_unverified_grasp_place,
+            grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
+            use_published_grasp_orientation=self._use_published_grasp_orientation,
+            published_grasp_roll_align_axis=self._published_grasp_roll_align_axis,
+            published_grasp_roll_max_abs_deg=self._published_grasp_roll_max_abs_deg,
+            marker_place_max_age_sec=self._marker_place_max_age_sec,
+        )
+        base_approach_dir = np.array(quat_rotate_vec(WALL_QUAT_WXYZ, [0.0, 0.0, 1.0]))
+        base_elevation_deg = float(np.degrees(np.arcsin(np.clip(base_approach_dir[2], -1.0, 1.0))))
+        self.get_logger().info(
+            f"  ENV_CUBOIDS={len(self.static_cuboids)}  "
+            f"SELF_COLLISION={USE_CUROBO_SELF_COLLISION}")
+        self.get_logger().warn(
+            "Leaf/stem geometry is not in the cuRobo world; visually occluded "
+            "targets require reobserve/skip instead of forced approach")
+        self.get_logger().info(
+            f"  WALL_QUAT_WXYZ={WALL_QUAT_WXYZ} "
+            f"approach_dir={np.round(base_approach_dir, 4).tolist()} "
+            f"elevation={base_elevation_deg:+.1f}deg  "
+            f"variants={len(self.grasp_quat_variants())}")
+        self.get_logger().info(
+            f"  LEFTMOST horizontal fallback x_corr="
+            f"{LEFTMOST_GRASP_X_CORR_M*1000:+.0f}mm "
+            f"offsets_mm={[round(v*1000) for v in LEFTMOST_GRASP_RETRY_OFFSETS]} "
+            f"extra_request={self._leftmost_extra_advance_request_m*1000:.0f}mm "
+            f"wall_margin={self._leftmost_wall_safety_margin_m*1000:.0f}mm "
+            f"wall_override={self._leftmost_allow_wall_model_override} "
+            f"pre_approach={PRE_APPROACH_OFFSET*1000:.0f}mm")
+        if self._measured_tcp_model:
+            self.get_logger().warn(
+                "  TOOL_MODEL=measured_tcp_260mm: cuRobo ee_link is the measured "
+                "grasp center; legacy length compensation and default extra advance "
+                f"are disabled. plan_only={self._measured_tcp_plan_only}.")
+            self.get_logger().info(
+                "  MEASURED_TCP_FINAL_APPROACH "
+                f"direct_curobo={self._direct_curobo_final_approach_for_measured_tcp} "
+                f"max={self._measured_tcp_max_approach_m*1000:.0f}mm "
+                f"tool_line_after_fallback="
+                f"{self._measured_tcp_tool_line_after_curobo_fallback}")
+            self.get_logger().info(
+                "  PUBLISHED_GRASP_ORIENTATION "
+                f"enabled={self._use_published_grasp_orientation} "
+                f"roll_align_tool_{self._published_grasp_roll_align_axis} "
+                f"max_abs_roll={self._published_grasp_roll_max_abs_deg:.0f}deg")
+            self.get_logger().info(
+                f"  OPEN_STEM_DESCENT={CRANE_Z_OFFSET_M*1000:.0f}mm: "
+                "horizontal approach above KP1 -> open BASE -Z descent -> close at KP1")
+            self.get_logger().warn(
+                "  NW_HIGH_TARGET_CORRECTION "
+                f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
+                f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
+                f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
+                f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm "
+                f"crane_z_offset={self._nw_high_target_crane_z_offset_m*1000:.0f}mm "
+                f"(SW/default={CRANE_Z_OFFSET_M*1000:.0f}mm)")
+        else:
+            self.get_logger().warn(
+                "  TOOL_GEOMETRY_LEGACY: planner offset="
+                f"{LEGACY_EE_TO_TCP_OFFSET_M*1000:.0f}mm, measured grasp center="
+                f"{MEASURED_FLANGE_TO_GRASP_CENTER_M*1000:.0f}mm "
+                f"(model shortfall={TCP_MODEL_SHORTFALL_M*1000:.0f}mm).")
+        if os.path.exists(ENVIRONMENT_YAML):
+            self.get_logger().info(f"  environment loaded: {ENVIRONMENT_YAML}")
+        self.get_logger().info(
+            f"  marker place: enabled={self._enable_marker_place} "
+            f"release={self._execute_marker_place_release} "
+            f"taught_slot0_reference={self._use_taught_slot0_place_reference} "
+            f"hold_after_slot0={self._hold_after_taught_slot0_place} "
+            f"allow_generated_slot_release={self._allow_generated_tray_slot_release} "
+            f"allow_unverified_grasp={self._allow_unverified_grasp_place} "
+            f"max_age={self._marker_place_max_age_sec:.0f}s")
+
     def __init__(self):
         super().__init__("curobo_planner_node")
 
@@ -301,105 +402,7 @@ class CuroboPlanner(Node):
             current_joints_getter=lambda: self.current_joints,
         )
 
-        self.get_logger().info("cuRobo Planner Ready!")
-        self.get_logger().info(f"Runtime JSONL: {self.runtime_log.path}")
-        self.runtime_log.log(
-            "node_start",
-            wall_quat_wxyz=WALL_QUAT_WXYZ,
-            grasp_retry_offsets_m=GRASP_RETRY_OFFSETS,
-            leftmost_grasp_retry_offsets_m=LEFTMOST_GRASP_RETRY_OFFSETS,
-            leftmost_grasp_x_correction_m=LEFTMOST_GRASP_X_CORR_M,
-            leftmost_extra_advance_request_m=self._leftmost_extra_advance_request_m,
-            leftmost_wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
-            leftmost_allow_wall_model_override=self._leftmost_allow_wall_model_override,
-            pre_approach_offset_m=PRE_APPROACH_OFFSET,
-            tool_model_profile=self._tool_model_profile,
-            measured_tcp_plan_only=self._measured_tcp_plan_only,
-            ee_to_tcp_offset_m=self._ee_to_tcp_offset_m,
-            legacy_ee_to_tcp_offset_m=LEGACY_EE_TO_TCP_OFFSET_M,
-            measured_flange_to_gripper_m=MEASURED_FLANGE_TO_GRIPPER_M,
-            measured_flange_to_part_tip_m=MEASURED_FLANGE_TO_PART_TIP_M,
-            measured_flange_to_grasp_center_m=MEASURED_FLANGE_TO_GRASP_CENTER_M,
-            tcp_model_shortfall_m=TCP_MODEL_SHORTFALL_M,
-            open_stem_descent_m=CRANE_Z_OFFSET_M,
-            nw_high_target_base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
-            enable_marker_place=self._enable_marker_place,
-            execute_marker_place_release=self._execute_marker_place_release,
-            use_taught_slot0_place_reference=self._use_taught_slot0_place_reference,
-            hold_after_taught_slot0_place=self._hold_after_taught_slot0_place,
-            initial_place_slot_index=self._marker_place_slot_idx,
-            allow_generated_tray_slot_release=self._allow_generated_tray_slot_release,
-            allow_unverified_grasp_place=self._allow_unverified_grasp_place,
-            grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
-            use_published_grasp_orientation=self._use_published_grasp_orientation,
-            published_grasp_roll_align_axis=self._published_grasp_roll_align_axis,
-            published_grasp_roll_max_abs_deg=self._published_grasp_roll_max_abs_deg,
-            marker_place_max_age_sec=self._marker_place_max_age_sec,
-        )
-        base_approach_dir = np.array(quat_rotate_vec(WALL_QUAT_WXYZ, [0.0, 0.0, 1.0]))
-        base_elevation_deg = float(np.degrees(np.arcsin(np.clip(base_approach_dir[2], -1.0, 1.0))))
-        self.get_logger().info(
-            f"  ENV_CUBOIDS={len(self.static_cuboids)}  "
-            f"SELF_COLLISION={USE_CUROBO_SELF_COLLISION}")
-        self.get_logger().warn(
-            "Leaf/stem geometry is not in the cuRobo world; visually occluded "
-            "targets require reobserve/skip instead of forced approach")
-        self.get_logger().info(
-            f"  WALL_QUAT_WXYZ={WALL_QUAT_WXYZ} "
-            f"approach_dir={np.round(base_approach_dir, 4).tolist()} "
-            f"elevation={base_elevation_deg:+.1f}deg  "
-            f"variants={len(self.grasp_quat_variants())}")
-        self.get_logger().info(
-            f"  LEFTMOST horizontal fallback x_corr="
-            f"{LEFTMOST_GRASP_X_CORR_M*1000:+.0f}mm "
-            f"offsets_mm={[round(v*1000) for v in LEFTMOST_GRASP_RETRY_OFFSETS]} "
-            f"extra_request={self._leftmost_extra_advance_request_m*1000:.0f}mm "
-            f"wall_margin={self._leftmost_wall_safety_margin_m*1000:.0f}mm "
-            f"wall_override={self._leftmost_allow_wall_model_override} "
-            f"pre_approach={PRE_APPROACH_OFFSET*1000:.0f}mm")
-        if self._measured_tcp_model:
-            self.get_logger().warn(
-                "  TOOL_MODEL=measured_tcp_260mm: cuRobo ee_link is the measured "
-                "grasp center; legacy length compensation and default extra advance "
-                f"are disabled. plan_only={self._measured_tcp_plan_only}.")
-            self.get_logger().info(
-                "  MEASURED_TCP_FINAL_APPROACH "
-                f"direct_curobo={self._direct_curobo_final_approach_for_measured_tcp} "
-                f"max={self._measured_tcp_max_approach_m*1000:.0f}mm "
-                f"tool_line_after_fallback="
-                f"{self._measured_tcp_tool_line_after_curobo_fallback}")
-            self.get_logger().info(
-                "  PUBLISHED_GRASP_ORIENTATION "
-                f"enabled={self._use_published_grasp_orientation} "
-                f"roll_align_tool_{self._published_grasp_roll_align_axis} "
-                f"max_abs_roll={self._published_grasp_roll_max_abs_deg:.0f}deg")
-            self.get_logger().info(
-                f"  OPEN_STEM_DESCENT={CRANE_Z_OFFSET_M*1000:.0f}mm: "
-                "horizontal approach above KP1 -> open BASE -Z descent -> close at KP1")
-            self.get_logger().warn(
-                "  NW_HIGH_TARGET_CORRECTION "
-                f"z>={self._nw_high_target_z_threshold_m*1000:.0f}mm: "
-                f"final_extra={self._nw_high_target_final_extra_m*1000:.0f}mm "
-                f"base_y_nudge={self._nw_high_target_base_y_nudge_m*1000:.0f}mm "
-                f"y_plane_relax={NW_HIGH_TARGET_Y_PLANE_RELAX_M*1000:.0f}mm "
-                f"crane_z_offset={self._nw_high_target_crane_z_offset_m*1000:.0f}mm "
-                f"(SW/default={CRANE_Z_OFFSET_M*1000:.0f}mm)")
-        else:
-            self.get_logger().warn(
-                "  TOOL_GEOMETRY_LEGACY: planner offset="
-                f"{LEGACY_EE_TO_TCP_OFFSET_M*1000:.0f}mm, measured grasp center="
-                f"{MEASURED_FLANGE_TO_GRASP_CENTER_M*1000:.0f}mm "
-                f"(model shortfall={TCP_MODEL_SHORTFALL_M*1000:.0f}mm).")
-        if os.path.exists(ENVIRONMENT_YAML):
-            self.get_logger().info(f"  environment loaded: {ENVIRONMENT_YAML}")
-        self.get_logger().info(
-            f"  marker place: enabled={self._enable_marker_place} "
-            f"release={self._execute_marker_place_release} "
-            f"taught_slot0_reference={self._use_taught_slot0_place_reference} "
-            f"hold_after_slot0={self._hold_after_taught_slot0_place} "
-            f"allow_generated_slot_release={self._allow_generated_tray_slot_release} "
-            f"allow_unverified_grasp={self._allow_unverified_grasp_place} "
-            f"max_age={self._marker_place_max_age_sec:.0f}s")
+        self._log_startup_banner()
 
         # 노드 시작 시 그리퍼를 approach 위치로 초기화 (2s 후 — gripper_service_node 연결 여유)
         self._gripper_init_done = False
