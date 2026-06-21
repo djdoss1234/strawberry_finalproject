@@ -1794,6 +1794,79 @@ class CuroboPlanner(Node):
             )
         return final_approach_distance
 
+    def _try_precomputed_final_approach(self, final_state: FinalApproachState,
+                                        ret_grasp,
+                                        measured_best_depth_m: float,
+                                        requested_distance_m: float,
+                                        used_pre_ee_pos,
+                                        used_grasp_variant,
+                                        used_approach_dir):
+        if (
+            not self._measured_tcp_model
+            or not self._direct_curobo_final_approach_for_measured_tcp
+        ):
+            return False, False
+
+        selected_curobo_depth_m = measured_best_depth_m
+        approach_ok = (
+            ret_grasp is not None
+            and selected_curobo_depth_m > 0.0
+            and self.execute_spline(*ret_grasp)
+        )
+        self.runtime_log.log(
+            "final_approach_precomputed_curobo",
+            controller="curobo_plus_doosan_move_spline_joint",
+            requested_distance_m=requested_distance_m,
+            executed_depth_m=selected_curobo_depth_m,
+            success=approach_ok,
+            approach_dir=used_approach_dir,
+        )
+        if approach_ok:
+            self.get_logger().info(
+                "FINAL_APPROACH_PRECOMPUTED_CUROBO "
+                f"depth={selected_curobo_depth_m*1000:.0f}mm "
+                "(reusing probe plan; no extra IK fallback search)")
+            final_state.distance_m = selected_curobo_depth_m
+            final_state.grasp_ee_pos = (
+                used_pre_ee_pos + final_state.distance_m * used_approach_dir)
+            remaining_tool_line_m = requested_distance_m - selected_curobo_depth_m
+            if (
+                self._measured_tcp_tool_line_after_curobo_fallback
+                and remaining_tool_line_m >= 0.020
+            ):
+                (
+                    tool_finish_ok,
+                    tool_finish_delta,
+                    _finish_m,
+                    tool_finish_dir,
+                ) = self._execute_final_approach_tool_finish(
+                    remaining_tool_line_m,
+                    selected_curobo_depth_m,
+                    requested_distance_m,
+                    used_grasp_variant,
+                    used_approach_dir,
+                    "precomputed cuRobo final approach",
+                )
+                if not tool_finish_ok:
+                    approach_ok = False
+                else:
+                    final_state.apply_tool_finish(
+                        selected_curobo_depth_m,
+                        remaining_tool_line_m,
+                        tool_finish_delta,
+                        tool_finish_dir,
+                    )
+                    self.runtime_log.log(
+                        "final_approach_tool_finish_success",
+                        executed_total_m=final_state.distance_m,
+                        horizontal_only=final_state.tool_finish_executed_dir is not None,
+                    )
+        else:
+            self.get_logger().warn(
+                "FINAL_APPROACH_PRECOMPUTED_CUROBO failed; "
+                "falling back to depth search")
+        return True, approach_ok
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2168,81 +2241,25 @@ class CuroboPlanner(Node):
 
         if final_approach_distance > 0.001:
             requested_final_approach_distance = final_approach_distance
-            precomputed_final_attempted = False
-            if (
-                self._measured_tcp_model
-                and self._direct_curobo_final_approach_for_measured_tcp
-            ):
-                selected_curobo_depth_m = measured_best_depth_m
-                precomputed_final_attempted = True
-                approach_ok = (
-                    ret_grasp is not None
-                    and selected_curobo_depth_m > 0.0
-                    and self.execute_spline(*ret_grasp)
+            precomputed_final_attempted, approach_ok = (
+                self._try_precomputed_final_approach(
+                    final_state,
+                    ret_grasp,
+                    measured_best_depth_m,
+                    requested_final_approach_distance,
+                    used_pre_ee_pos,
+                    used_grasp_variant,
+                    used_approach_dir,
                 )
-                self.runtime_log.log(
-                    "final_approach_precomputed_curobo",
-                    controller="curobo_plus_doosan_move_spline_joint",
-                    requested_distance_m=final_approach_distance,
-                    executed_depth_m=selected_curobo_depth_m,
-                    success=approach_ok,
-                    approach_dir=used_approach_dir,
-                )
-                if approach_ok:
-                    self.get_logger().info(
-                        "FINAL_APPROACH_PRECOMPUTED_CUROBO "
-                        f"depth={selected_curobo_depth_m*1000:.0f}mm "
-                        "(reusing probe plan; no extra IK fallback search)")
-                    final_state.distance_m = selected_curobo_depth_m
-                    final_state.grasp_ee_pos = (
-                        used_pre_ee_pos
-                        + final_state.distance_m * used_approach_dir)
-                    remaining_tool_line_m = (
-                        requested_final_approach_distance
-                        - selected_curobo_depth_m)
-                    if (
-                        self._measured_tcp_tool_line_after_curobo_fallback
-                        and remaining_tool_line_m >= 0.020
-                    ):
-                        (
-                            tool_finish_ok,
-                            tool_finish_delta,
-                            tool_finish_executed_m,
-                            tool_finish_executed_dir,
-                        ) = self._execute_final_approach_tool_finish(
-                            remaining_tool_line_m,
-                            selected_curobo_depth_m,
-                            requested_final_approach_distance,
-                            used_grasp_variant,
-                            used_approach_dir,
-                            "precomputed cuRobo final approach",
-                        )
-                        if not tool_finish_ok:
-                            approach_ok = False
-                        else:
-                            final_state.apply_tool_finish(
-                                selected_curobo_depth_m,
-                                remaining_tool_line_m,
-                                tool_finish_delta,
-                                tool_finish_executed_dir,
-                            )
-                            self.runtime_log.log(
-                                "final_approach_tool_finish_success",
-                                executed_total_m=final_state.distance_m,
-                                horizontal_only=final_state.tool_finish_executed_dir is not None,
-                            )
-                else:
-                    self.get_logger().warn(
-                        "FINAL_APPROACH_PRECOMPUTED_CUROBO failed; "
-                        "falling back to depth search")
-            elif self._measured_tcp_model:
+            )
+            if not precomputed_final_attempted and self._measured_tcp_model:
                 approach_ok = self.execute_base_relative_line(
                     final_approach_distance * used_approach_dir,
                     "FINAL_APPROACH_STRAIGHT_BASE",
                     vel_mm_s=FINAL_APPROACH_VEL_MM_S,
                     acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
                 )
-            else:
+            elif not precomputed_final_attempted:
                 approach_ok = self.execute_tool_z_line(
                     final_approach_distance,
                     min_distance_m=0.005)
