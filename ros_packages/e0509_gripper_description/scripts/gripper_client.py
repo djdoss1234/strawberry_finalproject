@@ -4,10 +4,10 @@
 import time
 
 from harvest_motion_params import (
-    GRASP_CLOSE_SETTLE_SEC,
     GRASP_EMPTY_POSITION_THRESHOLD,
     GRASP_VERIFY_TIMEOUT_SEC,
     GRIPPER_APPROACH_POS,
+    GRIPPER_CLOSE_SETTLE_SEC,
 )
 
 
@@ -131,7 +131,7 @@ class HarvestGripperClient:
         close_ok = self.set_position(700, timeout_sec=10.0)
         if not close_ok:
             return "GRIPPER_CLOSE_FAILED", -1, -1, "set_position(700) failed"
-        time.sleep(GRASP_CLOSE_SETTLE_SEC)
+        time.sleep(GRIPPER_CLOSE_SETTLE_SEC)
         result = self.verify_grasp()
         self.log_verify_result(result)
         return result
