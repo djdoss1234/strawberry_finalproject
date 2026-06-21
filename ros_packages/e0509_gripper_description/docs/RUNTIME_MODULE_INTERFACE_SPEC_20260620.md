@@ -21,11 +21,12 @@ RealSense RGB-D
 
 | 파일 | 역할 | 현재 상태 |
 | --- | --- | --- |
-| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 2,428 lines — `_pick()` 본문은 각 단계를 helper/policy/client/executor 호출로 위임하는 얇은 orchestration으로 축소됨 |
+| `scripts/curobo_planner_node.py` | pick/place state machine, cuRobo planning, runtime JSONL | 주 실행 노드. 2026-06-21 기준 2,069 lines — `_pick()` 본문은 각 단계를 helper/policy/client/executor 호출로 위임하는 얇은 orchestration으로 축소됨. place 실행 로직도 분리되어 남은 큰 단일 블록은 `__init__`(ROS 보일러플레이트)뿐 |
 | `scripts/approach_retreat_policy.py` | measured-TCP final approach 거리, fallback depth, tool-finish 방향, retreat step 계산 | 신규 분리 모듈. J2 한도초과 방지용 2단계 retreat와 tilted branch 수평 tool-finish 정책을 순수 함수로 분리 |
 | `scripts/doosan_motion_client.py` | Doosan `MoveSplineJoint`/`MoveJoint`/`MoveLine` service 호출, timeout/no-motion guard, motion logging | 신규 분리 모듈. 기존 motion 동작 보존용 thin wrapper |
 | `scripts/gripper_client.py` | `/gripper_service/set_position`, `/get_state`, `/safe_grasp` 호출, approach open, close+verify logging, grasp result 판정 | 신규 분리 모듈. SafeGrasp + position fallback 동작 보존 |
 | `scripts/grasp_search_executor.py` | grasp_quat_variant별 measured-TCP depth probe와 legacy grasp offset 탐색 실행(`self.plan()` 호출 포함) | 신규 분리 모듈(2026-06-21). `HarvestGripperClient`와 동일한 node-dependent client 패턴 |
+| `scripts/tray_place_executor.py` | marker-place와 taught-slot0-grid place 시퀀스 실행(`self.plan()`/`execute_spline()`/`execute_base_z_relative()` 호출 포함, row2 분기 포함) | 신규 분리 모듈(2026-06-21). `curobo_planner_node.py`에서 마지막으로 남은 큰 실행 블록(408줄)이었음. row2 known 이슈는 그대로 이동(미수정) |
 | `scripts/tray_place_policy.py` | marker tray JSON 로딩, Slot0/1/3 기반 grid pitch 보정, slot offset/release target 계산 | 신규 분리 모듈. 로봇 I/O 없이 place target만 생성 |
 | `scripts/trajectory_guards.py` | operational joint limit, equivalent joint normalization, spline jump/swing reject | 신규 분리 모듈. cuRobo trajectory 실행 전 안전 필터 |
 | `scripts/curobo_planning_adapter.py` | cuRobo Cartesian/joint-space planning 호출, plan success/fail logging, start collision diagnostic | 신규 분리 모듈. MotionGen 호출부와 planner reject logging 분리 |
@@ -223,16 +224,20 @@ RealSense RGB-D
   설치 확인할 것
 - 전부 py_compile/diff --check/colcon build 통과 후 push 완료. **실기 미검증**(코드 이동만,
   로직/거리/속도/로그 이벤트명 무변경)
+- `tray_place_executor.py` 신규 분리 (`edb67de`, 2026-06-21): `_execute_marker_place_after_retreat`
+  + `_execute_taught_slot0_place_reference_after_retreat`(408줄, row2 분기 포함)를
+  `TrayPlaceExecutor` 클래스로 이동. row2 known 이슈는 그대로 이동(고치지 않음). slot index
+  증가(`self._marker_place_slot_idx += 1`)는 executor가 mutate하지 않고 호출부
+  (`_maybe_execute_place_after_retreat`)로 끌어올림 — executor는 getter로만 읽음. 이제 안 쓰는
+  `_load_marker_place_target`/`_taught_grid_slot_offset_m` wrapper와 import(`marker_place_orientation_policy`,
+  `row2_place_policy`, `SciR`)도 함께 정리(`curobo_planner_node.py` 2,461→2,069 lines).
+  py_compile/실제 import/diff --check/colcon build 전부 통과, **실기 미검증**.
 
-다음 분리 후보:
-
-1. `tray_place_executor.py`: taught tray grid/place 실행 시퀀스 분리 — place는 row2 이슈가
-   아직 남아있어 final approach/grasp search보다 리스크가 높음. 진행 전 사용자와 우선순위
-   재확인 권장
-2. `pick_sequence.py`: `_pick()` state machine 자체를 별도 모듈로 분리 — 2026-06-21 기준
-   `_pick()`은 이미 각 단계를 위임하는 얇은 orchestration(약 390 lines)이라, 지금 더
-   쪼개는 건 같은 코드를 옮기기만 할 뿐 복잡도를 줄이지 못할 가능성이 큼. 분리할 명확한
-   이유(예: 여러 entry point에서 재사용 필요)가 생기기 전까지는 보류 권장
+다음 분리 후보: 없음. `__init__`(ROS 보일러플레이트, declare_parameter/create_client 등 52개
+호출)이 유일하게 남은 큰 블록이지만 분리해도 코드가 줄지 않고 간접화만 늘어남 — 분리 대상
+아님. `pick_sequence.py`(`_pick()` 자체를 별도 모듈로)도 2026-06-21 기준 `_pick()`이 이미
+각 단계를 위임하는 얇은 orchestration(약 390 lines)이라 이득 없음 — 분리할 명확한 이유(예:
+여러 entry point에서 재사용 필요)가 생기기 전까지는 보류.
 
 주의:
 

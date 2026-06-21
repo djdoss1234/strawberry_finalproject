@@ -132,7 +132,11 @@ import(정답은 `GRIPPER_CLOSE_SETTLE_SEC`) — `py_compile`은 import를 실�
 무변경 원칙으로 진행.
 **결과**: ✅ 51개 이상 커밋으로 분리 완료, py_compile/실제 import/colcon build로 매 단계
 검증. 항목 9의 cuRobo retreat 수정이 가능했던 것도 이 정리 덕분(retreat 실행 지점이 한
-메서드로 모여있어 빠르게 찾고 고칠 수 있었음).
+메서드로 모여있어 빠르게 찾고 고칠 수 있었음). 마지막으로 남아있던 큰 단일 블록인 place
+실행 로직(408줄, row2 분기 포함)도 `tray_place_executor.py`로 분리(`edb67de`) —
+`curobo_planner_node.py`가 2,461→2,069 lines. row2 known 이슈는 고치지 않고 그대로 이동만.
+이걸로 구조 분리는 사실상 끝 — 남은 큰 블록은 `__init__`(ROS 보일러플레이트)뿐이고 이건
+분리해도 이득이 없음(코드가 안 줄고 간접화만 늘어남).
 
 ## 다음에 확인할 것
 
