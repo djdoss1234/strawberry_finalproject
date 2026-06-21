@@ -122,7 +122,8 @@ class FinalApproachExecutor:
                          used_pre_ee_pos,
                          used_approach_dir,
                          used_grasp_offset: float,
-                         is_nw_high_target: bool):
+                         is_nw_high_target: bool,
+                         wall_y_clamped: bool = False):
         if not self._measured_tcp_model:
             return PRE_APPROACH_OFFSET - used_grasp_offset
 
@@ -141,7 +142,24 @@ class FinalApproachExecutor:
         uncapped_distance = approach_distance.uncapped_distance_m
         final_approach_distance = approach_distance.final_distance_m
 
-        if self._flat_grasp_only:
+        if self._flat_grasp_only and wall_y_clamped:
+            # straw[1] (and therefore target_plane_dist) was clamped to the
+            # registered wall surface, so it understates how far the real
+            # target actually is -- capping to it here would systematically
+            # stop short of the stem. Skip the cap and fall through to the
+            # same near-max push used for non-flat/legacy targets instead.
+            self._log().warn(
+                "FLAT_GRASP_TARGET_PLANE_CAP_SKIPPED: wall_y_clamped=True, "
+                "target_plane_dist is unreliable here; using uncapped "
+                f"distance {final_approach_distance*1000:.0f}mm instead of "
+                f"capping to target_plane={target_plane_dist*1000:.0f}mm")
+            self.runtime_log.log(
+                "flat_grasp_target_plane_cap_skipped",
+                reason="wall_y_clamped",
+                target_plane_distance_m=target_plane_dist,
+                uncapped_distance_m=final_approach_distance,
+            )
+        elif self._flat_grasp_only:
             before_flat_cap_m = final_approach_distance
             flat_target_plane_m = (
                 target_plane_dist + self._flat_grasp_target_plane_margin_m

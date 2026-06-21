@@ -861,10 +861,11 @@ class CuroboPlanner(Node):
                                          used_pre_ee_pos,
                                          used_approach_dir,
                                          used_grasp_offset: float,
-                                         is_nw_high_target: bool):
+                                         is_nw_high_target: bool,
+                                         wall_y_clamped: bool = False):
         return self.final_approach_executor.compute_distance(
             raw_straw, straw, used_pre_ee_pos, used_approach_dir,
-            used_grasp_offset, is_nw_high_target,
+            used_grasp_offset, is_nw_high_target, wall_y_clamped,
         )
 
     def _execute_final_approach(self, final_state: FinalApproachState,

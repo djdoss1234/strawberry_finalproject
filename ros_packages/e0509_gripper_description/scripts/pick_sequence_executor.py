@@ -798,6 +798,7 @@ class PickSequenceExecutor:
             used_approach_dir,
             used_grasp_offset,
             is_nw_high_target,
+            wall_y_clamped,
         )
         final_state = FinalApproachState(
             final_approach_distance,
