@@ -1333,6 +1333,70 @@ class CuroboPlanner(Node):
         finally:
             self._pick_busy = False
 
+    def _execute_open_stem_descent_if_needed(self, crane_z_offset_m: float,
+                                             straw_z_m: float,
+                                             used_grasp_ee_pos,
+                                             used_grasp_variant) -> bool:
+        if not self._measured_tcp_model or crane_z_offset_m <= 0:
+            return True
+
+        open_stem_descent_m, descent_info = compute_open_stem_descent_m(
+            crane_z_offset_m,
+            float(straw_z_m),
+            None if used_grasp_ee_pos is None else float(used_grasp_ee_pos[2]),
+            self._nw_high_target_descent_extra_below_kp1_m,
+        )
+        if descent_info["mode"] == "dynamic":
+            self.get_logger().warn(
+                "OPEN_DESCENT_DYNAMIC: kp1_z="
+                f"{descent_info['target_kp1_z_m']*1000:.0f}mm "
+                f"reached_z={descent_info['reached_z_m']*1000:.0f}mm "
+                f"overshoot={descent_info['overshoot_above_kp1_m']*1000:.0f}mm "
+                f"extra_below_kp1={descent_info['extra_below_kp1_m']*1000:.0f}mm "
+                f"-> descent={open_stem_descent_m*1000:.0f}mm")
+            self.runtime_log.log(
+                "nw_high_target_open_descent_dynamic",
+                target_kp1_z_m=descent_info["target_kp1_z_m"],
+                reached_z_m=descent_info["reached_z_m"],
+                overshoot_above_kp1_m=descent_info["overshoot_above_kp1_m"],
+                extra_below_kp1_m=descent_info["extra_below_kp1_m"],
+                executed_descent_m=descent_info["executed_descent_m"],
+                selected_variant=used_grasp_variant,
+            )
+        self.get_logger().info(
+            f"OPEN_STEM_DESCENT — gripper={GRIPPER_APPROACH_POS}, "
+            f"BASE -Z {open_stem_descent_m*1000:.0f}mm to KP1")
+        if not self.execute_base_z_relative(
+                -open_stem_descent_m, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
+            self.get_logger().error("ABORT: open stem descent 실패")
+            self._abort_pick_with_complete()
+            return False
+        return True
+
+    def _execute_nw_base_y_nudge_if_needed(self, is_nw_high_target: bool,
+                                           raw_target_z_m: float) -> bool:
+        if not is_nw_high_target or self._nw_high_target_base_y_nudge_m <= 0.0:
+            return True
+        self.get_logger().warn(
+            "NW_HIGH_TARGET_BASE_Y_NUDGE: BASE +Y "
+            f"{self._nw_high_target_base_y_nudge_m*1000:.0f}mm before close "
+            "(pure depth correction after height alignment)")
+        self.runtime_log.log(
+            "nw_high_target_base_y_nudge",
+            target_z_m=float(raw_target_z_m),
+            base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
+        )
+        if not self.execute_base_relative_line(
+                [0.0, self._nw_high_target_base_y_nudge_m, 0.0],
+                "NW_HIGH_TARGET_BASE_Y_NUDGE",
+                CRANE_DESCENT_VEL_MM_S,
+                FINAL_APPROACH_ACC_MM_S2):
+            self.get_logger().error(
+                "ABORT: NW high target BASE +Y nudge failed")
+            self._abort_pick_with_complete()
+            return False
+        return True
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2098,58 +2162,13 @@ class CuroboPlanner(Node):
         )
 
         # 수평 진입 완료 후 열린 그리퍼로 줄기를 따라 KP1까지 하강한다.
-        if self._measured_tcp_model and crane_z_offset_m > 0:
-            open_stem_descent_m, descent_info = compute_open_stem_descent_m(
-                crane_z_offset_m,
-                float(straw[2]),
-                None if used_grasp_ee_pos is None else float(used_grasp_ee_pos[2]),
-                self._nw_high_target_descent_extra_below_kp1_m,
-            )
-            if descent_info["mode"] == "dynamic":
-                self.get_logger().warn(
-                    "OPEN_DESCENT_DYNAMIC: kp1_z="
-                    f"{descent_info['target_kp1_z_m']*1000:.0f}mm "
-                    f"reached_z={descent_info['reached_z_m']*1000:.0f}mm "
-                    f"overshoot={descent_info['overshoot_above_kp1_m']*1000:.0f}mm "
-                    f"extra_below_kp1={descent_info['extra_below_kp1_m']*1000:.0f}mm "
-                    f"-> descent={open_stem_descent_m*1000:.0f}mm")
-                self.runtime_log.log(
-                    "nw_high_target_open_descent_dynamic",
-                    target_kp1_z_m=descent_info["target_kp1_z_m"],
-                    reached_z_m=descent_info["reached_z_m"],
-                    overshoot_above_kp1_m=descent_info["overshoot_above_kp1_m"],
-                    extra_below_kp1_m=descent_info["extra_below_kp1_m"],
-                    executed_descent_m=descent_info["executed_descent_m"],
-                    selected_variant=used_grasp_variant,
-                )
-            self.get_logger().info(
-                f"OPEN_STEM_DESCENT — gripper={GRIPPER_APPROACH_POS}, "
-                f"BASE -Z {open_stem_descent_m*1000:.0f}mm to KP1")
-            if not self.execute_base_z_relative(
-                    -open_stem_descent_m, "OPEN_STEM_DESCENT", CRANE_DESCENT_VEL_MM_S):
-                self.get_logger().error("ABORT: open stem descent 실패")
-                self._abort_pick_with_complete()
-                return
+        if not self._execute_open_stem_descent_if_needed(
+                crane_z_offset_m, float(straw[2]), used_grasp_ee_pos, used_grasp_variant):
+            return
 
-        if is_nw_high_target and self._nw_high_target_base_y_nudge_m > 0.0:
-            self.get_logger().warn(
-                "NW_HIGH_TARGET_BASE_Y_NUDGE: BASE +Y "
-                f"{self._nw_high_target_base_y_nudge_m*1000:.0f}mm before close "
-                "(pure depth correction after height alignment)")
-            self.runtime_log.log(
-                "nw_high_target_base_y_nudge",
-                target_z_m=float(raw_straw[2]),
-                base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
-            )
-            if not self.execute_base_relative_line(
-                    [0.0, self._nw_high_target_base_y_nudge_m, 0.0],
-                    "NW_HIGH_TARGET_BASE_Y_NUDGE",
-                    CRANE_DESCENT_VEL_MM_S,
-                    FINAL_APPROACH_ACC_MM_S2):
-                self.get_logger().error(
-                    "ABORT: NW high target BASE +Y nudge failed")
-                self._abort_pick_with_complete()
-                return
+        if not self._execute_nw_base_y_nudge_if_needed(
+                is_nw_high_target, float(raw_straw[2])):
+            return
 
         # 3. 그리퍼 닫기 + 파지 확인
         grasp_result, present_pos, present_current_raw, grasp_reason = (
