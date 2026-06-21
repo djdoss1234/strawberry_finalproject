@@ -1471,6 +1471,92 @@ class CuroboPlanner(Node):
             else grasp_joints
         )
 
+    def _maybe_execute_place_after_retreat(self, grasp_result: str,
+                                           retreat_joints):
+        # Place 게이트 기본값은 fail-closed다. 센서 판독이 불가능한 실험에서만
+        # allow_unverified_grasp_place를 명시적으로 켜고 사람 관찰 라벨을 남긴다.
+        allow_place = allow_place_after_grasp(
+            grasp_result,
+            self._allow_unverified_grasp_place,
+        )
+        if not allow_place:
+            place_block_reason = place_gate_block_reason(grasp_result)
+            self.get_logger().warn(
+                f"PLACE_GATE_BLOCKED ({grasp_result}): {place_block_reason}")
+            self.runtime_log.log(
+                "place_gate_blocked",
+                grasp_result=grasp_result,
+                reason=place_block_reason,
+            )
+
+        return_start_joints = retreat_joints
+        if not self._enable_marker_place or not allow_place:
+            return False, return_start_joints
+
+        place_status, place_joints = self._execute_marker_place_after_retreat(
+            retreat_joints)
+        outcome = classify_place_outcome(
+            place_status,
+            self._use_taught_slot0_place_reference,
+            self._hold_after_taught_slot0_place,
+            self._marker_place_slot_idx,
+        )
+        if outcome["action"] == "continue":
+            return False, place_joints
+        if (
+            outcome["action"] == "hold"
+            and outcome["result_code"] == "TAUGHT_TRAY_PLACE_COMPLETE_HOLD"
+        ):
+            completed_slot_index = outcome["completed_slot_index"]
+            self._clear_neighbor_obstacles()
+            self.runtime_log.log(
+                "pick_sequence_stopped",
+                result_code=outcome["result_code"],
+                slot_index=completed_slot_index,
+                current_joints_rad=self.current_joints,
+            )
+            self.get_logger().warn(
+                f"TAUGHT_TRAY_SLOT{completed_slot_index}_PLACE_COMPLETE_HOLD: "
+                "release complete; "
+                "automatic next pick blocked until planner restart")
+            self._hold_pick_sequence(outcome["hold_reason"])
+            return True, return_start_joints
+        if (
+            outcome["action"] == "hold"
+            and outcome["result_code"] == "TAUGHT_TRAY_FULL"
+        ):
+            self._clear_neighbor_obstacles()
+            self.runtime_log.log(
+                "pick_sequence_stopped",
+                result_code=outcome["result_code"],
+                current_joints_rad=self.current_joints,
+            )
+            self.get_logger().warn(
+                "TAUGHT_TRAY_FULL: all 15 slots consumed; "
+                "automatic next pick blocked until tray reset")
+            self._hold_pick_sequence(outcome["hold_reason"])
+            return True, return_start_joints
+        if outcome["action"] == "skip":
+            # tray 없음/stale — place 생략, scan 복귀
+            self.get_logger().warn("PLACE_SKIPPED: tray unavailable; returning to scan")
+            self.runtime_log.log("place_skipped", reason=outcome["reason"],
+                                 grasp_result=grasp_result)
+            return False, return_start_joints
+
+        # 로봇이 이미 움직인 뒤 실패 or preview hold → latch
+        self._clear_neighbor_obstacles()
+        self.runtime_log.log(
+            "pick_sequence_stopped",
+            result_code=outcome["result_code"],
+            place_status=place_status,
+            current_joints_rad=self.current_joints,
+        )
+        self.get_logger().warn(
+            f"PICK_SEQUENCE_HOLD place_status={place_status}; "
+            "pick_complete not published, automatic scan paused")
+        self._hold_pick_sequence(outcome["hold_reason"])
+        return True, return_start_joints
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2278,86 +2364,12 @@ class CuroboPlanner(Node):
             reason="no sensor; pitch detach executed",
         )
 
-        # Place 게이트 기본값은 fail-closed다. 센서 판독이 불가능한 실험에서만
-        # allow_unverified_grasp_place를 명시적으로 켜고 사람 관찰 라벨을 남긴다.
-        _allow_place = allow_place_after_grasp(
+        place_handled, return_start_joints = self._maybe_execute_place_after_retreat(
             grasp_result,
-            self._allow_unverified_grasp_place,
+            retreat_joints,
         )
-        if not _allow_place:
-            place_block_reason = place_gate_block_reason(grasp_result)
-            self.get_logger().warn(
-                f"PLACE_GATE_BLOCKED ({grasp_result}): {place_block_reason}")
-            self.runtime_log.log(
-                "place_gate_blocked",
-                grasp_result=grasp_result,
-                reason=place_block_reason,
-            )
-
-        return_start_joints = retreat_joints
-        if self._enable_marker_place and _allow_place:
-            place_status, place_joints = self._execute_marker_place_after_retreat(
-                retreat_joints)
-            outcome = classify_place_outcome(
-                place_status,
-                self._use_taught_slot0_place_reference,
-                self._hold_after_taught_slot0_place,
-                self._marker_place_slot_idx,
-            )
-            if outcome["action"] == "continue":
-                return_start_joints = place_joints
-            elif (
-                outcome["action"] == "hold"
-                and outcome["result_code"] == "TAUGHT_TRAY_PLACE_COMPLETE_HOLD"
-            ):
-                completed_slot_index = outcome["completed_slot_index"]
-                self._clear_neighbor_obstacles()
-                self.runtime_log.log(
-                    "pick_sequence_stopped",
-                    result_code=outcome["result_code"],
-                    slot_index=completed_slot_index,
-                    current_joints_rad=self.current_joints,
-                )
-                self.get_logger().warn(
-                    f"TAUGHT_TRAY_SLOT{completed_slot_index}_PLACE_COMPLETE_HOLD: "
-                    "release complete; "
-                    "automatic next pick blocked until planner restart")
-                self._hold_pick_sequence(outcome["hold_reason"])
-                return
-            elif (
-                outcome["action"] == "hold"
-                and outcome["result_code"] == "TAUGHT_TRAY_FULL"
-            ):
-                self._clear_neighbor_obstacles()
-                self.runtime_log.log(
-                    "pick_sequence_stopped",
-                    result_code=outcome["result_code"],
-                    current_joints_rad=self.current_joints,
-                )
-                self.get_logger().warn(
-                    "TAUGHT_TRAY_FULL: all 15 slots consumed; "
-                    "automatic next pick blocked until tray reset")
-                self._hold_pick_sequence(outcome["hold_reason"])
-                return
-            elif outcome["action"] == "skip":
-                # tray 없음/stale — place 생략, scan 복귀
-                self.get_logger().warn("PLACE_SKIPPED: tray unavailable; returning to scan")
-                self.runtime_log.log("place_skipped", reason=outcome["reason"],
-                                     grasp_result=grasp_result)
-            else:
-                # 로봇이 이미 움직인 뒤 실패 or preview hold → latch
-                self._clear_neighbor_obstacles()
-                self.runtime_log.log(
-                    "pick_sequence_stopped",
-                    result_code=outcome["result_code"],
-                    place_status=place_status,
-                    current_joints_rad=self.current_joints,
-                )
-                self.get_logger().warn(
-                    f"PICK_SEQUENCE_HOLD place_status={place_status}; "
-                    "pick_complete not published, automatic scan paused")
-                self._hold_pick_sequence(outcome["hold_reason"])
-                return
+        if place_handled:
+            return
 
         self.get_logger().info("7 return to pick-start scan pose")
         # 직선 retreat 또는 marker place 완료 후 이번 pick이 시작된 scan pose로
