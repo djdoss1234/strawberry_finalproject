@@ -108,6 +108,14 @@ def grasp_variant_pose(variant, straw, ee_to_tcp_offset_m: float,
     return q_retry, approach_dir, ee_pre
 
 
+def legacy_grasp_endpoint(straw, grasp_offset_m: float,
+                          ee_to_tcp_offset_m: float, approach_dir):
+    """Return legacy final grasp ee endpoint for a grasp offset."""
+    return np.array(straw, dtype=float) - (
+        float(grasp_offset_m) + float(ee_to_tcp_offset_m)
+    ) * np.array(approach_dir, dtype=float)
+
+
 def measured_tcp_probe_depths(requested_depth_m: float, is_nw_high_target: bool,
                               measured_best_depth_m: float):
     if is_nw_high_target:

@@ -194,6 +194,7 @@ RealSense RGB-D
 - `grasp_candidate_policy.py` 분리: grasp offset/variant/depth probe/tie-break 정책
 - `grasp_candidate_policy.py` 확장: 다음 `grasp_search_executor.py` 분리를 위한 `GraspSearchResult` 컨테이너 추가
 - `grasp_candidate_policy.py` 확장: variant quaternion, approach direction, pre-approach endpoint 계산 분리
+- `grasp_candidate_policy.py` 확장: legacy grasp endpoint 계산 분리
 - `harvest_result_policy.py` 분리: grasp result에서 place gate와 sequence result code를 결정하는 정책
 - `open_stem_descent_policy.py` 분리: reached TCP Z와 KP1 Z 차이 기반 open-stem descent 계산
 - `pick_target_policy.py` 분리: wall-Y clamp, bias 적용, NW high target, x/z guard 계산

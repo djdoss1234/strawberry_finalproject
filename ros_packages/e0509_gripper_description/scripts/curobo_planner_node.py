@@ -43,6 +43,7 @@ from grasp_candidate_policy import (
     grasp_offsets_for_target,
     grasp_quat_variants_for_target,
     grasp_variant_pose,
+    legacy_grasp_endpoint,
     measured_tcp_probe_depths,
     should_replace_measured_best,
     variant_label,
@@ -1584,9 +1585,12 @@ class CuroboPlanner(Node):
                 # 음수가 되어 정확도 보장 목적이 깨진다.
                 if grasp_offset >= PRE_APPROACH_OFFSET:
                     continue
-                ee_g_try = straw - (
-                    grasp_offset + self._ee_to_tcp_offset_m
-                ) * approach_dir
+                ee_g_try = legacy_grasp_endpoint(
+                    straw,
+                    grasp_offset,
+                    self._ee_to_tcp_offset_m,
+                    approach_dir,
+                )
                 r_grasp = self.plan(pre_joints, ee_g_try.tolist(), q_retry, num_ik_seeds=32)
                 if r_grasp is None:
                     continue
