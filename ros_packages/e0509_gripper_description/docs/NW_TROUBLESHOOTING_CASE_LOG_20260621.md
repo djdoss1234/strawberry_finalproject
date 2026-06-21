@@ -135,12 +135,35 @@ import(정답은 `GRIPPER_CLOSE_SETTLE_SEC`) — `py_compile`은 import를 실�
 메서드로 모여있어 빠르게 찾고 고칠 수 있었음). 마지막으로 남아있던 큰 단일 블록인 place
 실행 로직(408줄, row2 분기 포함)도 `tray_place_executor.py`로 분리(`edb67de`) —
 `curobo_planner_node.py`가 2,461→2,069 lines. row2 known 이슈는 고치지 않고 그대로 이동만.
-이걸로 구조 분리는 사실상 끝 — 남은 큰 블록은 `__init__`(ROS 보일러플레이트)뿐이고 이건
-분리해도 이득이 없음(코드가 안 줄고 간접화만 늘어남).
+사용자가 "그래도 `__init__`이 왜 아직 큰지" 재확인 요청 → 다시 까보니 `__init__` 안에
+실제로 분리 가능한 두 블록이 있었음(앞선 "이득 없음" 판단이 부정확했음, 인정): cuRobo
+MotionGen 부트스트랩(~50줄, config 로딩+warmup)과 ~40개 파라미터 declare/read 블록(~136줄).
+둘 다 `planner_bootstrap.py`로 분리(`1836c92`) — 이동 전후 텍스트를 `self.`→`node.` 치환 후
+diff로 0줄 차이 확인(완전 동치 검증). `curobo_planner_node.py` 2,069→**1,898 lines**.
+남은 `__init__`(~280줄)은 ROS subscription/client/executor 생성 wiring이라 `self` 바인딩이
+꼭 필요해서 더 분리 안 함.
+
+**fusion/scanner 노드 전체 점검**: `strawberry_fusion_node.py`(1,050줄, `_loop()` 372줄)와
+`strawberry_yolo_node.py`(769줄, `loop()` 325줄)는 이번 리팩토링 작업 전까지 분리된 모듈이
+하나도 없었음(완전 monolithic) — 단, `strawberry_yolo_node.py`는 실제로는 **죽은 코드**임이
+확인됨(현재 launch 경로 `workspace_scan.launch.py`는 `strawberry_fusion_node.py`만 띄움,
+yolo_node는 미니프로젝트 시절 Grounding DINO 데모 launch에만 남아있음) — 우선순위 낮음.
+`scan_executor_node.py`(strawberry_motion 패키지, 1,225줄)는 실제 활성 경로 확인됨 →
+`_scan_sequence()`(245줄, 스캔 전체 상태머신)를 `_compute_scan_order`/`_scan_one_cell`/
+`_finish_collect_then_pick`/`_finish_scan_sequence` 4개로 내부 메서드 분리(`b686cbd`,
+파일 신규 생성 없이 같은 파일 안에서 분리 — 이 패키지엔 아직 policy/executor 모듈 컨벤션이
+없어서). 가장 큰 메서드가 245→127줄로 줄어듦. py_compile/colcon build/install space 확인
+통과, **실기 미검증**. `strawberry_fusion_node.py`는 grasp orientation 무시 버그(항목 10)와
+`stem_keypoint_depth_invalid` 인식률 이슈가 현재 활성 상태로 들어있는 파일이라 더 신중하게
+접근해야 함 — 이번엔 손 안 댐.
 
 ## 다음에 확인할 것
 
 - 항목 9(벽 콜리전으로 retreat plan 거절) — wall cuboid 제외 재계획 / fallback / 벽 등록위치
   보정 중 방향 결정 후 적용.
 - 항목 6(open descent 여유 0mm) 실기 결과.
+- `scan_executor_node.py` 분리(`b686cbd`) 실기 검증 — 다음 스캔 실행에서 전과 동일하게
+  동작하는지 확인.
+- `strawberry_fusion_node.py`(`_loop()` 372줄) 분리는 보류 중 — 활성 버그(항목 10, 인식률)와
+  섞여있어 진행 전 우선순위 재확인 필요.
 - 항목 10(grasp 방향 무시) — blast radius 검토 후 수정 여부 결정.
