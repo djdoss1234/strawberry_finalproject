@@ -1429,6 +1429,48 @@ class CuroboPlanner(Node):
         else:
             self._hold_pick_sequence("gripper_close_failed_retreat_failed")
 
+    def _execute_detach_and_retreat(self, final_approach_distance: float,
+                                    extra_advance_m: float,
+                                    tool_finish_executed_m: float,
+                                    tool_finish_executed_dir,
+                                    used_approach_dir,
+                                    grasp_joints):
+        self.get_logger().info(
+            f"4 detach pull — BASE -Z {DETACH_PULL_DOWN_MM:.0f}mm "
+            f"at {DETACH_PULL_VEL_MM_S:.0f}mm/s")
+        self._execute_pitch_detach()  # 실패해도 retreat은 항상 실행
+
+        # 실측 TCP 모델은 cuRobo가 pre-approach까지만 계획하므로 최종 MoveLine
+        # 전체를 역진한다. Legacy 모델은 기존 검증 baseline대로 extra advance만
+        # 역진하고 이후 joint-space 복귀를 사용한다.
+        reverse_distance_m = extra_advance_m
+        if self._measured_tcp_model:
+            reverse_distance_m += final_approach_distance - tool_finish_executed_m
+        reverse_ok = self._execute_retreat_steps(
+            build_straight_retreat_steps(
+                self._measured_tcp_model,
+                reverse_distance_m,
+                used_approach_dir,
+                tool_finish_executed_m,
+                tool_finish_executed_dir,
+                "RETREAT_BASE",
+                "RETREAT",
+            )
+        )
+        if not reverse_ok:
+            self.get_logger().error(
+                "ABORT: straight reverse retreat failed — holding current pose")
+            self._clear_neighbor_obstacles()
+            self._hold_pick_sequence("straight_reverse_retreat_failed")
+            return None
+
+        time.sleep(STRAIGHT_RETREAT_SETTLE_SEC)
+        return (
+            list(self.current_joints)
+            if self.current_joints is not None
+            else grasp_joints
+        )
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2215,41 +2257,16 @@ class CuroboPlanner(Node):
             )
             return
         # 4. BASE -Z 당기기로 줄기 분리 후 직선 역진 retreat
-        self.get_logger().info(
-            f"4 detach pull — BASE -Z {DETACH_PULL_DOWN_MM:.0f}mm "
-            f"at {DETACH_PULL_VEL_MM_S:.0f}mm/s")
-        self._execute_pitch_detach()  # 실패해도 retreat은 항상 실행
-
-        # 실측 TCP 모델은 cuRobo가 pre-approach까지만 계획하므로 최종 MoveLine
-        # 전체를 역진한다. Legacy 모델은 기존 검증 baseline대로 extra advance만
-        # 역진하고 이후 joint-space 복귀를 사용한다.
-        reverse_distance_m = extra_advance_m
-        if self._measured_tcp_model:
-            reverse_distance_m += final_approach_distance - tool_finish_executed_m
-        reverse_ok = self._execute_retreat_steps(
-            build_straight_retreat_steps(
-                self._measured_tcp_model,
-                reverse_distance_m,
-                used_approach_dir,
-                tool_finish_executed_m,
-                tool_finish_executed_dir,
-                "RETREAT_BASE",
-                "RETREAT",
-            )
+        retreat_joints = self._execute_detach_and_retreat(
+            final_approach_distance,
+            extra_advance_m,
+            tool_finish_executed_m,
+            tool_finish_executed_dir,
+            used_approach_dir,
+            grasp_joints,
         )
-        if not reverse_ok:
-            self.get_logger().error(
-                "ABORT: straight reverse retreat failed — holding current pose")
-            self._clear_neighbor_obstacles()
-            self._hold_pick_sequence("straight_reverse_retreat_failed")
+        if retreat_joints is None:
             return
-
-        time.sleep(STRAIGHT_RETREAT_SETTLE_SEC)
-        retreat_joints = (
-            list(self.current_joints)
-            if self.current_joints is not None
-            else grasp_joints
-        )
 
         # 4b. VERIFY_DETACH
         detach_result = "DETACH_UNVERIFIED"
