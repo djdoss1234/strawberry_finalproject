@@ -1557,6 +1557,51 @@ class CuroboPlanner(Node):
         self._hold_pick_sequence(outcome["hold_reason"])
         return True, return_start_joints
 
+    def _return_to_pick_start_and_complete(self, return_start_joints,
+                                           pick_start_joints,
+                                           grasp_result: str,
+                                           detach_result: str) -> bool:
+        self.get_logger().info("7 return to pick-start scan pose")
+        # 직선 retreat 또는 marker place 완료 후 이번 pick이 시작된 scan pose로
+        # 복귀한다. scan_executor는 같은 SW 셀의 다음 target을 이어서 전달한다.
+        pick_start_joints_deg = np.rad2deg(pick_start_joints).tolist()
+        pick_start_joints_deg = self._nearest_equivalent_joints(pick_start_joints_deg)
+        ok, _ = self.plan_to_fixed_joints_pose(
+            return_start_joints,
+            pick_start_joints_deg,
+            "pick-start scan pose after pick/place",
+            skip_swing_check=True,
+        )
+        if not ok:
+            self.get_logger().warn(
+                "pick-start scan pose after pick/place failed; holding current pose")
+            self._clear_neighbor_obstacles()
+            self.runtime_log.log(
+                "pick_sequence_stopped",
+                result_code="RETURN_TO_SCAN_FAILED",
+                current_joints_rad=self.current_joints,
+            )
+            self._hold_pick_sequence("return_to_scan_failed")
+            return False
+
+        self._clear_neighbor_obstacles()
+        self._reset_gripper()  # 다음 파지를 위해 approach 위치(600)로 복귀
+        self.pick_complete_pub.publish(Empty())
+        sequence_result_code = pick_sequence_result_code(grasp_result)
+        self.runtime_log.log(
+            "pick_sequence_complete",
+            result_code=sequence_result_code,
+            grasp_result=grasp_result,
+            detach_result=detach_result,
+            return_pose="pick_start_scan_pose",
+            marker_place_enabled=self._enable_marker_place,
+            marker_place_release_executed=(
+                self._enable_marker_place and self._execute_marker_place_release),
+            current_joints_rad=self.current_joints,
+        )
+        self.get_logger().info(f"=== PICK COMPLETE ({sequence_result_code}) ===")
+        return True
+
     def _pick(self, msg: PoseStamped):
         p = msg.pose.position
         input_quat_wxyz = quat_normalize_wxyz([
@@ -2371,42 +2416,12 @@ class CuroboPlanner(Node):
         if place_handled:
             return
 
-        self.get_logger().info("7 return to pick-start scan pose")
-        # 직선 retreat 또는 marker place 완료 후 이번 pick이 시작된 scan pose로
-        # 복귀한다. scan_executor는 같은 SW 셀의 다음 target을 이어서 전달한다.
-        pick_start_joints_deg = np.rad2deg(pick_start_joints).tolist()
-        pick_start_joints_deg = self._nearest_equivalent_joints(pick_start_joints_deg)
-        ok, _ = self.plan_to_fixed_joints_pose(
-            return_start_joints, pick_start_joints_deg, "pick-start scan pose after pick/place",
-            skip_swing_check=True)
-        if not ok:
-            self.get_logger().warn(
-                "pick-start scan pose after pick/place failed; holding current pose")
-            self._clear_neighbor_obstacles()
-            self.runtime_log.log(
-                "pick_sequence_stopped",
-                result_code="RETURN_TO_SCAN_FAILED",
-                current_joints_rad=self.current_joints,
-            )
-            self._hold_pick_sequence("return_to_scan_failed")
-            return
-
-        self._clear_neighbor_obstacles()
-        self._reset_gripper()  # 다음 파지를 위해 approach 위치(600)로 복귀
-        self.pick_complete_pub.publish(Empty())
-        sequence_result_code = pick_sequence_result_code(grasp_result)
-        self.runtime_log.log(
-            "pick_sequence_complete",
-            result_code=sequence_result_code,
-            grasp_result=grasp_result,
-            detach_result=detach_result,
-            return_pose="pick_start_scan_pose",
-            marker_place_enabled=self._enable_marker_place,
-            marker_place_release_executed=(
-                self._enable_marker_place and self._execute_marker_place_release),
-            current_joints_rad=self.current_joints,
+        self._return_to_pick_start_and_complete(
+            return_start_joints,
+            pick_start_joints,
+            grasp_result,
+            detach_result,
         )
-        self.get_logger().info(f"=== PICK COMPLETE ({sequence_result_code}) ===")
 
 
 def main():
