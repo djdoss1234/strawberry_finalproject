@@ -27,6 +27,7 @@ import pyrealsense2 as rs
 from ultralytics import YOLO
 from scipy.spatial.transform import Rotation as ScipyR
 from runtime_jsonl_logger import RuntimeJsonlLogger
+from fusion_bootstrap import declare_and_load_fusion_params
 
 # ── Joint names (Doosan E0509) ────────────────────────────────────────────────
 JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
@@ -54,12 +55,6 @@ COLOR_KP0    = (0, 140, 255)   # stem_base — orange
 COLOR_KP1    = (0, 0, 255)     # stem_mid  — red
 COLOR_KP2    = (0, 200, 0)     # stem_tip  — green
 SEG_ALPHA    = 0.35
-
-
-def _as_bool(value) -> bool:
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
 
 
 # ── E0509 FK (calibration-identical) ─────────────────────────────────────────
@@ -172,87 +167,7 @@ class StrawberryFusionNode(Node):
         self.runtime_log = RuntimeJsonlLogger(self.get_name())
 
         # ── parameters ────────────────────────────────────────────────────────
-        self.declare_parameter(
-            "seg_model",
-            "~/Downloads/share_yolo/share_yolo/strawberry_seg_best.pt")
-        self.declare_parameter(
-            "pose_model",
-            "~/Downloads/share_yolo/share_yolo/strawberry_pose_best.pt")
-        self.declare_parameter(
-            "calib_npz",
-            "~/doosan_ws/src/e0509_gripper_description/config/calibration_eye_in_hand_1.npz")
-        self.declare_parameter("yolo_conf",    0.25)
-        self.declare_parameter("kp_conf_min",  0.40)   # keypoint visibility threshold
-        self.declare_parameter("pick_kp_conf_min", 0.60)
-        self.declare_parameter("require_all_stem_keypoints", True)
-        self.declare_parameter("stem_segment_min_m", 0.005)
-        self.declare_parameter("stem_segment_max_m", 0.100)
-        self.declare_parameter("stem_total_max_m", 0.160)
-        # KP0 바로 위는 과실/잎과 닿기 쉽고, 꺾인 줄기는 전체 chord를 따르면
-        # 측방으로 빗나간다. KP0->KP1 국소 구간의 80% 지점을 목표로 삼는다.
-        # 아래 계산에서 segment 길이의 0.8배로 cap되므로 0.080m는 상한값이다.
-        self.declare_parameter("stem_grasp_offset_from_kp0_m", 0.080)
-        self.declare_parameter("stem_grasp_direction_mode", "kp0_to_kp1")
-        self.declare_parameter("grasp_target_base_z_trim_m", 0.000)
-        self.declare_parameter("infer_every",  3)       # run inference every N camera frames
-        self.declare_parameter("stable_hits_required", 4)
-        self.declare_parameter("target_position_window_size", 9)
-        self.declare_parameter("target_position_min_samples", 7)
-        self.declare_parameter("target_position_max_spread_m", 0.012)
-        self.declare_parameter("track_match_distance_m", 0.035)
-        self.declare_parameter("track_ttl_sec", 1.5)
-        self.declare_parameter("publish_period_sec", 1.0)
-        self.declare_parameter("target_lock_enabled", True)
-        self.declare_parameter("target_lock_ttl_sec", 3.0)
-        self.declare_parameter("target_switch_distance_m", 0.090)
-        self.declare_parameter("pick_target_min_z_m", 0.0)
-        self.declare_parameter("pick_target_max_z_m", 1.05)
-        self.declare_parameter("prefer_lower_z_target", False)
-        self.declare_parameter("show_display", True)
-        self.declare_parameter("show_cell_grid", True)
-
-        seg_path   = os.path.expanduser(self.get_parameter("seg_model").value)
-        pose_path  = os.path.expanduser(self.get_parameter("pose_model").value)
-        calib_path = os.path.expanduser(self.get_parameter("calib_npz").value)
-        self._conf    = self.get_parameter("yolo_conf").value
-        self._kp_min  = self.get_parameter("kp_conf_min").value
-        self._pick_kp_min = float(self.get_parameter("pick_kp_conf_min").value)
-        self._require_all_stem_kps = bool(
-            self.get_parameter("require_all_stem_keypoints").value)
-        self._stem_segment_min_m = float(
-            self.get_parameter("stem_segment_min_m").value)
-        self._stem_segment_max_m = float(
-            self.get_parameter("stem_segment_max_m").value)
-        self._stem_total_max_m = float(
-            self.get_parameter("stem_total_max_m").value)
-        self._stem_grasp_offset_m = max(
-            0.0, float(self.get_parameter("stem_grasp_offset_from_kp0_m").value))
-        self._stem_grasp_direction_mode = str(
-            self.get_parameter("stem_grasp_direction_mode").value)
-        self._grasp_target_base_z_trim_m = float(
-            self.get_parameter("grasp_target_base_z_trim_m").value)
-        self._infer_n = max(1, self.get_parameter("infer_every").value)
-        self._stable_hits = max(1, int(self.get_parameter("stable_hits_required").value))
-        self._position_window_size = max(
-            3, int(self.get_parameter("target_position_window_size").value))
-        self._position_min_samples = min(
-            self._position_window_size,
-            max(3, int(self.get_parameter("target_position_min_samples").value)),
-        )
-        self._position_max_spread_m = float(
-            self.get_parameter("target_position_max_spread_m").value)
-        self._track_match_dist = float(self.get_parameter("track_match_distance_m").value)
-        self._track_ttl_sec = float(self.get_parameter("track_ttl_sec").value)
-        self._publish_period_sec = float(self.get_parameter("publish_period_sec").value)
-        self._target_lock_enabled = _as_bool(self.get_parameter("target_lock_enabled").value)
-        self._target_lock_ttl_sec = float(self.get_parameter("target_lock_ttl_sec").value)
-        self._target_switch_dist = float(self.get_parameter("target_switch_distance_m").value)
-        self._pick_target_min_z_m = float(self.get_parameter("pick_target_min_z_m").value)
-        self._pick_target_max_z_m = float(self.get_parameter("pick_target_max_z_m").value)
-        self._prefer_lower_z_target = _as_bool(
-            self.get_parameter("prefer_lower_z_target").value)
-        self._display = self.get_parameter("show_display").value
-        self._show_cell_grid = _as_bool(self.get_parameter("show_cell_grid").value)
+        seg_path, pose_path, calib_path = declare_and_load_fusion_params(self)
 
         # ── calibration ───────────────────────────────────────────────────────
         self.get_logger().info(f"Loading calibration: {calib_path}")
