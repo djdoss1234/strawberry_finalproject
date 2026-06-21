@@ -154,8 +154,20 @@ yolo_node는 미니프로젝트 시절 Grounding DINO 데모 launch에만 남아
 파일 신규 생성 없이 같은 파일 안에서 분리 — 이 패키지엔 아직 policy/executor 모듈 컨벤션이
 없어서). 가장 큰 메서드가 245→127줄로 줄어듦. py_compile/colcon build/install space 확인
 통과, **실기 미검증**. `strawberry_fusion_node.py`는 grasp orientation 무시 버그(항목 10)와
-`stem_keypoint_depth_invalid` 인식률 이슈가 현재 활성 상태로 들어있는 파일이라 더 신중하게
-접근해야 함 — 이번엔 손 안 댐.
+`stem_keypoint_depth_invalid` 인식률 이슈가 현재 활성 상태로 들어있는 파일이지만, 사용자가
+명시적으로 진행 승인("fusion node도 진행해 최적화 하고 쪼개") → `_loop()`(372줄, 매 프레임
+호출되는 검출 파이프라인 전체)을 프레임 캡처/가드, YOLO 추론 캐싱, seg overlay 그리기,
+scene position publish, per-pose 융합/필터링/grasp 계산/트래킹의 5단계로 분리
+(`_capture_frame_and_guards`/`_run_or_reuse_inference`/`_draw_seg_overlays`/
+`_publish_scene_positions`/`_process_pose_detection`, `c65f29a`). 가장 큰 블록
+(`_process_pose_detection`, 241줄)을 포함해 5개 블록 전부 원본↔변환본 역치환 diff로 0줄
+차이 확인 후 적용. `continue`/bare `return`은 새 메서드의 `return None`으로, 루프 안의
+`if stable: ripe_candidates.append({...})`는 `candidate = None; if stable: candidate = {...}`
++ `return candidate`로, 호출부는 `if candidate is not None: ripe_candidates.append(candidate)`로
+변환(동작 동일 — append가 일어나는 조건이 정확히 일치). seg overlay에서 쓰는 `cls_color` 딕셔너리는
+per-pose 필터에서도 재사용되므로 파라미터로 전달. py_compile/실제 import/git diff --check/
+colcon build/install space 확인 전부 통과. **버그(항목 10, `stem_keypoint_depth_invalid`)는
+그대로 옮기기만 했고 고치지 않음, 실기 미검증.**
 
 ## 다음에 확인할 것
 
@@ -164,6 +176,6 @@ yolo_node는 미니프로젝트 시절 Grounding DINO 데모 launch에만 남아
 - 항목 6(open descent 여유 0mm) 실기 결과.
 - `scan_executor_node.py` 분리(`b686cbd`) 실기 검증 — 다음 스캔 실행에서 전과 동일하게
   동작하는지 확인.
-- `strawberry_fusion_node.py`(`_loop()` 372줄) 분리는 보류 중 — 활성 버그(항목 10, 인식률)와
-  섞여있어 진행 전 우선순위 재확인 필요.
+- `strawberry_fusion_node.py` `_loop()` 분리(`c65f29a`) 실기 검증 — 다음 스캔/검출 실행에서
+  전과 동일하게 동작하는지(특히 인식률·HUD 표시) 확인.
 - 항목 10(grasp 방향 무시) — blast radius 검토 후 수정 여부 결정.
