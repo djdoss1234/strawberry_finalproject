@@ -77,6 +77,7 @@ install(PROGRAMS
   scripts/pick_target_policy.py
   scripts/place_sequence_policy.py
   scripts/row2_place_policy.py
+  scripts/tray_place_executor.py
   scripts/tray_place_policy.py
   scripts/trajectory_guards.py
   scripts/pick_place_node.py
