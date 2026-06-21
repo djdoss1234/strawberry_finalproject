@@ -277,3 +277,14 @@ def measured_best_tuple(r_pre_for_variant, r_final_probe, variant,
         ee_pre.copy(),
         probe_target.copy(),
     )
+
+
+def leftmost_depth_limited(raw_x_m: float, selected_grasp_offset_m: float):
+    return raw_x_m < -0.30 and selected_grasp_offset_m >= 0.050
+
+
+def leftmost_rejected_offsets(selected_grasp_offset_m: float):
+    return [
+        value for value in LEFTMOST_GRASP_RETRY_OFFSETS
+        if value < selected_grasp_offset_m
+    ]

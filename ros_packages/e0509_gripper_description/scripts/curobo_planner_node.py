@@ -44,6 +44,8 @@ from grasp_candidate_policy import (
     grasp_quat_variants_for_target,
     grasp_variant_pose,
     legacy_grasp_endpoint,
+    leftmost_depth_limited,
+    leftmost_rejected_offsets,
     measured_best_tuple,
     measured_tcp_probe_log_message,
     measured_tcp_probe_depths,
@@ -1626,21 +1628,14 @@ class CuroboPlanner(Node):
         used_grasp_ee_pos = grasp_search.grasp_ee_pos
         measured_best_depth_m = grasp_search.measured_best_depth_m
 
-        if (
-            ret_pre is not None
-            and raw_straw[0] < -0.30
-            and used_grasp_offset >= 0.050
-        ):
+        if ret_pre is not None and leftmost_depth_limited(raw_straw[0], used_grasp_offset):
             self.get_logger().warn(
                 f"LEFTMOST_DEPTH_LIMITED: deeper 30/35/40/45mm endpoints rejected; "
                 f"using {used_grasp_offset*1000:.0f}mm stand-off")
             self.runtime_log.log(
                 "leftmost_depth_limited",
                 selected_grasp_offset_m=used_grasp_offset,
-                attempted_offsets_m=[
-                    value for value in LEFTMOST_GRASP_RETRY_OFFSETS
-                    if value < used_grasp_offset
-                ],
+                attempted_offsets_m=leftmost_rejected_offsets(used_grasp_offset),
                 reason="deeper_endpoints_rejected",
             )
 
