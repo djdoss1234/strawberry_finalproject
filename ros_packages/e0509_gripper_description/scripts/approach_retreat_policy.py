@@ -19,6 +19,38 @@ class ApproachDistanceResult:
     final_distance_m: float
 
 
+@dataclass(frozen=True)
+class ToolFinishDirection:
+    use_base_line: bool
+    is_published_roll: bool
+    direction: np.ndarray
+
+
+def tool_finish_base_direction(grasp_variant, approach_dir,
+                               tilt_threshold: float = 1e-3):
+    """Return whether final tool-finish should use horizontal BASE motion."""
+    is_published_roll = (
+        grasp_variant is not None
+        and grasp_variant[0] == "published_roll"
+    )
+    approach_dir = np.array(approach_dir, dtype=float)
+    use_base_line = (
+        is_published_roll
+        or abs(float(approach_dir[2])) > float(tilt_threshold)
+    )
+    if not use_base_line:
+        return ToolFinishDirection(False, is_published_roll, approach_dir)
+
+    horiz_dir = approach_dir.copy()
+    horiz_dir[2] = 0.0
+    horiz_norm = float(np.linalg.norm(horiz_dir))
+    if horiz_norm > 1e-6:
+        horiz_dir = horiz_dir / horiz_norm
+    else:
+        horiz_dir = approach_dir
+    return ToolFinishDirection(True, is_published_roll, horiz_dir)
+
+
 def measured_tcp_approach_distance(raw_y_m: float,
                                    straw,
                                    used_pre_ee_pos,

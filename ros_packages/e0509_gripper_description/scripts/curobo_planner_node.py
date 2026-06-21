@@ -38,6 +38,7 @@ from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import (
     build_straight_retreat_steps,
     measured_tcp_approach_distance,
+    tool_finish_base_direction,
 )
 from curobo_planning_adapter import CuroboPlanningAdapter
 from doosan_motion_client import DoosanMotionClient
@@ -1815,35 +1816,27 @@ class CuroboPlanner(Node):
                         # 아니라 실제 선택된 approach_dir의 Z 성분으로 분기한다.
                         # 틸트가 0이면 horiz_dir == used_approach_dir이라 SW처럼
                         # 평평한 접근은 동작이 전혀 안 바뀐다.
-                        if (
-                            used_grasp_variant is not None
-                            and used_grasp_variant[0] == "published_roll"
-                        ) or abs(float(used_approach_dir[2])) > 1e-3:
-                            horiz_dir = np.array(used_approach_dir, dtype=float)
-                            horiz_dir[2] = 0.0
-                            horiz_norm = float(np.linalg.norm(horiz_dir))
-                            if horiz_norm > 1e-6:
-                                horiz_dir = horiz_dir / horiz_norm
-                            else:
-                                horiz_dir = np.array(used_approach_dir, dtype=float)
-                            if (
-                                used_grasp_variant is not None
-                                and used_grasp_variant[0] == "published_roll"
-                            ):
+                        finish_direction = tool_finish_base_direction(
+                            used_grasp_variant,
+                            used_approach_dir,
+                        )
+                        if finish_direction.use_base_line:
+                            if finish_direction.is_published_roll:
                                 self.get_logger().warn(
                                     "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
                                     "using BASE relative line; TOOL +Z returned "
                                     "success/no-motion in this branch")
                             tool_finish_ok = self.execute_base_relative_line(
-                                remaining_tool_line_m * horiz_dir,
+                                remaining_tool_line_m * finish_direction.direction,
                                 "FINAL_APPROACH_TOOL_FINISH",
                                 vel_mm_s=FINAL_APPROACH_VEL_MM_S,
                                 acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
                             )
-                            tool_finish_delta = remaining_tool_line_m * horiz_dir
+                            tool_finish_delta = (
+                                remaining_tool_line_m * finish_direction.direction)
                             if tool_finish_ok:
                                 tool_finish_executed_m = remaining_tool_line_m
-                                tool_finish_executed_dir = horiz_dir
+                                tool_finish_executed_dir = finish_direction.direction
                         else:
                             tool_finish_ok = self.execute_tool_z_line(
                                 remaining_tool_line_m,
@@ -1957,35 +1950,27 @@ class CuroboPlanner(Node):
                                 # see horizontal-only rationale at the other
                                 # FINAL_APPROACH_TOOL_FINISH call site above —
                                 # gated on actual tilt, not target height.
-                                if (
-                                    used_grasp_variant is not None
-                                    and used_grasp_variant[0] == "published_roll"
-                                ) or abs(float(used_approach_dir[2])) > 1e-3:
-                                    horiz_dir = np.array(used_approach_dir, dtype=float)
-                                    horiz_dir[2] = 0.0
-                                    horiz_norm = float(np.linalg.norm(horiz_dir))
-                                    if horiz_norm > 1e-6:
-                                        horiz_dir = horiz_dir / horiz_norm
-                                    else:
-                                        horiz_dir = np.array(used_approach_dir, dtype=float)
-                                    if (
-                                        used_grasp_variant is not None
-                                        and used_grasp_variant[0] == "published_roll"
-                                    ):
+                                finish_direction = tool_finish_base_direction(
+                                    used_grasp_variant,
+                                    used_approach_dir,
+                                )
+                                if finish_direction.use_base_line:
+                                    if finish_direction.is_published_roll:
                                         self.get_logger().warn(
                                             "FINAL_APPROACH_TOOL_FINISH_BASE_FOR_PUBLISHED_ROLL: "
                                             "using BASE relative line; TOOL +Z returned "
                                             "success/no-motion in this branch")
                                     tool_finish_ok = self.execute_base_relative_line(
-                                        remaining_tool_line_m * horiz_dir,
+                                        remaining_tool_line_m * finish_direction.direction,
                                         "FINAL_APPROACH_TOOL_FINISH",
                                         vel_mm_s=FINAL_APPROACH_VEL_MM_S,
                                         acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
                                     )
-                                    tool_finish_delta = remaining_tool_line_m * horiz_dir
+                                    tool_finish_delta = (
+                                        remaining_tool_line_m * finish_direction.direction)
                                     if tool_finish_ok:
                                         tool_finish_executed_m = remaining_tool_line_m
-                                        tool_finish_executed_dir = horiz_dir
+                                        tool_finish_executed_dir = finish_direction.direction
                                 else:
                                     tool_finish_ok = self.execute_tool_z_line(
                                         remaining_tool_line_m,
