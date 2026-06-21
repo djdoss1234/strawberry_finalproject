@@ -83,6 +83,77 @@ class TrayPlaceExecutor:
     def _current_joints(self):
         return self._current_joints_getter()
 
+    def _search_marker_place_above(self, target, tray_view_joints, tray_view_quat,
+                                    tray_view_fk_pos, json_place_quat, quat_delta_deg):
+        default_above_pos_m = [v / 1000.0 for v in target["above"][:3]]
+        self._log().info(
+            f"MARKER_PLACE_ABOVE cuRobo "
+            f"xyz={[round(v, 1) for v in target['above'][:3]]}mm "
+            f"abc={[round(v, 1) for v in target['above'][3:]]}deg")
+        above_plan = None
+        selected_orientation_name = None
+        above_quat = None
+        selected_release_pos_m = None
+        selected_above_pos_m = None
+        requested_clearance = self.marker_place_above_clearance_m
+        clearance_candidates = unique_clearance_candidates(requested_clearance)
+
+        for clearance_m in clearance_candidates:
+            for orientation_name, candidate_quat in marker_place_orientation_candidates(
+                    tray_view_quat, default_above_pos_m):
+                candidate = marker_place_candidate_target(
+                    target,
+                    candidate_quat,
+                    clearance_m,
+                    requested_clearance,
+                    self.measured_tcp_model,
+                )
+                self._log().info(
+                    f"MARKER_PLACE_ABOVE trying clearance={clearance_m*1000:.0f}mm "
+                    f"orientation={orientation_name} "
+                    f"tcp_r={candidate['tcp_radius_m']:.3f}m "
+                    f"flange_r={candidate['flange_radius_m']:.3f}m "
+                    f"goal_mm={[round(v * 1000, 1) for v in candidate['above_pos_m']]}")
+                candidate_plan = self._plan(
+                    tray_view_joints, candidate["above_pos_m"], candidate_quat,
+                    num_ik_seeds=64, max_attempts=3, timeout_sec=2.0)
+                if candidate_plan is not None:
+                    above_plan = candidate_plan
+                    above_quat = candidate_quat
+                    selected_orientation_name = orientation_name
+                    selected_release_pos_m = candidate["release_pos_m"]
+                    selected_above_pos_m = candidate["above_pos_m"]
+                    selected_clearance_m = clearance_m
+                    break
+            if above_plan is not None:
+                break
+        if above_plan is None:
+            self._log().error(
+                "MARKER_PLACE_BLOCKED: all above orientation candidates failed; "
+                "holding fruit")
+            return None
+        self._log().info(
+            f"MARKER_PLACE_ORIENTATION selected={selected_orientation_name} "
+            f"clearance={selected_clearance_m*1000:.0f}mm")
+        self.runtime_log.log(
+            "marker_place_orientation_selected",
+            source=selected_orientation_name,
+            tray_view_fk_pos_m=tray_view_fk_pos,
+            selected_quat_wxyz=above_quat,
+            selected_above_pos_m=selected_above_pos_m,
+            selected_release_pos_m=selected_release_pos_m,
+            selected_clearance_m=selected_clearance_m,
+            tray_view_quat_wxyz=tray_view_quat,
+            json_quat_wxyz=json_place_quat,
+            tray_view_json_angular_delta_deg=quat_delta_deg,
+        )
+        return {
+            "above_plan": above_plan,
+            "above_quat": above_quat,
+            "selected_above_pos_m": selected_above_pos_m,
+            "selected_release_pos_m": selected_release_pos_m,
+        }
+
     def execute_marker_place_after_retreat(self, retreat_joints):
         """Marker-derived place. Release 승인 전에는 above에서 정지한다.
 
@@ -136,68 +207,15 @@ class TrayPlaceExecutor:
         # release/above 위치를 contact point에서 다시 계산한다. Tray contact가 이미
         # 면에서 60mm 위이므로, 100mm ABOVE가 작업반경 경계에서 IK_FAIL이면 더 낮은
         # clearance도 안전 후보로 탐색한다.
-        default_above_pos_m = [v / 1000.0 for v in target["above"][:3]]
-        self._log().info(
-            f"MARKER_PLACE_ABOVE cuRobo "
-            f"xyz={[round(v, 1) for v in target['above'][:3]]}mm "
-            f"abc={[round(v, 1) for v in target['above'][3:]]}deg")
-        above_plan = None
-        selected_orientation_name = None
-        above_quat = None
-        selected_release_pos_m = None
-        selected_above_pos_m = None
-        requested_clearance = self.marker_place_above_clearance_m
-        clearance_candidates = unique_clearance_candidates(requested_clearance)
-
-        for clearance_m in clearance_candidates:
-            for orientation_name, candidate_quat in marker_place_orientation_candidates(
-                    tray_view_quat, default_above_pos_m):
-                candidate = marker_place_candidate_target(
-                    target,
-                    candidate_quat,
-                    clearance_m,
-                    requested_clearance,
-                    self.measured_tcp_model,
-                )
-                self._log().info(
-                    f"MARKER_PLACE_ABOVE trying clearance={clearance_m*1000:.0f}mm "
-                    f"orientation={orientation_name} "
-                    f"tcp_r={candidate['tcp_radius_m']:.3f}m "
-                    f"flange_r={candidate['flange_radius_m']:.3f}m "
-                    f"goal_mm={[round(v * 1000, 1) for v in candidate['above_pos_m']]}")
-                candidate_plan = self._plan(
-                    tray_view_joints, candidate["above_pos_m"], candidate_quat,
-                    num_ik_seeds=64, max_attempts=3, timeout_sec=2.0)
-                if candidate_plan is not None:
-                    above_plan = candidate_plan
-                    above_quat = candidate_quat
-                    selected_orientation_name = orientation_name
-                    selected_release_pos_m = candidate["release_pos_m"]
-                    selected_above_pos_m = candidate["above_pos_m"]
-                    selected_clearance_m = clearance_m
-                    break
-            if above_plan is not None:
-                break
-        if above_plan is None:
-            self._log().error(
-                "MARKER_PLACE_BLOCKED: all above orientation candidates failed; "
-                "holding fruit")
+        above_search = self._search_marker_place_above(
+            target, tray_view_joints, tray_view_quat, tray_view_fk_pos,
+            json_place_quat, quat_delta_deg)
+        if above_search is None:
             return "failed", tray_view_joints
-        self._log().info(
-            f"MARKER_PLACE_ORIENTATION selected={selected_orientation_name} "
-            f"clearance={selected_clearance_m*1000:.0f}mm")
-        self.runtime_log.log(
-            "marker_place_orientation_selected",
-            source=selected_orientation_name,
-            tray_view_fk_pos_m=tray_view_fk_pos,
-            selected_quat_wxyz=above_quat,
-            selected_above_pos_m=selected_above_pos_m,
-            selected_release_pos_m=selected_release_pos_m,
-            selected_clearance_m=selected_clearance_m,
-            tray_view_quat_wxyz=tray_view_quat,
-            json_quat_wxyz=json_place_quat,
-            tray_view_json_angular_delta_deg=quat_delta_deg,
-        )
+        above_plan = above_search["above_plan"]
+        above_quat = above_search["above_quat"]
+        selected_above_pos_m = above_search["selected_above_pos_m"]
+        selected_release_pos_m = above_search["selected_release_pos_m"]
         ok_above = self._execute_spline(*above_plan)
         above_joints = list(
             above_plan[0][-1].tolist() if ok_above else tray_view_joints)
@@ -267,13 +285,11 @@ class TrayPlaceExecutor:
         )
         return "success", list(self._current_joints or tray_view_joints)
 
-    def execute_taught_slot0_place_reference_after_retreat(self, retreat_joints):
-        """Slot0 FK와 실측 격자 벡터로 생성한 슬롯에 수직 Place한다."""
-        slot_index = self._slot_idx_getter()
+    def _compute_taught_slot_above_target(self, slot_index):
         if not 0 <= slot_index < TAUGHT_TRAY_SLOT_COUNT:
             self._log().error(
                 f"TAUGHT_TRAY_PLACE_COMPLETE: slot index {slot_index} out of range")
-            return "tray_complete", retreat_joints
+            return None
         self._log().warn(
             f"TAUGHT_TRAY_GRID_PLACE active: slot={slot_index}; fixed tray pose only; "
             "marker localization is bypassed")
@@ -311,6 +327,29 @@ class TrayPlaceExecutor:
             f"TAUGHT_TRAY_SLOT{slot_index}_ABOVE generated from Slot0 FK + grid offset: "
             f"clearance={clearance_m*1000:.0f}mm "
             f"goal_mm={[round(v * 1000, 1) for v in above_pos_m]}")
+        return {
+            "is_row2": is_row2,
+            "reference_deg": reference_deg,
+            "release_fk_quat": release_fk_quat,
+            "slot_offset_m": slot_offset_m,
+            "release_pos_m": release_pos_m,
+            "above_pos_m": above_pos_m,
+            "clearance_m": clearance_m,
+        }
+
+    def execute_taught_slot0_place_reference_after_retreat(self, retreat_joints):
+        """Slot0 FK와 실측 격자 벡터로 생성한 슬롯에 수직 Place한다."""
+        slot_index = self._slot_idx_getter()
+        above_target = self._compute_taught_slot_above_target(slot_index)
+        if above_target is None:
+            return "tray_complete", retreat_joints
+        is_row2 = above_target["is_row2"]
+        reference_deg = above_target["reference_deg"]
+        release_fk_quat = above_target["release_fk_quat"]
+        slot_offset_m = above_target["slot_offset_m"]
+        release_pos_m = above_target["release_pos_m"]
+        above_pos_m = above_target["above_pos_m"]
+        clearance_m = above_target["clearance_m"]
         self._ensure_operation_speed(30)
         above_plan = self._plan(
             retreat_joints, above_pos_m, release_fk_quat,
