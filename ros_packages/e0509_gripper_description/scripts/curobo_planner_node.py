@@ -38,6 +38,7 @@ from curobo_kinematics_adapter import CuroboKinematicsAdapter
 from approach_retreat_policy import (
     build_straight_retreat_steps,
     final_approach_fallback_depths,
+    FinalApproachState,
     measured_tcp_approach_distance,
     tool_finish_base_direction,
 )
@@ -2150,6 +2151,12 @@ class CuroboPlanner(Node):
             used_approach_dir,
             used_grasp_offset,
         )
+        final_state = FinalApproachState(
+            final_approach_distance,
+            used_grasp_ee_pos,
+            tool_finish_executed_m,
+            tool_finish_executed_dir,
+        )
         if not self.execute_spline(*ret_pre):
             self.get_logger().error("ABORT: pre-approach spline 실패")
             self._abort_pick_with_complete()
@@ -2186,10 +2193,10 @@ class CuroboPlanner(Node):
                         "FINAL_APPROACH_PRECOMPUTED_CUROBO "
                         f"depth={selected_curobo_depth_m*1000:.0f}mm "
                         "(reusing probe plan; no extra IK fallback search)")
-                    final_approach_distance = selected_curobo_depth_m
-                    used_grasp_ee_pos = (
+                    final_state.distance_m = selected_curobo_depth_m
+                    final_state.grasp_ee_pos = (
                         used_pre_ee_pos
-                        + final_approach_distance * used_approach_dir)
+                        + final_state.distance_m * used_approach_dir)
                     remaining_tool_line_m = (
                         requested_final_approach_distance
                         - selected_curobo_depth_m)
@@ -2213,14 +2220,16 @@ class CuroboPlanner(Node):
                         if not tool_finish_ok:
                             approach_ok = False
                         else:
-                            final_approach_distance = (
-                                selected_curobo_depth_m + remaining_tool_line_m)
-                            used_grasp_ee_pos = (
-                                used_grasp_ee_pos + tool_finish_delta)
+                            final_state.apply_tool_finish(
+                                selected_curobo_depth_m,
+                                remaining_tool_line_m,
+                                tool_finish_delta,
+                                tool_finish_executed_dir,
+                            )
                             self.runtime_log.log(
                                 "final_approach_tool_finish_success",
-                                executed_total_m=final_approach_distance,
-                                horizontal_only=tool_finish_executed_dir is not None,
+                                executed_total_m=final_state.distance_m,
+                                horizontal_only=final_state.tool_finish_executed_dir is not None,
                             )
                 else:
                     self.get_logger().warn(
@@ -2280,8 +2289,8 @@ class CuroboPlanner(Node):
                             continue
                         fallback_ok = self.execute_spline(*fallback_plan)
                         if fallback_ok:
-                            final_approach_distance = depth_m
-                            used_grasp_ee_pos = fallback_target.copy()
+                            final_state.distance_m = depth_m
+                            final_state.grasp_ee_pos = fallback_target.copy()
                             self.runtime_log.log(
                                 "final_approach_fallback_success",
                                 controller="curobo_plus_doosan_move_spline_joint",
@@ -2310,14 +2319,16 @@ class CuroboPlanner(Node):
                                 if not tool_finish_ok:
                                     fallback_ok = False
                                     break
-                                final_approach_distance = (
-                                    depth_m + remaining_tool_line_m)
-                                used_grasp_ee_pos = (
-                                    used_grasp_ee_pos + tool_finish_delta)
+                                final_state.apply_tool_finish(
+                                    depth_m,
+                                    remaining_tool_line_m,
+                                    tool_finish_delta,
+                                    tool_finish_executed_dir,
+                                )
                                 self.runtime_log.log(
                                     "final_approach_tool_finish_success",
-                                    executed_total_m=final_approach_distance,
-                                    horizontal_only=tool_finish_executed_dir is not None,
+                                    executed_total_m=final_state.distance_m,
+                                    horizontal_only=final_state.tool_finish_executed_dir is not None,
                                 )
                             break
                 if not fallback_ok:
@@ -2333,9 +2344,12 @@ class CuroboPlanner(Node):
                 raw_straw[0],
                 used_grasp_offset,
                 used_approach_dir,
-                used_grasp_ee_pos,
+                final_state.grasp_ee_pos,
             )
         )
+        final_approach_distance = final_state.distance_m
+        tool_finish_executed_m = final_state.tool_finish_executed_m
+        tool_finish_executed_dir = final_state.tool_finish_executed_dir
         if not extra_ok:
             return
 

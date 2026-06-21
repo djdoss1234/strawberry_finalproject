@@ -26,6 +26,21 @@ class ToolFinishDirection:
     direction: np.ndarray
 
 
+@dataclass
+class FinalApproachState:
+    distance_m: float
+    grasp_ee_pos: object
+    tool_finish_executed_m: float = 0.0
+    tool_finish_executed_dir: object = None
+
+    def apply_tool_finish(self, base_depth_m: float, finish_distance_m: float,
+                          finish_delta, finish_dir):
+        self.distance_m = float(base_depth_m) + float(finish_distance_m)
+        self.grasp_ee_pos = self.grasp_ee_pos + finish_delta
+        self.tool_finish_executed_m = finish_distance_m
+        self.tool_finish_executed_dir = finish_dir
+
+
 def tool_finish_base_direction(grasp_variant, approach_dir,
                                tilt_threshold: float = 1e-3):
     """Return whether final tool-finish should use horizontal BASE motion."""
