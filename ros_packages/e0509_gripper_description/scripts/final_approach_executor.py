@@ -69,7 +69,9 @@ class FinalApproachExecutor:
                             requested_total_m: float,
                             used_grasp_variant,
                             used_approach_dir,
-                            failure_context: str):
+                            failure_context: str,
+                            current_ee_pos=None,
+                            used_grasp_quat=None):
         self._log().warn(
             "FINAL_APPROACH_TOOL_FINISH: cuRobo reached "
             f"{curobo_depth_m*1000:.0f}mm only; executing "
@@ -99,7 +101,6 @@ class FinalApproachExecutor:
                 acc_mm_s2=FINAL_APPROACH_ACC_MM_S2,
             )
             tool_finish_delta = remaining_tool_line_m * finish_direction.direction
-            tool_finish_dir = finish_direction.direction if tool_finish_ok else None
         else:
             tool_finish_ok = self._execute_tool_z_line(
                 remaining_tool_line_m,
@@ -110,7 +111,47 @@ class FinalApproachExecutor:
             )
             tool_finish_delta = remaining_tool_line_m * np.array(
                 used_approach_dir, dtype=float)
-            tool_finish_dir = None
+
+        if (
+            not tool_finish_ok
+            and current_ee_pos is not None
+            and used_grasp_quat is not None
+            and self._current_joints() is not None
+        ):
+            # raw MoveLine can reject a straight Cartesian path that passes
+            # near a singularity even when the endpoint itself is reachable
+            # (observed real-world: identical target succeeded once, then
+            # failed instantly on a retry with a slightly different start
+            # joint config). cuRobo searches joint space directly, so it can
+            # still reach the same endpoint via a non-straight path. The
+            # geometric delta (tool_finish_delta/dir) is unchanged either
+            # way -- only the execution mechanism differs -- so retreat's
+            # tilt/horizontal leg bookkeeping still sees the right direction.
+            retry_target = np.array(current_ee_pos, dtype=float) + tool_finish_delta
+            self._log().warn(
+                "FINAL_APPROACH_TOOL_FINISH_CUROBO_RETRY: raw MoveLine "
+                f"failed after {failure_context}; trying cuRobo plan "
+                f"directly to {[round(v * 1000, 1) for v in retry_target]}mm")
+            retry_plan = self._plan(
+                self._current_joints(),
+                retry_target.tolist(),
+                used_grasp_quat,
+                num_ik_seeds=24,
+                max_attempts=2,
+                timeout_sec=1.5,
+                max_joint_delta_deg=90.0,
+            )
+            tool_finish_ok = retry_plan is not None and self._execute_spline(*retry_plan)
+            self.runtime_log.log(
+                "final_approach_tool_finish_curobo_retry",
+                success=tool_finish_ok,
+                target_pos_m=retry_target.tolist(),
+                failure_context=failure_context,
+            )
+
+        tool_finish_dir = (
+            finish_direction.direction if finish_direction.use_base_line else None
+        ) if tool_finish_ok else None
 
         if not tool_finish_ok:
             self._log().error(
@@ -141,25 +182,19 @@ class FinalApproachExecutor:
         target_plane_dist = approach_distance.target_plane_dist_m
         uncapped_distance = approach_distance.uncapped_distance_m
         final_approach_distance = approach_distance.final_distance_m
+        self.runtime_log.log(
+            "measured_tcp_final_distance",
+            raw_y_m=float(raw_straw[1]),
+            clamped_target_y_m=float(straw[1]),
+            wall_y_clamped=bool(wall_y_clamped),
+            pre_ee_pos_m=np.array(used_pre_ee_pos, dtype=float).tolist(),
+            approach_dir=np.array(used_approach_dir, dtype=float).tolist(),
+            target_plane_distance_m=target_plane_dist,
+            uncapped_distance_m=uncapped_distance,
+            final_distance_m=final_approach_distance,
+        )
 
-        if self._flat_grasp_only and wall_y_clamped:
-            # straw[1] (and therefore target_plane_dist) was clamped to the
-            # registered wall surface, so it understates how far the real
-            # target actually is -- capping to it here would systematically
-            # stop short of the stem. Skip the cap and fall through to the
-            # same near-max push used for non-flat/legacy targets instead.
-            self._log().warn(
-                "FLAT_GRASP_TARGET_PLANE_CAP_SKIPPED: wall_y_clamped=True, "
-                "target_plane_dist is unreliable here; using uncapped "
-                f"distance {final_approach_distance*1000:.0f}mm instead of "
-                f"capping to target_plane={target_plane_dist*1000:.0f}mm")
-            self.runtime_log.log(
-                "flat_grasp_target_plane_cap_skipped",
-                reason="wall_y_clamped",
-                target_plane_distance_m=target_plane_dist,
-                uncapped_distance_m=final_approach_distance,
-            )
-        elif self._flat_grasp_only:
+        if self._flat_grasp_only:
             before_flat_cap_m = final_approach_distance
             flat_target_plane_m = (
                 target_plane_dist + self._flat_grasp_target_plane_margin_m
@@ -171,6 +206,11 @@ class FinalApproachExecutor:
             # push past the fruit and frequently return success/no-motion.
             # Keep a small configurable margin so the jaws reach past the
             # detected KP1 plane instead of closing in front of the stem.
+            #
+            # Even when raw Y is clamped to the wall, the uncapped 180 mm push
+            # repeatedly fails on NW-flat left targets.  In flat mode, prefer
+            # the measured target-plane segment plus margin over a blind long
+            # push; if this is short, the caller can raise the margin profile.
             final_approach_distance = max(
                 0.0,
                 min(final_approach_distance, flat_target_plane_m),
@@ -181,13 +221,15 @@ class FinalApproachExecutor:
                     f"{before_flat_cap_m*1000:.0f}mm -> "
                     f"{final_approach_distance*1000:.0f}mm "
                     "(SW-style flat approach uses target-plane distance "
-                    f"+ {self._flat_grasp_target_plane_margin_m*1000:.0f}mm margin)")
+                    f"+ {self._flat_grasp_target_plane_margin_m*1000:.0f}mm margin; "
+                    f"wall_y_clamped={bool(wall_y_clamped)})")
                 self.runtime_log.log(
                     "flat_grasp_target_plane_cap",
                     before_m=before_flat_cap_m,
                     after_m=final_approach_distance,
                     target_plane_distance_m=target_plane_dist,
                     margin_m=self._flat_grasp_target_plane_margin_m,
+                    wall_y_clamped=bool(wall_y_clamped),
                 )
 
         if (
@@ -238,7 +280,8 @@ class FinalApproachExecutor:
                         requested_distance_m: float,
                         used_pre_ee_pos,
                         used_grasp_variant,
-                        used_approach_dir):
+                        used_approach_dir,
+                        used_grasp_quat=None):
         if (
             not self._measured_tcp_model
             or not self._direct_curobo_final_approach_for_measured_tcp
@@ -300,6 +343,8 @@ class FinalApproachExecutor:
                     used_grasp_variant,
                     used_approach_dir,
                     "precomputed cuRobo final approach",
+                    current_ee_pos=final_state.grasp_ee_pos,
+                    used_grasp_quat=used_grasp_quat,
                 )
                 if not tool_finish_ok:
                     approach_ok = False
@@ -398,6 +443,8 @@ class FinalApproachExecutor:
                         used_grasp_variant,
                         used_approach_dir,
                         "cuRobo shallow fallback",
+                        current_ee_pos=final_state.grasp_ee_pos,
+                        used_grasp_quat=used_grasp_quat,
                     )
                     if not tool_finish_ok:
                         fallback_ok = False
@@ -437,6 +484,7 @@ class FinalApproachExecutor:
                 used_pre_ee_pos,
                 used_grasp_variant,
                 used_approach_dir,
+                used_grasp_quat,
             )
         )
         if not precomputed_final_attempted and self._measured_tcp_model:

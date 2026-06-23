@@ -37,6 +37,7 @@ from harvest_motion_params import (
     GRIPPER_APPROACH_POS,
     LEFTMOST_EXTRA_ADVANCE_VEL_MM_S,
     LEFTMOST_GRASP_X_CORR_M,
+    MAX_HARVEST_JOINT_DELTA_DEG,
     NW_HIGH_TARGET_Y_PLANE_RELAX_M,
     PRE_APPROACH_OFFSET,
     PRE_APPROACH_SETTLE_SEC,
@@ -169,6 +170,9 @@ class PickSequenceExecutor:
                 reached_z_m=descent_info["reached_z_m"],
                 overshoot_above_kp1_m=descent_info["overshoot_above_kp1_m"],
                 extra_below_kp1_m=descent_info["extra_below_kp1_m"],
+                requested_descent_m=descent_info.get("requested_descent_m"),
+                minimum_executable_clamp_m=descent_info.get(
+                    "minimum_executable_clamp_m", 0.0),
                 executed_descent_m=descent_info["executed_descent_m"],
                 selected_variant=used_grasp_variant,
             )
@@ -297,6 +301,13 @@ class PickSequenceExecutor:
                 grasp_result=grasp_result,
                 reason=place_block_reason,
             )
+            if self._enable_marker_place:
+                self._clear_neighbor_obstacles_fn()
+                self._log().warn(
+                    "PICK_SEQUENCE_HOLD place gate blocked while place is enabled; "
+                    "holding fruit instead of returning to scan pose and opening gripper")
+                self._hold_pick_sequence_fn("place_gate_blocked")
+                return True, retreat_joints
 
         return_start_joints = retreat_joints
         if not self._enable_marker_place or not allow_place:
@@ -348,11 +359,17 @@ class PickSequenceExecutor:
             self._hold_pick_sequence_fn(outcome["hold_reason"])
             return True, return_start_joints
         if outcome["action"] == "skip":
-            # tray 없음/stale — place 생략, scan 복귀
-            self._log().warn("PLACE_SKIPPED: tray unavailable; returning to scan")
+            # place가 켜진 상태에서 tray/taught target이 없으면 scan pose로
+            # 돌아가며 gripper reset(600)을 실행하지 않는다. 실제 과실을 들고
+            # 있으면 scan pose에서 떨어뜨리는 사고가 된다.
+            self._clear_neighbor_obstacles_fn()
+            self._log().warn(
+                "PLACE_SKIPPED: tray unavailable while place is enabled; "
+                "holding fruit instead of returning to scan pose and opening gripper")
             self.runtime_log.log("place_skipped", reason=outcome["reason"],
                                  grasp_result=grasp_result)
-            return False, return_start_joints
+            self._hold_pick_sequence_fn("place_skipped")
+            return True, return_start_joints
 
         # 로봇이 이미 움직인 뒤 실패 or preview hold → latch
         self._clear_neighbor_obstacles_fn()
@@ -385,15 +402,19 @@ class PickSequenceExecutor:
         )
         if not ok:
             self._log().warn(
-                "pick-start scan pose after pick/place failed; holding current pose")
+                "pick-start scan pose after pick/place failed; keeping current pose "
+                "but publishing pick_complete so the scan executor can continue")
             self._clear_neighbor_obstacles_fn()
             self.runtime_log.log(
                 "pick_sequence_stopped",
                 result_code="RETURN_TO_SCAN_FAILED",
                 current_joints_rad=self._current_joints(),
+                pick_complete_published=True,
+                recovery="continue_scan_after_return_failure",
             )
-            self._hold_pick_sequence_fn("return_to_scan_failed")
-            return False
+            self._reset_gripper_fn()
+            self._publish_pick_complete_fn()
+            return True
 
         self._clear_neighbor_obstacles_fn()
         self._reset_gripper_fn()  # 다음 파지를 위해 approach 위치(600)로 복귀
@@ -418,11 +439,24 @@ class PickSequenceExecutor:
                                                   used_approach_dir,
                                                   used_grasp_ee_pos):
         extra_advance_m = 0.0
-        if raw_x_m > 0.25 or self._leftmost_extra_advance_request_m <= 0.0:
+        # Disabled by default.  Keep this as an explicit experiment hook only;
+        # the normal policy must use the same final-approach depth logic for
+        # every berry.
+        if self._leftmost_extra_advance_request_m <= 0.0:
             return True, extra_advance_m, used_grasp_ee_pos
 
+        # Legacy offsets are positive stand-off distances, but measured-TCP
+        # uses a negative final standoff (-120 mm) to request a deeper finish.
+        # For the wall-clearance gate we need its magnitude; otherwise the
+        # available-extra calculation becomes zero and the leftmost correction
+        # silently never executes.
+        wall_clearance_standoff_m = (
+            abs(used_grasp_offset)
+            if self._measured_tcp_model
+            else used_grasp_offset
+        )
         available_extra_m = max(
-            0.0, used_grasp_offset - self._leftmost_wall_safety_margin_m)
+            0.0, wall_clearance_standoff_m - self._leftmost_wall_safety_margin_m)
         extra_advance_m = (
             self._leftmost_extra_advance_request_m
             if self._leftmost_allow_wall_model_override
@@ -455,6 +489,7 @@ class PickSequenceExecutor:
                 safe_available_m=available_extra_m,
                 wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
                 selected_grasp_offset_m=used_grasp_offset,
+                wall_clearance_standoff_m=wall_clearance_standoff_m,
             )
             return True, 0.0, used_grasp_ee_pos
 
@@ -470,6 +505,7 @@ class PickSequenceExecutor:
             executed_m=extra_advance_m,
             wall_safety_margin_m=self._leftmost_wall_safety_margin_m,
             selected_grasp_offset_m=used_grasp_offset,
+            wall_clearance_standoff_m=wall_clearance_standoff_m,
             validation="wall_distance_gate_only_not_curobo_endpoint",
         )
         if not self._execute_tool_z_line(
@@ -557,13 +593,17 @@ class PickSequenceExecutor:
             is_nw_high_target,
         )
         if self._flat_grasp_only:
-            grasp_quat_variants = [
-                v for v in grasp_quat_variants
-                if abs(float(v[2])) < 1e-6
+            flat_variants = [
+                v for v in grasp_quat_variants if abs(float(v[2])) < 1e-6
             ]
+            # In flat mode the intent is literal: keep the gripper wall-normal
+            # and reject targets that require a tilted branch. Allowing +10/+15
+            # fallback here made NW-flat silently re-enter the diagonal branch
+            # and reproduce the same final straight failure.
+            grasp_quat_variants = flat_variants
             self._log().warn(
-                "FLAT_GRASP_ONLY: using 0deg wall-normal grasp variant "
-                "for SW-style horizontal final approach")
+                "FLAT_GRASP_ONLY: using strict 0deg wall-normal grasp variant "
+                "only; tilted reachability fallback is disabled")
         published_roll_variant = self._published_roll_grasp_variant_fn(input_quat_wxyz)
         if published_roll_variant is not None and not self._flat_grasp_only:
             grasp_quat_variants = [published_roll_variant] + grasp_quat_variants
@@ -609,7 +649,11 @@ class PickSequenceExecutor:
                 crane_z_offset_m,
             )
             r_pre_for_variant = self._plan(
-                self._current_joints(), ee_pre.tolist(), q_retry, num_ik_seeds=24
+                self._current_joints(),
+                ee_pre.tolist(),
+                q_retry,
+                num_ik_seeds=24,
+                max_joint_delta_deg=MAX_HARVEST_JOINT_DELTA_DEG,
             )
             if r_pre_for_variant is None:
                 grasp_search.attempt_count += len(grasp_retry_offsets)

@@ -83,6 +83,9 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
     node.declare_parameter("use_taught_slot0_place_reference", False)
     node.declare_parameter("hold_after_taught_slot0_place", True)
     node.declare_parameter("initial_place_slot_index", 0)
+    node.declare_parameter("taught_slot_sequence", "")
+    node.declare_parameter("taught_slot_index_step", 1)
+    node.declare_parameter("skip_row2_place_slots", False)
     node.declare_parameter("allow_generated_tray_slot_release", False)
     node.declare_parameter("allow_unverified_grasp_place", False)
     node.declare_parameter("grasp_current_contact_threshold_raw", -1)
@@ -94,10 +97,15 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
     node.declare_parameter("row2_place_pitch_tilt_deg", 15.0)
     node.declare_parameter("row2_release_correction_mm", [0.0, 0.0, 0.0])
     node.declare_parameter("row2_max_line_deviation_mm", 20.0)
-    node.declare_parameter("use_safe_grasp_action", True)
+    # Default demo verification is position-only. SafeGrasp/current-control is
+    # kept as an explicit opt-in calibration path, not the normal pick check.
+    node.declare_parameter("use_safe_grasp_action", False)
     node.declare_parameter("safe_grasp_max_current", 400)
-    node.declare_parameter("safe_grasp_current_delta_threshold", 120)
-    node.declare_parameter("safe_grasp_timeout_sec", 8.0)
+    # Thin strawberry stems often do not create the large current spike used
+    # for cans/bags. Keep the default sensitive enough to stop near the 670s
+    # instead of driving all the way to the 700 target.
+    node.declare_parameter("safe_grasp_current_delta_threshold", 40)
+    node.declare_parameter("safe_grasp_timeout_sec", 5.0)
     node.declare_parameter(
         "direct_curobo_final_approach_for_measured_tcp",
         DIRECT_CUROBO_FINAL_APPROACH_FOR_MEASURED_TCP)
@@ -111,7 +119,7 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
     node.declare_parameter("published_grasp_roll_align_axis", "x")
     node.declare_parameter("published_grasp_roll_max_abs_deg", 75.0)
     node.declare_parameter("flat_grasp_only", False)
-    node.declare_parameter("flat_grasp_target_plane_margin_m", 0.020)
+    node.declare_parameter("flat_grasp_target_plane_margin_m", 0.090)
     node.declare_parameter("pick_target_x_bias_m", 0.0)
     node.declare_parameter("pick_target_z_bias_m", GRASP_Z_BIAS)
     node.declare_parameter(
@@ -130,7 +138,7 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
         node.get_parameter("debug_dump_plan_calls").value)
     node.declare_parameter(
         "leftmost_extra_advance_request_m",
-        0.0 if node._measured_tcp_model else LEFTMOST_EXTRA_ADVANCE_REQUEST_M)
+        LEFTMOST_EXTRA_ADVANCE_REQUEST_M)
     node.declare_parameter(
         "leftmost_wall_safety_margin_m", LEFTMOST_WALL_SAFETY_MARGIN_M)
     node.declare_parameter("leftmost_allow_wall_model_override", False)
@@ -144,6 +152,26 @@ def declare_and_load_params(node, safe_grasp_available: bool) -> None:
         node.get_parameter("hold_after_taught_slot0_place").value)
     node._marker_place_slot_idx = int(
         node.get_parameter("initial_place_slot_index").value)
+    taught_slot_sequence_raw = str(
+        node.get_parameter("taught_slot_sequence").value).strip()
+    node._taught_slot_sequence = []
+    node._taught_slot_sequence_pos = 0
+    if taught_slot_sequence_raw:
+        node._taught_slot_sequence = [
+            int(item.strip())
+            for item in taught_slot_sequence_raw.split(",")
+            if item.strip()
+        ]
+        for slot_index in node._taught_slot_sequence:
+            if not 0 <= slot_index < TAUGHT_TRAY_SLOT_COUNT:
+                raise ValueError(
+                    f"taught_slot_sequence contains out-of-range slot {slot_index}; "
+                    f"valid range is 0..{TAUGHT_TRAY_SLOT_COUNT - 1}")
+        node._marker_place_slot_idx = node._taught_slot_sequence[0]
+    node._taught_slot_index_step = max(
+        1, int(node.get_parameter("taught_slot_index_step").value))
+    node._skip_row2_place_slots = bool(
+        node.get_parameter("skip_row2_place_slots").value)
     node._allow_generated_tray_slot_release = bool(
         node.get_parameter("allow_generated_tray_slot_release").value)
     if not 0 <= node._marker_place_slot_idx < TAUGHT_TRAY_SLOT_COUNT:

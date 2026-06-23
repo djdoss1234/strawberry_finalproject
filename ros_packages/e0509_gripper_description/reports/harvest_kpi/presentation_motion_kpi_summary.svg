@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="100%" height="100%" fill="#ffffff"/>
+
+<style>
+.title{font:700 28px Arial, sans-serif;fill:#15171a}.subtitle{font:15px Arial,sans-serif;fill:#667085}.axis{stroke:#2b2f36;stroke-width:1.4}.grid{stroke:#edf0f4;stroke-width:1}.tick{font:13px Arial,sans-serif;fill:#667085}.label{font:600 16px Arial,sans-serif;fill:#2b2f36}.small{font:13px Arial,sans-serif;fill:#667085}.value{font:700 20px Arial,sans-serif}.card{fill:#f8fafc;stroke:#e5e7eb;stroke-width:1}.good{fill:#16a34a}.blue{fill:#2563eb}.amber{fill:#f59e0b}.red{fill:#dc2626}.violet{fill:#7c3aed}.dark{fill:#111827}
+</style>
+<text x="60" y="62" class="title">Motion KPI Summary</text>
+<text x="60" y="92" class="subtitle">single-cell harvesting demo log · automated runtime events · n=3 task attempts</text>
+<rect x="60" y="125" width="250" height="132" rx="18" class="card"/>
+<text x="82" y="163" class="label">Approach Time</text>
+<text x="82" y="207" class="value" fill="#2563eb">15.1s</text>
+<text x="82" y="235" class="small">avg. target approach → grasp pose</text>
+<rect x="340" y="125" width="250" height="132" rx="18" class="card"/>
+<text x="362" y="163" class="label">Time Reduction</text>
+<text x="362" y="207" class="value" fill="#16a34a">58.6%</text>
+<text x="362" y="235" class="small">vs. previous 36.4s baseline</text>
+<rect x="620" y="125" width="250" height="132" rx="18" class="card"/>
+<text x="642" y="163" class="label">Task Completion</text>
+<text x="642" y="207" class="value" fill="#16a34a">3 / 3</text>
+<text x="642" y="235" class="small">pick → tray-place sequence</text>
+<rect x="900" y="125" width="250" height="132" rx="18" class="card"/>
+<text x="922" y="163" class="label">Auto Grasp Label</text>
+<text x="922" y="207" class="value" fill="#dc2626">0 / 3</text>
+<text x="922" y="235" class="small">thin-stem sensor threshold not finalized</text>
+<text x="60" y="306" class="label">Approach phase improvement</text>
+<line x1="95" y1="575" x2="560" y2="575" class="axis"/>
+<line x1="95" y1="575.0" x2="560" y2="575.0" class="grid"/>
+<text x="83" y="580.0" text-anchor="end" class="tick">0</text>
+<line x1="95" y1="515.0" x2="560" y2="515.0" class="grid"/>
+<text x="83" y="520.0" text-anchor="end" class="tick">10</text>
+<line x1="95" y1="455.0" x2="560" y2="455.0" class="grid"/>
+<text x="83" y="460.0" text-anchor="end" class="tick">20</text>
+<line x1="95" y1="395.0" x2="560" y2="395.0" class="grid"/>
+<text x="83" y="400.0" text-anchor="end" class="tick">30</text>
+<line x1="95" y1="335.0" x2="560" y2="335.0" class="grid"/>
+<text x="83" y="340.0" text-anchor="end" class="tick">40</text>
+<rect x="175" y="356.6" width="100" height="218.39999999999998" rx="10" fill="#94a3b8"/>
+<text x="225" y="342.6" text-anchor="middle" class="value" fill="#94a3b8">36.4s</text>
+<text x="225" y="611" text-anchor="middle" class="label">Previous</text>
+<rect x="365" y="484.6433218580205" width="100" height="90.35667814197949" rx="10" fill="#2563eb"/>
+<text x="415" y="470.6433218580205" text-anchor="middle" class="value" fill="#2563eb">15.1s</text>
+<text x="415" y="611" text-anchor="middle" class="label">Optimized</text>
+<text x="675" y="306" class="label">Execution result status</text>
+<text x="675" y="350" class="small">Task sequence</text>
+<rect x="675" y="366" width="390" height="22" rx="11" fill="#e5e7eb"/>
+<rect x="675" y="366" width="390.0" height="22" rx="11" fill="#16a34a"/>
+<text x="1085" y="384" class="label" text-anchor="end">100%</text>
+<text x="675" y="422" class="small">Tray placement</text>
+<rect x="675" y="438" width="390" height="22" rx="11" fill="#e5e7eb"/>
+<rect x="675" y="438" width="390.0" height="22" rx="11" fill="#16a34a"/>
+<text x="1085" y="456" class="label" text-anchor="end">100%</text>
+<text x="675" y="494" class="small">Sensor-confirmed grasp</text>
+<rect x="675" y="510" width="390" height="22" rx="11" fill="#e5e7eb"/>
+<rect x="675" y="510" width="0.0" height="22" rx="11" fill="#dc2626"/>
+<text x="1085" y="528" class="label" text-anchor="end">0%</text>
+<text x="675" y="598" class="subtitle">※ 자동 그리퍼 판정은 얇은 줄기 조건에서 threshold 재보정 필요. 영상 라벨과 분리 표기.</text>
+</svg>

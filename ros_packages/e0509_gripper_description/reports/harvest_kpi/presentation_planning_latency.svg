@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+<rect width="100%" height="100%" fill="#fff"/>
+
+<style>
+.title{font:700 28px Arial,sans-serif;fill:#15171a}.subtitle{font:15px Arial,sans-serif;fill:#667085}.axis{stroke:#2b2f36;stroke-width:1.4}.grid{stroke:#edf0f4;stroke-width:1}.tick{font:13px Arial,sans-serif;fill:#667085}.label{font:600 16px Arial,sans-serif;fill:#2b2f36}.small{font:13px Arial,sans-serif;fill:#667085}.value{font:700 21px Arial,sans-serif}.card{fill:#f8fafc;stroke:#e5e7eb;stroke-width:1}.ok{fill:#16a34a}.fail{fill:#dc2626}.blue{fill:#2563eb}.amber{fill:#f59e0b}.dark{fill:#111827}
+</style>
+<text x="60" y="62" class="title">Planning Computation Profile</text>
+<text x="60" y="92" class="subtitle">cuRobo plan attempts during the demo task · success/failure latency separated</text>
+<rect x="60" y="125" width="250" height="122" rx="18" class="card"/>
+<text x="82" y="160" class="label">Plan attempts</text>
+<text x="82" y="201" class="value" fill="#2563eb">36</text>
+<text x="82" y="228" class="small">total planning calls</text>
+<rect x="340" y="125" width="250" height="122" rx="18" class="card"/>
+<text x="362" y="160" class="label">Successful plans</text>
+<text x="362" y="201" class="value" fill="#16a34a">16</text>
+<text x="362" y="228" class="small">avg 2.13s</text>
+<rect x="620" y="125" width="250" height="122" rx="18" class="card"/>
+<text x="642" y="160" class="label">Rejected plans</text>
+<text x="642" y="201" class="value" fill="#dc2626">20</text>
+<text x="642" y="228" class="small">avg 0.39s</text>
+<rect x="900" y="125" width="250" height="122" rx="18" class="card"/>
+<text x="922" y="160" class="label">P90 latency</text>
+<text x="922" y="201" class="value" fill="#7c3aed">2.25s</text>
+<text x="922" y="228" class="small">all plan attempts</text>
+<text x="60" y="292" class="label">Latency by result</text>
+<line x1="100" y1="560.0" x2="580" y2="560.0" class="grid"/>
+<text x="90" y="565.0" text-anchor="end" class="tick">0.0s</text>
+<line x1="100" y1="502.5" x2="580" y2="502.5" class="grid"/>
+<text x="90" y="507.5" text-anchor="end" class="tick">0.7s</text>
+<line x1="100" y1="445.0" x2="580" y2="445.0" class="grid"/>
+<text x="90" y="450.0" text-anchor="end" class="tick">1.5s</text>
+<line x1="100" y1="387.5" x2="580" y2="387.5" class="grid"/>
+<text x="90" y="392.5" text-anchor="end" class="tick">2.2s</text>
+<line x1="100" y1="330.0" x2="580" y2="330.0" class="grid"/>
+<text x="90" y="335.0" text-anchor="end" class="tick">3.0s</text>
+<rect x="155" y="395.8720554248779" width="38" height="164.1279445751221" rx="6" fill="#16a34a"/>
+<text x="174" y="388.8720554248779" text-anchor="middle" class="tick">2.13</text>
+<rect x="203" y="529.9066314879896" width="38" height="30.093368512010418" rx="6" fill="#dc2626"/>
+<text x="222" y="522.9066314879896" text-anchor="middle" class="tick">0.39</text>
+<text x="198" y="594" text-anchor="middle" class="label">Avg</text>
+<rect x="295" y="405.3750934926333" width="38" height="154.6249065073667" rx="6" fill="#16a34a"/>
+<text x="314" y="398.3750934926333" text-anchor="middle" class="tick">2.01</text>
+<rect x="343" y="526.0009274668807" width="38" height="33.99907253311922" rx="6" fill="#dc2626"/>
+<text x="362" y="519.0009274668807" text-anchor="middle" class="tick">0.44</text>
+<text x="338" y="594" text-anchor="middle" class="label">Median</text>
+<rect x="435" y="376.0" width="38" height="184.0" rx="6" fill="#16a34a"/>
+<text x="454" y="369.0" text-anchor="middle" class="tick">2.39</text>
+<rect x="483" y="521.0906523533" width="38" height="38.909347646699985" rx="6" fill="#dc2626"/>
+<text x="502" y="514.0906523533" text-anchor="middle" class="tick">0.51</text>
+<text x="478" y="594" text-anchor="middle" class="label">P90</text>
+<rect x="105" y="600" width="16" height="16" rx="3" fill="#16a34a"/><text x="130" y="614" class="small">accepted plan</text>
+<rect x="250" y="600" width="16" height="16" rx="3" fill="#dc2626"/><text x="275" y="614" class="small">rejected branch / IK / collision</text>
+<text x="675" y="292" class="label">Planning workload composition</text>
+<rect x="675" y="350" width="390" height="44" rx="16" fill="#e5e7eb"/>
+<rect x="675" y="350" width="173.33333333333334" height="44" rx="16" fill="#16a34a"/>
+<rect x="848.3333333333334" y="350" width="216.66666666666666" height="44" rx="16" fill="#dc2626"/>
+<text x="675" y="432" class="label">Accepted 16 / Rejected 20</text>
+<text x="675" y="485" class="subtitle">Interpretation: repeated failed branch probes still consume planning time. Next optimization target is pruning impossible depth/IK branches before calling cuRobo.</text>
+</svg>

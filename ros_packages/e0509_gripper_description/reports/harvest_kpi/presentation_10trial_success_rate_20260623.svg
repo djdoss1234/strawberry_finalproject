@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>
+text{font-family:Arial, Helvetica, sans-serif; fill:#17202a}
+.title{font-size:40px;font-weight:700}.sub{font-size:22px;fill:#566573}
+.axis{font-size:19px;fill:#34495e}.label{font-size:22px;font-weight:700}
+.kpi{font-size:30px;font-weight:700}.kpi2{font-size:18px;fill:#566573}.note{font-size:18px;fill:#6b7280}
+</style>
+<text x="70" y="62" class="title">정상 노출 딸기 반복 수확 결과</text>
+<text x="70" y="100" class="sub">10회 반복 · 회당 3개 대상 · 총 30개 중 27개 성공</text>
+<text x="70" y="152" class="kpi2">성공률</text>
+<text x="70" y="188" class="kpi">90.0%</text>
+<text x="215" y="188" class="kpi2">27 / 30</text>
+<text x="360" y="152" class="kpi2">평균 수확</text>
+<text x="360" y="188" class="kpi">2.7개/회</text>
+<text x="505" y="188" class="kpi2">회당 최대 3개</text>
+<text x="700" y="152" class="kpi2">실패</text>
+<text x="700" y="188" class="kpi">3개</text>
+<text x="845" y="188" class="kpi2">총 30개 중</text>
+<rect x="1080" y="145" width="24" height="24" rx="5" fill="#1f77b4"/>
+<text x="1116" y="164" class="kpi2">3개 모두 성공</text>
+<rect x="1080" y="183" width="24" height="24" rx="5" fill="#ff9f1c"/>
+<text x="1116" y="202" class="kpi2">일부 실패 포함</text>
+<rect x="130" y="210" width="1290" height="430" rx="20" fill="#fbfdff" stroke="#edf2f7"/>
+<line x1="130" y1="640.0" x2="1420" y2="640.0" stroke="#e8eef5" stroke-width="1"/>
+<text x="102" y="647.0" text-anchor="end" class="axis">0</text>
+<line x1="130" y1="496.6666666666667" x2="1420" y2="496.6666666666667" stroke="#e8eef5" stroke-width="1"/>
+<text x="102" y="503.6666666666667" text-anchor="end" class="axis">1</text>
+<line x1="130" y1="353.33333333333337" x2="1420" y2="353.33333333333337" stroke="#e8eef5" stroke-width="1"/>
+<text x="102" y="360.33333333333337" text-anchor="end" class="axis">2</text>
+<line x1="130" y1="210.0" x2="1420" y2="210.0" stroke="#e8eef5" stroke-width="1"/>
+<text x="102" y="217.0" text-anchor="end" class="axis">3</text>
+<line x1="130" y1="640" x2="1420" y2="640" stroke="#2c3e50" stroke-width="2"/>
+<line x1="130" y1="210" x2="130" y2="640" stroke="#2c3e50" stroke-width="2"/>
+<text x="43" y="425.0" text-anchor="middle" class="axis" transform="rotate(-90 43 425.0)">성공 개수 / 3개</text>
+<line x1="130" y1="253.0" x2="1420" y2="253.0" stroke="#e63946" stroke-width="3" stroke-dasharray="10 8" opacity="0.85"/>
+<text x="1410" y="243.0" text-anchor="end" class="note">평균 2.7개/회</text>
+<rect x="130.0" y="353.3" width="98.4" height="286.7" rx="10" fill="#ff9f1c"/>
+<text x="179.2" y="341.3" text-anchor="middle" class="label" fill="#17202a">2</text>
+<text x="179.2" y="682" text-anchor="middle" class="axis">1회</text>
+<rect x="262.4" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="311.6" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="311.6" y="682" text-anchor="middle" class="axis">2회</text>
+<rect x="394.8" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="444.0" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="444.0" y="682" text-anchor="middle" class="axis">3회</text>
+<rect x="527.2" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="576.4" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="576.4" y="682" text-anchor="middle" class="axis">4회</text>
+<rect x="659.6" y="353.3" width="98.4" height="286.7" rx="10" fill="#ff9f1c"/>
+<text x="708.8" y="341.3" text-anchor="middle" class="label" fill="#17202a">2</text>
+<text x="708.8" y="682" text-anchor="middle" class="axis">5회</text>
+<rect x="792.0" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="841.2" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="841.2" y="682" text-anchor="middle" class="axis">6회</text>
+<rect x="924.4" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="973.6" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="973.6" y="682" text-anchor="middle" class="axis">7회</text>
+<rect x="1056.8" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="1106.0" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="1106.0" y="682" text-anchor="middle" class="axis">8회</text>
+<rect x="1189.2" y="353.3" width="98.4" height="286.7" rx="10" fill="#ff9f1c"/>
+<text x="1238.4" y="341.3" text-anchor="middle" class="label" fill="#17202a">2</text>
+<text x="1238.4" y="682" text-anchor="middle" class="axis">9회</text>
+<rect x="1321.6" y="210.0" width="98.4" height="430.0" rx="10" fill="#1f77b4"/>
+<text x="1370.8" y="244.0" text-anchor="middle" class="label" fill="#ffffff">3</text>
+<text x="1370.8" y="682" text-anchor="middle" class="axis">10회</text>
+<text x="130" y="718" class="axis">전체 30개 기준</text>
+<rect x="130" y="740" width="1290" height="42" rx="15" fill="#f3f4f6"/>
+<rect x="130" y="740" width="1161.0" height="42" rx="15" fill="#1f77b4"/>
+<rect x="1291.0" y="740" width="129.0" height="42" fill="#ff9f1c"/>
+<text x="710.5" y="768" text-anchor="middle" fill="#fff" style="font-family:Arial;font-size:20px;font-weight:700">성공 27개 (90.0%)</text>
+<text x="1355.5" y="768" text-anchor="middle" fill="#17202a" style="font-family:Arial;font-size:20px;font-weight:700">실패 3개</text>
+<text x="130" y="816" class="note">※ 정상 노출 조건 기준 반복 검증 결과이며, 가림/군집 조건 전체 성공률로 일반화하지 않음</text>
+</svg>

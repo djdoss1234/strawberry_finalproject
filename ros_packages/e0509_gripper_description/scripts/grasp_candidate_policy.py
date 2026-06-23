@@ -214,7 +214,8 @@ def should_replace_measured_best(
         measured_best_depth_m: float,
         measured_best_j3_deg,
         measured_best_alignment_deg,
-        is_nw_high_target: bool):
+        is_nw_high_target: bool,
+        flat_grasp_only: bool = False):
     candidate_is_published_roll = quat_frame == "published_roll"
     candidate_alignment_deg = 0.0 if candidate_is_published_roll else abs(float(quat_deg))
     best_is_published_roll = (
@@ -232,7 +233,11 @@ def should_replace_measured_best(
     ):
         return False, candidate_alignment_deg, False
 
-    if is_nw_high_target and is_tied:
+    # flat_grasp_only shares the NW-high flat-branch preference: without it,
+    # a tied depth always goes to whichever variant has the healthiest J3,
+    # which can walk all the way to +15deg (real-world: 32.6mm grasp-height
+    # overshoot) even though a less-tilted, still-safe variant tied it.
+    if (is_nw_high_target or flat_grasp_only) and is_tied:
         candidate_flat_safe = candidate_j3_deg >= NW_HIGH_TARGET_MIN_FLAT_BRANCH_J3_DEG
         best_flat_safe = (
             measured_best_j3_deg is not None

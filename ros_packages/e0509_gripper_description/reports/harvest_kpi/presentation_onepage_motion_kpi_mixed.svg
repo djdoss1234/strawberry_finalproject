@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="100%" height="100%" fill="#f5f7fb"/>
+
+<style>
+  text{font-family:'Inter','Noto Sans CJK KR','NanumGothic','Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif;}
+  .title{font-size:38px;font-weight:850;fill:#111827;}
+  .subtitle{font-size:18px;fill:#64748b;}
+  .section{font-size:22px;font-weight:800;fill:#111827;}
+  .cardTitle{font-size:16px;font-weight:750;fill:#475569;letter-spacing:.2px;}
+  .big{font-size:42px;font-weight:900;fill:#111827;}
+  .num{font-size:25px;font-weight:850;fill:#111827;}
+  .small{font-size:14px;fill:#64748b;}
+  .tiny{font-size:12px;fill:#64748b;}
+  .label{font-size:15px;font-weight:750;fill:#334155;}
+  .panel{fill:#ffffff;stroke:#dbe3ee;stroke-width:1.2;}
+  .card{fill:#f8fafc;stroke:#e2e8f0;stroke-width:1;}
+  .grid{stroke:#e7edf5;stroke-width:1;}
+</style>
+
+<text x="58" y="60" class="title">Motion KPI Dashboard</text>
+<text x="58" y="91" class="subtitle">접근-파지 시간 단축 · planning workload · task execution timeline</text>
+<rect x="58" y="125" width="350" height="128" rx="22" class="panel"/>
+<text x="82" y="161" class="cardTitle">APPROACH TIME</text>
+<text x="82" y="209" class="big" fill="#2563eb">36.4s → 15.1s</text>
+<text x="82" y="236" class="small">접근 시작 → 파지 자세 도달</text>
+<rect x="440" y="125" width="350" height="128" rx="22" class="panel"/>
+<text x="464" y="161" class="cardTitle">TIME REDUCTION</text>
+<text x="464" y="209" class="big" fill="#16a34a">-58.6%</text>
+<text x="464" y="236" class="small">기존 36.4s baseline 대비</text>
+<rect x="822" y="125" width="350" height="128" rx="22" class="panel"/>
+<text x="846" y="161" class="cardTitle">TASK COMPLETION</text>
+<text x="846" y="209" class="big" fill="#16a34a">3 / 3</text>
+<text x="846" y="236" class="small">pick → tray place sequence</text>
+<rect x="1204" y="125" width="350" height="128" rx="22" class="panel"/>
+<text x="1228" y="161" class="cardTitle">AVG. TASK TIME</text>
+<text x="1228" y="209" class="big" fill="#7c3aed">61.7s</text>
+<text x="1228" y="236" class="small">pick 시작 → place → 복귀</text>
+<rect x="58" y="292" width="465" height="260" rx="24" class="panel"/>
+<text x="84" y="334" class="section">Approach Optimization</text>
+<text x="84" y="360" class="small">spline 중심 접근에서 직선 진입 + open descent 구조로 변경</text>
+<line x1="136" y1="502.0" x2="456" y2="502.0" class="grid"/>
+<text x="124" y="507.0" text-anchor="end" class="tiny">0</text>
+<line x1="136" y1="474.0" x2="456" y2="474.0" class="grid"/>
+<text x="124" y="479.0" text-anchor="end" class="tiny">10</text>
+<line x1="136" y1="446.0" x2="456" y2="446.0" class="grid"/>
+<text x="124" y="451.0" text-anchor="end" class="tiny">20</text>
+<line x1="136" y1="418.0" x2="456" y2="418.0" class="grid"/>
+<text x="124" y="423.0" text-anchor="end" class="tiny">30</text>
+<line x1="136" y1="390.0" x2="456" y2="390.0" class="grid"/>
+<text x="124" y="395.0" text-anchor="end" class="tiny">40</text>
+<rect x="188" y="400.1" width="92" height="101.9" rx="10" fill="#94a3b8"/>
+<text x="234.0" y="390.1" text-anchor="middle" class="num" fill="#94a3b8">36.4s</text>
+<text x="234.0" y="536" text-anchor="middle" class="label">Before</text>
+<rect x="348" y="459.8" width="92" height="42.2" rx="10" fill="#2563eb"/>
+<text x="394.0" y="449.8" text-anchor="middle" class="num" fill="#2563eb">15.1s</text>
+<text x="394.0" y="536" text-anchor="middle" class="label">Current</text>
+<text x="84" y="524" class="small">핵심: approach-to-grasp phase 기준 약 58.6% 단축</text>
+<rect x="558" y="292" width="465" height="260" rx="24" class="panel"/>
+<text x="584" y="334" class="section">Planning Workload</text>
+<text x="584" y="360" class="small">cuRobo plan call 결과: accepted / rejected branch 분리</text>
+<rect x="586" y="384" width="118" height="74" rx="16" class="card"/>
+<text x="602" y="409" class="tiny">Attempts</text>
+<text x="602" y="442" class="num" fill="#2563eb">36</text>
+<rect x="726" y="384" width="118" height="74" rx="16" class="card"/>
+<text x="742" y="409" class="tiny">Accepted</text>
+<text x="742" y="442" class="num" fill="#16a34a">16</text>
+<rect x="866" y="384" width="118" height="74" rx="16" class="card"/>
+<text x="882" y="409" class="tiny">Rejected</text>
+<text x="882" y="442" class="num" fill="#ef4444">20</text>
+<rect x="590" y="482" width="392" height="26" rx="13" fill="#e5e7eb"/>
+<rect x="590" y="482" width="174.2" height="26" rx="13" fill="#16a34a"/>
+<rect x="764.2" y="482" width="217.8" height="26" rx="13" fill="#ef4444"/>
+<text x="590" y="537" class="small">Accepted avg. 2.13s · Rejected avg. 0.39s</text>
+<rect x="1058" y="292" width="484" height="260" rx="24" class="panel"/>
+<text x="1084" y="334" class="section">Why This Motion?</text>
+<text x="1086" y="374" class="label">Problem</text>
+<text x="1176" y="374" class="small">spline-only 접근은 자세가 흔들리고 줄기 파지점이 어긋남</text>
+<text x="1086" y="406" class="label">Change 1</text>
+<text x="1176" y="406" class="small">straight approach 후, open gripper 상태로 짧게 하강</text>
+<text x="1086" y="438" class="label">Change 2</text>
+<text x="1176" y="438" class="small">검증된 0° grasp orientation 우선 적용</text>
+<text x="1086" y="470" class="label">Change 3</text>
+<text x="1176" y="470" class="small">wait/check timeout 축소로 cycle 병목 제거</text>
+<text x="1086" y="502" class="label">Limit</text>
+<text x="1176" y="502" class="small">thin stem 자동 파지 판정은 threshold 재보정 필요</text>
+<rect x="58" y="585" width="1484" height="242" rx="24" class="panel"/>
+<text x="84" y="627" class="section">Task Execution Timeline</text>
+<text x="84" y="653" class="small">각 selected target 기준 phase별 소요시간</text>
+<rect x="818" y="612" width="16" height="16" rx="4" fill="#2563eb"/>
+<text x="842" y="625" class="tiny">Approach / align</text>
+<rect x="978" y="612" width="16" height="16" rx="4" fill="#f59e0b"/>
+<text x="1002" y="625" class="tiny">Grasp check</text>
+<rect x="1138" y="612" width="16" height="16" rx="4" fill="#16a34a"/>
+<text x="1162" y="625" class="tiny">Transfer / place</text>
+<rect x="1298" y="612" width="16" height="16" rx="4" fill="#7c3aed"/>
+<text x="1322" y="625" class="tiny">Return / update</text>
+<line x1="226.0" y1="673" x2="226.0" y2="783" class="grid"/>
+<text x="226.0" y="804" text-anchor="middle" class="tiny">0s</text>
+<line x1="376.0" y1="673" x2="376.0" y2="783" class="grid"/>
+<text x="376.0" y="804" text-anchor="middle" class="tiny">10s</text>
+<line x1="526.0" y1="673" x2="526.0" y2="783" class="grid"/>
+<text x="526.0" y="804" text-anchor="middle" class="tiny">20s</text>
+<line x1="676.0" y1="673" x2="676.0" y2="783" class="grid"/>
+<text x="676.0" y="804" text-anchor="middle" class="tiny">30s</text>
+<line x1="826.0" y1="673" x2="826.0" y2="783" class="grid"/>
+<text x="826.0" y="804" text-anchor="middle" class="tiny">40s</text>
+<line x1="976.0" y1="673" x2="976.0" y2="783" class="grid"/>
+<text x="976.0" y="804" text-anchor="middle" class="tiny">50s</text>
+<line x1="1126.0" y1="673" x2="1126.0" y2="783" class="grid"/>
+<text x="1126.0" y="804" text-anchor="middle" class="tiny">60s</text>
+<line x1="1276.0" y1="673" x2="1276.0" y2="783" class="grid"/>
+<text x="1276.0" y="804" text-anchor="middle" class="tiny">70s</text>
+<text x="100" y="704" class="label">Attempt 1</text>
+<rect x="226.0" y="681" width="213.4" height="28" rx="7" fill="#2563eb"/>
+<text x="332.7" y="700" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">14.2</text>
+<rect x="439.4" y="681" width="90.3" height="28" rx="7" fill="#f59e0b"/>
+<text x="484.6" y="700" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">6.0</text>
+<rect x="529.8" y="681" width="419.7" height="28" rx="7" fill="#16a34a"/>
+<text x="739.6" y="700" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">28.0</text>
+<rect x="949.4" y="681" width="223.8" height="28" rx="7" fill="#7c3aed"/>
+<text x="1061.3" y="700" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">14.9</text>
+<text x="1300" y="701" class="label">63.1s</text>
+<text x="100" y="747" class="label">Attempt 2</text>
+<rect x="226.0" y="724" width="238.2" height="28" rx="7" fill="#2563eb"/>
+<text x="345.1" y="743" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">15.9</text>
+<rect x="464.2" y="724" width="88.0" height="28" rx="7" fill="#f59e0b"/>
+<text x="508.2" y="743" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">5.9</text>
+<rect x="552.2" y="724" width="425.2" height="28" rx="7" fill="#16a34a"/>
+<text x="764.9" y="743" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">28.4</text>
+<rect x="977.5" y="724" width="170.5" height="28" rx="7" fill="#7c3aed"/>
+<text x="1062.8" y="743" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">11.4</text>
+<text x="1300" y="744" class="label">61.5s</text>
+<text x="100" y="790" class="label">Attempt 3</text>
+<rect x="226.0" y="767" width="225.9" height="28" rx="7" fill="#2563eb"/>
+<text x="338.9" y="786" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">15.1</text>
+<rect x="451.9" y="767" width="84.3" height="28" rx="7" fill="#f59e0b"/>
+<text x="494.0" y="786" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">5.6</text>
+<rect x="536.2" y="767" width="432.0" height="28" rx="7" fill="#16a34a"/>
+<text x="752.2" y="786" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">28.8</text>
+<rect x="968.2" y="767" width="162.9" height="28" rx="7" fill="#7c3aed"/>
+<text x="1049.6" y="786" text-anchor="middle" style="font-size:11px;font-weight:800;fill:white;">10.9</text>
+<text x="1300" y="787" class="label">60.3s</text>
+<text x="58" y="872" class="small">Note. This is a demo-log KPI summary, not a 30–50 repeated-trial statistical success rate. 반복 실험 기반 성공률은 후속 측정 예정.</text>
+</svg>

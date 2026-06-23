@@ -1,0 +1,5 @@
+date,run_id,cell_or_region,manual_result,auto_result,issue,notes
+2026-06-22,20260622T203920-7efa5ed6,SW,success_2_manual,GRASP_EMPTY_repeated,auto_grasp_mismatch,"Manual observation: 2 normal strawberries harvested in SW; gripper position log still reported 699~700/GRASP_EMPTY"
+2026-06-22,20260622T203920-7efa5ed6,NW,failed,final_approach_failed,NW_straight_entry_failure,"FINAL_APPROACH_STRAIGHT_BASE failed around 0.15s; fallback IK_FAIL on high/occluded target"
+2026-06-22,20260622T203927-76484715,NE,failed,no_usable_pick_target,perception_candidate_rejection,"stem_keypoint_depth_invalid and stem_geometry_implausible repeated"
+2026-06-22,20260622T203927-76484715,SE,no_target,no_target,empty_or_no_valid_candidate,"No successful harvest target in this trial"

@@ -102,8 +102,18 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "scan_dwell_sec",
-                default_value="4.0",
-                description="Maximum seconds to wait for the first stable perception target after reaching each scan pose.",
+                default_value="8.0",
+                description="Maximum seconds to wait for stable perception targets after reaching each scan pose.",
+            ),
+            DeclareLaunchArgument(
+                "pick_timeout_sec",
+                default_value="60.0",
+                description="Seconds to wait for each pick attempt before continuing to the next detected target.",
+            ),
+            DeclareLaunchArgument(
+                "attempted_target_blacklist_radius_m",
+                default_value="0.025",
+                description="Ignore detected targets within this radius of an already attempted pick during the same scan run.",
             ),
             DeclareLaunchArgument(
                 "return_to_overview_at_end",
@@ -260,6 +270,10 @@ def generate_launch_description() -> LaunchDescription:
                             "collect_pick_ready_cell"
                         ),
                         "scan_dwell_sec": LaunchConfiguration("scan_dwell_sec"),
+                        "pick_timeout_sec": LaunchConfiguration("pick_timeout_sec"),
+                        "attempted_target_blacklist_radius_m": LaunchConfiguration(
+                            "attempted_target_blacklist_radius_m"
+                        ),
                         "return_to_overview_at_end": LaunchConfiguration(
                             "return_to_overview_at_end"
                         ),

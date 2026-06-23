@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="560" viewBox="0 0 1040 560">
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="520.0" y="38" text-anchor="middle" font-family="Arial" font-size="26" font-weight="700" fill="#202124">SW 3-Fruit Demo Timing Breakdown</text>
+<line x1="90" y1="450" x2="990" y2="450" stroke="#333" stroke-width="2"/>
+<line x1="90" y1="85" x2="90" y2="450" stroke="#333" stroke-width="2"/>
+<line x1="90" y1="450.0" x2="990" y2="450.0" stroke="#e8eaed"/>
+<text x="80" y="455.0" text-anchor="end" font-family="Arial" font-size="13" fill="#666">0</text>
+<line x1="90" y1="397.9" x2="990" y2="397.9" stroke="#e8eaed"/>
+<text x="80" y="402.9" text-anchor="end" font-family="Arial" font-size="13" fill="#666">10</text>
+<line x1="90" y1="345.7" x2="990" y2="345.7" stroke="#e8eaed"/>
+<text x="80" y="350.7" text-anchor="end" font-family="Arial" font-size="13" fill="#666">20</text>
+<line x1="90" y1="293.6" x2="990" y2="293.6" stroke="#e8eaed"/>
+<text x="80" y="298.6" text-anchor="end" font-family="Arial" font-size="13" fill="#666">30</text>
+<line x1="90" y1="241.4" x2="990" y2="241.4" stroke="#e8eaed"/>
+<text x="80" y="246.4" text-anchor="end" font-family="Arial" font-size="13" fill="#666">40</text>
+<line x1="90" y1="189.3" x2="990" y2="189.3" stroke="#e8eaed"/>
+<text x="80" y="194.3" text-anchor="end" font-family="Arial" font-size="13" fill="#666">50</text>
+<line x1="90" y1="137.1" x2="990" y2="137.1" stroke="#e8eaed"/>
+<text x="80" y="142.1" text-anchor="end" font-family="Arial" font-size="13" fill="#666">60</text>
+<line x1="90" y1="85.0" x2="990" y2="85.0" stroke="#e8eaed"/>
+<text x="80" y="90.0" text-anchor="end" font-family="Arial" font-size="13" fill="#666">70</text>
+<text x="35" y="267.5" transform="rotate(-90 35,267.5)" text-anchor="middle" font-family="Arial" font-size="15" fill="#555">seconds</text>
+<rect x="156.0" y="375.8" width="60.0" height="74.2" rx="5" fill="#1a73e8"/>
+<text x="186.0" y="369.8" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">14.2</text>
+<rect x="225.0" y="198.5" width="60.0" height="251.5" rx="5" fill="#188038"/>
+<text x="255.0" y="192.5" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">48.2</text>
+<rect x="294.0" y="120.7" width="60.0" height="329.3" rx="5" fill="#fbbc04"/>
+<text x="324.0" y="114.7" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">63.2</text>
+<text x="240.0" y="484" text-anchor="middle" font-family="Arial" font-size="16" fill="#333">Fruit 1</text>
+<rect x="456.0" y="367.2" width="60.0" height="82.8" rx="5" fill="#1a73e8"/>
+<text x="486.0" y="361.2" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">15.9</text>
+<rect x="525.0" y="188.7" width="60.0" height="261.3" rx="5" fill="#188038"/>
+<text x="555.0" y="182.7" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">50.1</text>
+<rect x="594.0" y="129.5" width="60.0" height="320.5" rx="5" fill="#fbbc04"/>
+<text x="624.0" y="123.5" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">61.5</text>
+<text x="540.0" y="484" text-anchor="middle" font-family="Arial" font-size="16" fill="#333">Fruit 2</text>
+<rect x="756.0" y="371.5" width="60.0" height="78.5" rx="5" fill="#1a73e8"/>
+<text x="786.0" y="365.5" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">15.1</text>
+<rect x="825.0" y="192.0" width="60.0" height="258.0" rx="5" fill="#188038"/>
+<text x="855.0" y="186.0" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">49.5</text>
+<rect x="894.0" y="135.3" width="60.0" height="314.7" rx="5" fill="#fbbc04"/>
+<text x="924.0" y="129.3" text-anchor="middle" font-family="Arial" font-size="12" fill="#333">60.3</text>
+<text x="840.0" y="484" text-anchor="middle" font-family="Arial" font-size="16" fill="#333">Fruit 3</text>
+<rect x="110" y="508" width="18" height="18" fill="#1a73e8" rx="3"/>
+<text x="136" y="522" font-family="Arial" font-size="15" fill="#333">Approach→grasp</text>
+<rect x="330" y="508" width="18" height="18" fill="#188038" rx="3"/>
+<text x="356" y="522" font-family="Arial" font-size="15" fill="#333">Pick→place</text>
+<rect x="550" y="508" width="18" height="18" fill="#fbbc04" rx="3"/>
+<text x="576" y="522" font-family="Arial" font-size="15" fill="#333">Full seq.</text>
+</svg>

@@ -127,6 +127,8 @@ class CuroboPlanner(Node):
             measured_flange_to_part_tip_m=MEASURED_FLANGE_TO_PART_TIP_M,
             measured_flange_to_grasp_center_m=MEASURED_FLANGE_TO_GRASP_CENTER_M,
             tcp_model_shortfall_m=TCP_MODEL_SHORTFALL_M,
+            measured_tcp_final_standoff_m=MEASURED_TCP_FINAL_STANDOFF_M,
+            measured_tcp_max_approach_m=self._measured_tcp_max_approach_m,
             open_stem_descent_m=CRANE_Z_OFFSET_M,
             nw_high_target_base_y_nudge_m=self._nw_high_target_base_y_nudge_m,
             enable_marker_place=self._enable_marker_place,
@@ -136,7 +138,13 @@ class CuroboPlanner(Node):
             initial_place_slot_index=self._marker_place_slot_idx,
             allow_generated_tray_slot_release=self._allow_generated_tray_slot_release,
             allow_unverified_grasp_place=self._allow_unverified_grasp_place,
+            grasp_contact_position_threshold=GRASP_CONTACT_POSITION_THRESHOLD,
+            grasp_empty_position_threshold=GRASP_EMPTY_POSITION_THRESHOLD,
             grasp_current_contact_threshold_raw=self._grasp_current_contact_threshold_raw,
+            use_safe_grasp_action=self._use_safe_grasp_action,
+            safe_grasp_max_current=self._safe_grasp_max_current,
+            safe_grasp_current_delta_threshold=self._safe_grasp_current_delta_threshold,
+            safe_grasp_timeout_sec=self._safe_grasp_timeout_sec,
             use_published_grasp_orientation=self._use_published_grasp_orientation,
             published_grasp_roll_align_axis=self._published_grasp_roll_align_axis,
             published_grasp_roll_max_abs_deg=self._published_grasp_roll_max_abs_deg,
@@ -172,6 +180,7 @@ class CuroboPlanner(Node):
                 "  MEASURED_TCP_FINAL_APPROACH "
                 f"direct_curobo={self._direct_curobo_final_approach_for_measured_tcp} "
                 f"max={self._measured_tcp_max_approach_m*1000:.0f}mm "
+                f"final_standoff={MEASURED_TCP_FINAL_STANDOFF_M*1000:.0f}mm "
                 f"tool_line_after_fallback="
                 f"{self._measured_tcp_tool_line_after_curobo_fallback}")
             self.get_logger().info(
@@ -203,9 +212,25 @@ class CuroboPlanner(Node):
             f"release={self._execute_marker_place_release} "
             f"taught_slot0_reference={self._use_taught_slot0_place_reference} "
             f"hold_after_slot0={self._hold_after_taught_slot0_place} "
+            f"slot_sequence={self._taught_slot_sequence or 'auto'} "
+            f"slot_step={self._taught_slot_index_step} "
+            f"skip_row2={self._skip_row2_place_slots} "
             f"allow_generated_slot_release={self._allow_generated_tray_slot_release} "
             f"allow_unverified_grasp={self._allow_unverified_grasp_place} "
             f"max_age={self._marker_place_max_age_sec:.0f}s")
+        self.get_logger().info(
+            "  SafeGrasp: "
+            f"enabled={self._use_safe_grasp_action} "
+            f"target=700 max_current={self._safe_grasp_max_current} "
+            f"delta_threshold={self._safe_grasp_current_delta_threshold} "
+            f"timeout={self._safe_grasp_timeout_sec:.1f}s "
+            f"contact_pos<={GRASP_CONTACT_POSITION_THRESHOLD} "
+            f"empty_pos>={GRASP_EMPTY_POSITION_THRESHOLD}")
+        if not self._use_safe_grasp_action:
+            self.get_logger().info(
+                "  grasp verification: position-only "
+                f"(contact <= {GRASP_CONTACT_POSITION_THRESHOLD}, "
+                f"empty >= {GRASP_EMPTY_POSITION_THRESHOLD}; current is logged only)")
 
     def __init__(self):
         super().__init__("curobo_planner_node")
@@ -214,6 +239,7 @@ class CuroboPlanner(Node):
         self.service_cb_group = rclpy.callback_groups.ReentrantCallbackGroup()
         self.current_joints = None
         self._pick_busy = False
+        self._pending_pick_pose = None
         self._sequence_hold_reason = None
         self._last_sequence_hold_warn_sec = 0.0
         self._marker_place_slot_idx = 0
@@ -317,6 +343,7 @@ class CuroboPlanner(Node):
             plan_fn=self.plan,
             measured_tcp_max_approach_m=self._measured_tcp_max_approach_m,
             ee_to_tcp_offset_m=self._ee_to_tcp_offset_m,
+            flat_grasp_only=self._flat_grasp_only,
         )
         self.tray_place_policy = TrayPlacePolicy(
             node=self,
@@ -664,7 +691,7 @@ class CuroboPlanner(Node):
             max_joint_delta_deg=max_joint_delta_deg,
         )
 
-    def _ensure_operation_speed(self, speed: int = 30) -> bool:
+    def _ensure_operation_speed(self, speed: int = 100) -> bool:
         """컨트롤러 operation speed를 강제 설정한다.
         Spline req.time이 이행되려면 speed=100 필수.
         서비스 불가 시 경고 후 계속 진행(비차단)."""
@@ -732,7 +759,24 @@ class CuroboPlanner(Node):
         if plan_result is None:
             self.get_logger().error(
                 f"{motion_label}: cuRobo retreat plan failed (IK/limits/collision)")
-            return False
+            self.get_logger().warn(
+                f"{motion_label}: falling back to Doosan BASE relative line. "
+                "This preserves the SW demo retreat path when cuRobo rejects "
+                "the start state as wall-collision; keep E-stop ready.")
+            ok = self.execute_base_relative_line(
+                delta_m,
+                f"{motion_label}_RAW_FALLBACK",
+                vel_mm_s=RETREAT_VEL_MM_S,
+                acc_mm_s2=RETREAT_ACC_MM_S2,
+            )
+            self.runtime_log.log(
+                "retreat_curobo_raw_fallback",
+                label=motion_label,
+                delta_m=np.array(delta_m, dtype=float).tolist(),
+                ok=ok,
+                reason="curobo_retreat_plan_failed",
+            )
+            return ok
         ok = self.execute_spline(*plan_result)
         if not ok:
             self.get_logger().error(f"{motion_label}: cuRobo retreat spline exec failed")
@@ -804,6 +848,16 @@ class CuroboPlanner(Node):
                                    skip_swing_check=False,
                                    max_joint_delta_deg=None):
         """고정 joint 자세 이동 — cuRobo joint-space plan."""
+        if skip_swing_check and "pick-start scan pose" in label:
+            original_target = list(target_joints_deg)
+            target_joints_deg = self.trajectory_guards.nearest_equivalent_joints(
+                target_joints_deg, start_joints)
+            if target_joints_deg != original_target:
+                self.get_logger().warn(
+                    f"{label}: return target wrap-equivalent adjusted for spline "
+                    f"{[round(v, 1) for v in original_target]} -> "
+                    f"{[round(v, 1) for v in target_joints_deg]}")
+
         target_joints_rad = np.deg2rad(target_joints_deg).tolist()
         ret = self.plan_js(start_joints, target_joints_rad, label,
                            skip_swing_check=skip_swing_check,
@@ -834,7 +888,39 @@ class CuroboPlanner(Node):
             "new pick targets are blocked until planner restart")
 
     def _increment_marker_place_slot_idx(self):
-        self._marker_place_slot_idx += 1
+        prev = self._marker_place_slot_idx
+        if self._taught_slot_sequence:
+            self._taught_slot_sequence_pos += 1
+            if self._taught_slot_sequence_pos < len(self._taught_slot_sequence):
+                self._marker_place_slot_idx = self._taught_slot_sequence[
+                    self._taught_slot_sequence_pos]
+                self.get_logger().warn(
+                    f"TAUGHT_TRAY_SLOT_SEQUENCE: slot {prev} -> "
+                    f"{self._marker_place_slot_idx} "
+                    f"(sequence={self._taught_slot_sequence})")
+            else:
+                self._marker_place_slot_idx += self._taught_slot_index_step
+                self.get_logger().warn(
+                    f"TAUGHT_TRAY_SLOT_SEQUENCE_DONE: used "
+                    f"{self._taught_slot_sequence}; next auto slot="
+                    f"{self._marker_place_slot_idx}")
+        else:
+            self._marker_place_slot_idx += self._taught_slot_index_step
+        if not self._taught_slot_sequence and self._taught_slot_index_step != 1:
+            self.get_logger().warn(
+                f"TAUGHT_TRAY_SLOT_STEP: slot {prev} -> {self._marker_place_slot_idx} "
+                f"(step={self._taught_slot_index_step})")
+        if self._skip_row2_place_slots:
+            while (
+                self._marker_place_slot_idx < TAUGHT_TRAY_SLOT_COUNT
+                and self._marker_place_slot_idx % 3 == 2
+            ):
+                skipped = self._marker_place_slot_idx
+                self._marker_place_slot_idx += 1
+                self.get_logger().warn(
+                    f"TAUGHT_TRAY_SLOT_SKIP_ROW2: skipping slot={skipped} "
+                    "for demo/retest run; next slot="
+                    f"{self._marker_place_slot_idx}")
 
     def pick_pose_cb(self, msg: PoseStamped):
         if self._sequence_hold_reason is not None:
@@ -849,13 +935,26 @@ class CuroboPlanner(Node):
             self.get_logger().warn("No joint state yet")
             return
         if self._pick_busy:
-            self.get_logger().warn("Pick already in progress — ignored")
+            self._pending_pick_pose = msg
+            self.get_logger().warn(
+                "Pick already in progress — queued latest target instead of ignoring")
             return
-        self._pick_busy = True
-        try:
-            self.pick_sequence_executor.run(msg)
-        finally:
-            self._pick_busy = False
+        next_msg = msg
+        while next_msg is not None:
+            if self._sequence_hold_reason is not None:
+                self.get_logger().warn(
+                    "Queued pick target dropped because sequence hold became active "
+                    f"({self._sequence_hold_reason})")
+                self._pending_pick_pose = None
+                return
+            self._pick_busy = True
+            try:
+                self._ensure_operation_speed(100)
+                self.pick_sequence_executor.run(next_msg)
+            finally:
+                self._pick_busy = False
+            next_msg = self._pending_pick_pose
+            self._pending_pick_pose = None
 
     def _compute_final_approach_distance(self, raw_straw, straw,
                                          used_pre_ee_pos,

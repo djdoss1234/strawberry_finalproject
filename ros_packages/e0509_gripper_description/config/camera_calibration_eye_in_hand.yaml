@@ -1,0 +1,29 @@
+# Eye-in-hand RealSense 캘리브레이션 (calibration_eye_in_hand_1.npz에서 추출)
+# numpy/ROS 의존 없는 환경(시뮬레이션 등)에 전달하기 위한 텍스트 버전.
+# detection_to_3d.py의 cam_to_base() / load_calibration()이 쓰는 값과 동일.
+# 단위: meters. dist_coeffs는 OpenCV plumb_bob 순서 (k1, k2, p1, p2, k3).
+
+camera_intrinsics:
+  width: 640   # NPZ에 저장 안 됨 — camera_matrix의 cx,cy(약 320,240 중심)로 역산한 추정값.
+  height: 480  # 실제 RealSense color stream 설정과 대조해서 확정할 것.
+  fx: 385.17880249
+  fy: 384.82110596
+  cx: 330.20098877
+  cy: 247.27458191
+  dist_coeffs: [-0.05629633, 0.06693249, 0.00075097, 0.00070901, -0.02153726]
+
+# 카메라 프레임 -> 그리퍼(TCP/flange) 프레임, 4x4 homogeneous transform.
+# pt_gripper_homogeneous = T_cam_to_gripper @ pt_camera_homogeneous
+T_cam_to_gripper:
+  - [0.03299032, -0.42003111, 0.90690987, 0.06752496]
+  - [0.01449303, -0.90710734, -0.42064977, 0.07739811]
+  - [0.99935058, 0.02702124, -0.02383824, 0.01193509]
+  - [0.0, 0.0, 0.0, 1.0]
+
+notes:
+  - "base_link 3D 좌표 변환 전체 흐름은 detection_to_3d.py의 cam_to_base() 참고."
+  - "T_gripper2base(그리퍼->base_link)는 정적 값이 아니라 매 프레임 e0509_fk(joint_angles_rad)로
+     새로 계산하는 값이라 이 YAML에는 포함하지 않음 — 시뮬 쪽도 매 프레임 joint state로 직접 계산해야 함."
+  - "원본 NPZ의 R_gripper2base/t_gripper2base/R_target2cam/t_target2cam/marker_size/marker_id/
+     num_samples는 hand-eye 캘리브레이션 계산용 원본 샘플이며 런타임에는 쓰이지 않아 제외함."
+  - "source: config/calibration_eye_in_hand_1.npz"

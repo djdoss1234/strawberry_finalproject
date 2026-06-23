@@ -7,7 +7,7 @@ Keys:
   Up/Down   move selected joint +/- step degrees
   Left/Right step degrees down/up
   g         type 6 joint degrees and move
-  n         move to named pose (home/overview/nw/ne/se/sw) with speed input
+  n         move to named pose (home/overview/nw/nw_flat/ne/se/sw) with speed input
   o         gripper open
   c         gripper close
   f         gripper set position value
@@ -56,9 +56,10 @@ NAMED_POSES = {
     "0": ("home",     [ 88.00, -80.00, 130.00,   0.00,  20.00,  -90.00]),
     "1": ("overview", [ 87.98, -94.92, 129.89, 175.94, -31.34,   93.42]),
     "2": ("nw",       [144.09,  22.90,  -1.00,-238.52, -75.31,  108.68]),
-    "3": ("ne",       [ 18.91,  25.97,   1.00,  74.58,  78.17, -115.61]),
-    "4": ("se",       [ 22.71,  -4.60, 103.56,  97.69,  68.16, -190.82]),
-    "5": ("sw",       [150.27, -11.92, 109.11, -97.81,  63.33,   10.46]),
+    "3": ("nw_flat", [-205.49,   2.38,  42.72, -75.77,  71.08,  -46.02]),
+    "4": ("ne",       [ 18.91,  25.97,   1.00,  74.58,  78.17, -115.61]),
+    "5": ("se",       [ 22.71,  -4.60, 103.56,  97.69,  68.16, -190.82]),
+    "6": ("sw",       [150.27, -11.92, 109.11, -97.81,  63.33,   10.46]),
 }
 class RawTerminal:
     def __enter__(self):
@@ -144,7 +145,7 @@ class JointJogControl(Node):
         print("  w/s       move selected joint +/- step degrees (fallback)")
         print("  a/d       step degrees -/+ (fallback)")
         print("  g         input 6 joint degrees and move")
-        print("  n         move to named pose (home/overview/nw/ne/se/sw) with speed input")
+        print("  n         move to named pose (home/overview/nw/nw_flat/ne/se/sw) with speed input")
         print("  o         gripper open")
         print("  c         gripper close")
         print("  f         gripper set position value (0~700)")
@@ -341,7 +342,7 @@ class JointJogControl(Node):
         for k, (name, _) in NAMED_POSES.items():
             print(f"  {k}: {name}")
         with CookedInput(raw_term):
-            key = input("Select (0~5): ").strip()
+            key = input("Select (%s): " % "/".join(NAMED_POSES.keys())).strip()
             if key not in NAMED_POSES:
                 print("Invalid selection")
                 return

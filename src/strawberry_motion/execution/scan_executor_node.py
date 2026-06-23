@@ -74,8 +74,9 @@ _INITIAL_SINGLE_CELL_CANDIDATES = [
     "root/se",
     "root/sw",
 ]
-# Full traversal Z-order (nw→ne top row, sw→se bottom row)
-_ALL_CELLS_ZORDER = ["root/nw", "root/ne", "root/se", "root/sw"]
+# Full traversal order for demo capture: start from the stable SW branch,
+# then move through the more difficult occluded/clustered cells.
+_ALL_CELLS_ZORDER = ["root/sw", "root/nw_flat", "root/ne", "root/se"]
 
 _MAX_SPLINE_PTS = 12
 _SPLINE_TIME_SCALE = 0.75
@@ -162,6 +163,9 @@ class ScanExecutorNode(Node):
         self.declare_parameter("max_total_picks", 0)  # 0 = unlimited
         self.declare_parameter("collect_then_pick", False)
         self.declare_parameter("collect_pick_ready_cell", "")
+        self.declare_parameter("pick_complete_settle_sec", 1.0)
+        self.declare_parameter("pick_timeout_sec", 120.0)
+        self.declare_parameter("attempted_target_blacklist_radius_m", 0.025)
         self.declare_parameter("scan_dwell_sec", _DEFAULT_SCAN_DWELL_SEC)
         self.declare_parameter("return_to_overview_at_end", True)
         self.declare_parameter("enable_runtime_curobo_preview", False)
@@ -192,7 +196,19 @@ class ScanExecutorNode(Node):
         self._collect_pick_ready_cell = str(
             self.get_parameter("collect_pick_ready_cell").value
         ).strip()
+        self._pick_complete_settle_sec = max(
+            0.0, float(self.get_parameter("pick_complete_settle_sec").value)
+        )
+        self._pick_timeout_sec = max(
+            5.0, float(self.get_parameter("pick_timeout_sec").value)
+        )
+        self._attempted_target_blacklist_radius_m = max(
+            0.0,
+            float(self.get_parameter("attempted_target_blacklist_radius_m").value),
+        )
         self._total_picks_attempted = 0
+        self._last_cell_completed_picks = 0
+        self._last_cell_skipped_attempted = 0
         self._scan_dwell_sec = max(
             1.0, float(self.get_parameter("scan_dwell_sec").value)
         )
@@ -214,6 +230,7 @@ class ScanExecutorNode(Node):
         self._mg: Optional[MotionGen] = None
         self._detection_count: int = 0
         self._detection_poses: List[PoseStamped] = []
+        self._attempted_pick_positions: List[np.ndarray] = []
         self._detection_lock = threading.Lock()
         self._pick_complete_event = threading.Event()
         self._last_movej_command_deg: Optional[List[float]] = None
@@ -597,13 +614,10 @@ class ScanExecutorNode(Node):
         """
         if reference_joints_rad is not None:
             current_deg = np.rad2deg(reference_joints_rad).tolist()
-        elif self._last_movej_command_deg is not None:
-            # Doosan reports wrap-capable joints normalized to [-180, 180].
-            # Keep continuity from the last command representation instead of
-            # the normalized feedback, otherwise J4 can take a full-turn detour.
-            current_deg = list(self._last_movej_command_deg)
         elif self._current_joints is not None:
             current_deg = np.rad2deg(self._current_joints).tolist()
+        elif self._last_movej_command_deg is not None:
+            current_deg = list(self._last_movej_command_deg)
         else:
             return [float(v) for v in target_deg]
 
@@ -671,6 +685,42 @@ class ScanExecutorNode(Node):
         return kept
 
     @staticmethod
+    def _pose_position_array(pose: PoseStamped) -> np.ndarray:
+        return np.array(
+            [
+                float(pose.pose.position.x),
+                float(pose.pose.position.y),
+                float(pose.pose.position.z),
+            ],
+            dtype=float,
+        )
+
+    def _pose_is_attempted(self, pose: PoseStamped) -> bool:
+        if self._attempted_target_blacklist_radius_m <= 0.0:
+            return False
+        pos = self._pose_position_array(pose)
+        return any(
+            float(np.linalg.norm(pos - attempted))
+            <= self._attempted_target_blacklist_radius_m
+            for attempted in self._attempted_pick_positions
+        )
+
+    def _mark_pose_attempted(self, pose: PoseStamped) -> None:
+        if self._attempted_target_blacklist_radius_m <= 0.0:
+            return
+        pos = self._pose_position_array(pose)
+        self._attempted_pick_positions.append(pos)
+        self._pub_status(
+            "PICK_ATTEMPT_BLACKLIST_ADD pos=(%.0f,%.0f,%.0f)mm radius=%.0fmm"
+            % (
+                pos[0] * 1000,
+                pos[1] * 1000,
+                pos[2] * 1000,
+                self._attempted_target_blacklist_radius_m * 1000,
+            )
+        )
+
+    @staticmethod
     def _group_poses_by_subcell(
         poses: List[PoseStamped],
     ) -> List[Tuple[str, List[PoseStamped]]]:
@@ -678,20 +728,22 @@ class ScanExecutorNode(Node):
 
         The robot currently has one taught scan pose per root cell.  This helper
         does not move the robot to four new sub-poses; it partitions the
-        detections from that single view so harvesting proceeds as:
-        parent/nw -> parent/ne -> parent/se -> parent/sw.
+        detections from that single view.  Harvesting proceeds lower-first:
+        parent/sw -> parent/se -> parent/nw -> parent/ne.  In practice the
+        lower detections are usually closer to the stem/KP1 level, while upper
+        detections are more likely to be leaves, calyx, or hard branch cases.
 
         In collect_then_pick mode this helper is bypassed. The executor first
         scans all physical sub-poses, then moves to the parent pick-ready pose.
         """
         if not poses:
-            return [(subcell, []) for subcell in ("nw", "ne", "se", "sw")]
+            return [(subcell, []) for subcell in ("sw", "se", "nw", "ne")]
         if len(poses) == 1:
             return [
-                ("nw", poses),
-                ("ne", []),
+                ("sw", poses),
                 ("se", []),
-                ("sw", []),
+                ("nw", []),
+                ("ne", []),
             ]
 
         xs = [p.pose.position.x for p in poses]
@@ -716,7 +768,7 @@ class ScanExecutorNode(Node):
                 groups["sw"].append(pose)
 
         ordered: List[Tuple[str, List[PoseStamped]]] = []
-        for subcell in ("nw", "ne", "se", "sw"):
+        for subcell in ("sw", "se", "nw", "ne"):
             subposes = groups[subcell]
             subposes.sort(key=lambda p: (p.pose.position.x, p.pose.position.z))
             ordered.append((subcell, subposes))
@@ -803,11 +855,40 @@ class ScanExecutorNode(Node):
         pick_timeout_sec: float = 120.0,
         poses_are_ranked: bool = False,
     ) -> int:
-        """Publish each pose to curobo_planner one at a time; return success count."""
-        unique = list(poses) if poses_are_ranked else self._deduplicate_poses(poses)
+        """Publish poses to curobo_planner one at a time; return attempted count.
+
+        The planner currently reports completion on an Empty topic, so this
+        executor cannot know whether the pick actually succeeded. Treat a
+        completed/timeout cycle as one consumed attempt and blacklist the pose
+        so a rescan can move on to the remaining strawberries instead of
+        re-trying the same failed coordinate.
+        """
+        self._last_cell_skipped_attempted = 0
+        unique_all = list(poses) if poses_are_ranked else self._deduplicate_poses(poses)
+        unique: List[PoseStamped] = []
+        skipped_attempted = 0
+        for pose in unique_all:
+            if self._pose_is_attempted(pose):
+                skipped_attempted += 1
+                self._pub_status(
+                    "PICK_SKIP_ATTEMPTED %s pos=(%.0f,%.0f,%.0f)mm"
+                    % (
+                        cell_id,
+                        pose.pose.position.x * 1000,
+                        pose.pose.position.y * 1000,
+                        pose.pose.position.z * 1000,
+                    )
+                )
+                continue
+            unique.append(pose)
+        self._last_cell_skipped_attempted = skipped_attempted
         self._pub_status(
-            "PICK_SEQUENCE_START %s — %d unique targets (raw=%d)"
-            % (cell_id, len(unique), len(poses))
+            "PICK_SEQUENCE_START %s — %d candidate targets (raw=%d skipped_attempted=%d)"
+            % (cell_id, len(unique), len(poses), skipped_attempted)
+        )
+        self._pub_status(
+            "PICK_ALL_DETECTED_TARGETS %s timeout=%.0fs max_total_picks=%d"
+            % (cell_id, pick_timeout_sec, self._max_total_picks)
         )
         if poses_are_ranked and unique:
             self._pub_status(
@@ -821,7 +902,7 @@ class ScanExecutorNode(Node):
             )
         if not self._wait_for_planner():
             return 0
-        success = 0
+        attempted = 0
         for i, pose in enumerate(unique):
             if self._max_total_picks > 0 and self._total_picks_attempted >= self._max_total_picks:
                 self._pub_status(
@@ -830,6 +911,8 @@ class ScanExecutorNode(Node):
                 )
                 break
             self._total_picks_attempted += 1
+            attempted += 1
+            self._mark_pose_attempted(pose)
             self._pick_complete_event.clear()
             self._pub_status(
                 "PICK_TRIGGER %s %d/%d pos=(%.0f,%.0f,%.0f)mm"
@@ -851,17 +934,26 @@ class ScanExecutorNode(Node):
                 self._pick_trigger_pub.publish(pose)
                 completed = self._pick_complete_event.wait(timeout=pick_timeout_sec)
             if completed:
-                success += 1
-                self._pub_status("PICK_COMPLETE %s %d/%d" % (cell_id, i + 1, len(unique)))
+                self._pub_status(
+                    "PICK_ATTEMPT_DONE %s %d/%d — planner sequence ended "
+                    "(success is verified by gripper/manual KPI, not this Empty topic)"
+                    % (cell_id, i + 1, len(unique))
+                )
+                if self._pick_complete_settle_sec > 0.0:
+                    self._pub_status(
+                        "PICK_ATTEMPT_SETTLE %.1fs before next target"
+                        % self._pick_complete_settle_sec
+                    )
+                    time.sleep(self._pick_complete_settle_sec)
             else:
                 self._pub_status(
                     "PICK_TIMEOUT %s %d/%d — %.0fs elapsed; continuing"
                     % (cell_id, i + 1, len(unique), pick_timeout_sec)
                 )
         self._pub_status(
-            "PICK_SEQUENCE_DONE %s — %d/%d completed" % (cell_id, success, len(unique))
+            "PICK_SEQUENCE_DONE %s — %d/%d attempted" % (cell_id, attempted, len(unique))
         )
-        return success
+        return attempted
 
     def _is_at_overview(self) -> bool:
         return self._current_joints is not None and _wrap_aware_joints_within_tolerance_deg(
@@ -970,13 +1062,18 @@ class ScanExecutorNode(Node):
     # ── scan sequence (runs in background thread) ─────────────────────────────
 
     def _scan_sequence(self) -> None:
+        self._attempted_pick_positions = []
         scan_order = self._compute_scan_order()
         cell_detections: Dict[str, int] = {}
         collect_then_pick_active = (
             self._collect_then_pick
             and self._enable_pick_integration
             and self._target_cell != "all"
-            and len(scan_order) > 1
+        )
+        single_cell_reobserve_pick = (
+            collect_then_pick_active
+            and len(scan_order) == 1
+            and self._max_total_picks != 1
         )
         collected_poses: List[PoseStamped] = []
         if collect_then_pick_active:
@@ -986,12 +1083,80 @@ class ScanExecutorNode(Node):
                 % (scan_order, ready_cell)
             )
 
+        if single_cell_reobserve_pick:
+            cell_id = scan_order[0]
+            self._pub_status(
+                "SINGLE_CELL_REOBSERVE_PICK enabled target=%s max_total_picks=%d"
+                % (cell_id, self._max_total_picks)
+            )
+            while self._max_total_picks <= 0 or self._total_picks_attempted < self._max_total_picks:
+                collected_poses = []
+                before_attempts = self._total_picks_attempted
+                if not self._scan_one_cell(
+                    cell_id, scan_order, collect_then_pick_active,
+                    collected_poses, cell_detections,
+                ):
+                    return
+                if not self._finish_collect_then_pick(collected_poses, cell_detections):
+                    return
+                if self._total_picks_attempted <= before_attempts:
+                    self._pub_status(
+                        "SINGLE_CELL_REOBSERVE_PICK_STOP no new target after rescan"
+                    )
+                    break
+            self._finish_scan_sequence(cell_detections)
+            return
+
         for cell_id in scan_order:
-            if not self._scan_one_cell(
-                cell_id, scan_order, collect_then_pick_active,
-                collected_poses, cell_detections,
-            ):
-                return
+            rescan_pass = 0
+            while True:
+                if not self._scan_one_cell(
+                    cell_id, scan_order, collect_then_pick_active,
+                    collected_poses, cell_detections,
+                ):
+                    return
+                single_cell_reobserve_direct = (
+                    self._target_cell != "all"
+                    and len(scan_order) == 1
+                    and not collect_then_pick_active
+                    and self._enable_pick_integration
+                    and self._max_total_picks != 1
+                )
+                if (
+                    (self._target_cell != "all" and not single_cell_reobserve_direct)
+                    or collect_then_pick_active
+                    or not self._enable_pick_integration
+                    or (
+                        self._last_cell_completed_picks <= 0
+                        and not (
+                            single_cell_reobserve_direct
+                            and self._last_cell_skipped_attempted > 0
+                        )
+                    )
+                ):
+                    break
+                if (
+                    self._max_total_picks > 0
+                    and self._total_picks_attempted >= self._max_total_picks
+                ):
+                    break
+                rescan_pass += 1
+                if rescan_pass >= 5:
+                    self._pub_status(
+                        "CELL_RESCAN_STOP %s max repeated passes reached" % cell_id
+                    )
+                    break
+                if single_cell_reobserve_direct:
+                    self._pub_status(
+                        "SINGLE_CELL_RESCAN_AFTER_ATTEMPT %s pass=%d — "
+                        "excluding attempted target(s), checking remaining candidates"
+                        % (cell_id, rescan_pass)
+                    )
+                else:
+                    self._pub_status(
+                        "CELL_RESCAN_AFTER_PICK %s pass=%d — checking remaining targets"
+                        % (cell_id, rescan_pass)
+                    )
 
         if collect_then_pick_active:
             if not self._finish_collect_then_pick(collected_poses, cell_detections):
@@ -1077,6 +1242,7 @@ class ScanExecutorNode(Node):
 
     def _process_cell_detections(self, cell_id, count, poses_snapshot,
                                   collect_then_pick_active, collected_poses) -> None:
+        self._last_cell_completed_picks = 0
         if count > 0:
             self._pub_state(cell_id, "TARGET_FOUND")
             self._pub_status(
@@ -1108,10 +1274,13 @@ class ScanExecutorNode(Node):
                             )
                             self._pub_state(logical_cell, "SCANNED_EMPTY")
                             continue
-                        completed = self._trigger_picks_for_cell(logical_cell, subposes)
+                        attempted = self._trigger_picks_for_cell(
+                            logical_cell, subposes, pick_timeout_sec=self._pick_timeout_sec
+                        )
+                        self._last_cell_completed_picks += attempted
                         self._pub_state(
                             logical_cell,
-                            "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                            "PICK_ATTEMPTED" if attempted > 0 else "SCANNED_EMPTY",
                         )
         else:
             self._pub_state(cell_id, "SCANNED_EMPTY")
@@ -1140,7 +1309,11 @@ class ScanExecutorNode(Node):
         detection_deadline = time.time() + self._scan_dwell_sec
         while time.time() < detection_deadline:
             with self._detection_lock:
-                if self._detection_count > 0 and not collect_then_pick_active:
+                if (
+                    self._detection_count > 0
+                    and not collect_then_pick_active
+                    and self._max_total_picks == 1
+                ):
                     break
             time.sleep(0.05)
 
@@ -1201,14 +1374,15 @@ class ScanExecutorNode(Node):
                 )
                 self._pub_state(self._target_cell, "PLANNING_FAIL")
                 return False
-            completed = self._trigger_picks_for_cell(
+            attempted = self._trigger_picks_for_cell(
                 "%s/best" % self._target_cell,
                 unique_all,
+                pick_timeout_sec=self._pick_timeout_sec,
                 poses_are_ranked=True,
             )
             self._pub_state(
                 self._target_cell,
-                "HARVESTED" if completed > 0 else "SCANNED_EMPTY",
+                "PICK_ATTEMPTED" if attempted > 0 else "SCANNED_EMPTY",
             )
         return True
 

@@ -53,7 +53,6 @@ class DoosanMotionClient:
             idx = np.linspace(0, n - 1, MAX_SPLINE_POINTS, dtype=int)
             traj_deg = traj_deg[idx]
             n = MAX_SPLINE_POINTS
-
         req = MoveSplineJoint.Request()
         req.pos_cnt = n
         for row in traj_deg:
@@ -258,6 +257,7 @@ class DoosanMotionClient:
             time.sleep(0.05)
         ok = future.done() and bool(future.result() and future.result().success)
         elapsed_sec = time.time() - t0
+        accepted_after_timeout = False
         min_expected_sec = max(0.5, nominal_motion_sec * 0.6)
         if ok and elapsed_sec < min_expected_sec:
             remaining_sec = min_expected_sec - elapsed_sec
@@ -269,6 +269,19 @@ class DoosanMotionClient:
         if ok and start_joints is not None and distance_m > 0.05:
             ok = self._reject_no_motion_if_needed(
                 start_joints, motion_label, "BASE MoveLine", min_delta_deg=0.5)
+        if not ok and start_joints is not None and distance_m > 0.05:
+            end_joints = self._current_joints_array()
+            if end_joints is not None:
+                max_delta_deg = float(
+                    np.max(np.degrees(np.abs(end_joints - start_joints))))
+                if max_delta_deg >= 5.0 and elapsed_sec >= min_expected_sec:
+                    ok = True
+                    accepted_after_timeout = True
+                    self._log().warn(
+                        f"{motion_label} BASE MoveLine timed out/no result, "
+                        f"but robot joints moved {max_delta_deg:.1f}deg over "
+                        f"{elapsed_sec:.1f}s; accepting as executed to avoid "
+                        "double-approach/fallback after an already-completed line")
         self.runtime_log.log(
             "motion_result",
             controller="doosan_move_line",
@@ -276,6 +289,7 @@ class DoosanMotionClient:
             success=bool(ok),
             timeout_sec=timeout_sec,
             elapsed_sec=elapsed_sec,
+            accepted_after_timeout=accepted_after_timeout,
         )
         if not ok:
             self._log().error(f"{motion_label} BASE relative failed/timeout")

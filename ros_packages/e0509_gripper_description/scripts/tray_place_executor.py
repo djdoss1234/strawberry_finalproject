@@ -18,6 +18,7 @@ from scipy.spatial.transform import Rotation as SciR
 from harvest_motion_params import (
     GRIPPER_PLACE_RELEASE_POS,
     MAX_TAUGHT_PLACE_TRANSFER_JOINT_DELTA_DEG,
+    TAUGHT_SLOT0_ABOVE_CLEARANCE_M,
     TAUGHT_SLOT0_PLACE_REFERENCE_JOINTS_DEG,
     TAUGHT_SLOT0_PLACE_REFERENCE_POSX_MM_DEG,
     TAUGHT_SLOT0_VERTICAL_VEL_MM_S,
@@ -321,7 +322,10 @@ class TrayPlaceExecutor:
                 f"ROW2_RELEASE_CORRECTION: {self.row2_release_correction_mm}mm "
                 f"→ release_pos={[round(v*1000,1) for v in release_pos_m]}mm")
         above_pos_m = list(release_pos_m)
-        clearance_m = self.taught_slot_above_clearance_m
+        clearance_m = (
+            self.taught_slot_above_clearance_m
+            if is_row2 else TAUGHT_SLOT0_ABOVE_CLEARANCE_M
+        )
         above_pos_m[2] += clearance_m
         self._log().info(
             f"TAUGHT_TRAY_SLOT{slot_index}_ABOVE generated from Slot0 FK + grid offset: "
@@ -350,7 +354,7 @@ class TrayPlaceExecutor:
         release_pos_m = above_target["release_pos_m"]
         above_pos_m = above_target["above_pos_m"]
         clearance_m = above_target["clearance_m"]
-        self._ensure_operation_speed(30)
+        self._ensure_operation_speed(100)
         above_plan = self._plan(
             retreat_joints, above_pos_m, release_fk_quat,
             num_ik_seeds=64, max_attempts=3, timeout_sec=2.0,
@@ -515,10 +519,23 @@ class TrayPlaceExecutor:
                     "continuous ascent spline failed; holding position")
                 return "failed_after_release", list(self._current_joints or release_joints)
         else:
-            if not self._execute_base_z_relative(
+            self._log().info(
+                "TAUGHT_SLOT0_RELEASE_ASCEND joint-space return to above pose "
+                "(avoid raw BASE +Z branch/limit jump after release)")
+            ascent_plan = self._plan(
+                release_joints, above_pos_m, release_fk_quat,
+                num_ik_seeds=64, max_attempts=3, timeout_sec=2.0,
+                max_joint_delta_deg=MAX_TAUGHT_PLACE_TRANSFER_JOINT_DELTA_DEG)
+            ascent_ok = ascent_plan is not None and self._execute_spline(*ascent_plan)
+            if not ascent_ok:
+                self._log().warn(
+                    "TAUGHT_SLOT0_RELEASE_ASCEND joint-space return failed; "
+                    "falling back to BASE +Z")
+                ascent_ok = self._execute_base_z_relative(
                     clearance_m,
                     "TAUGHT_SLOT0_RELEASE_ASCEND",
-                    TAUGHT_SLOT0_VERTICAL_VEL_MM_S):
+                    TAUGHT_SLOT0_VERTICAL_VEL_MM_S)
+            if not ascent_ok:
                 self._log().error(
                     f"TAUGHT_TRAY_SLOT{slot_index}_RELEASED_BUT_ASCEND_FAILED: "
                     "holding position")

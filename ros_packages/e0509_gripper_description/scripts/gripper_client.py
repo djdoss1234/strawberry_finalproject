@@ -4,6 +4,8 @@
 import time
 
 from harvest_motion_params import (
+    GRASP_CONTACT_POSITION_THRESHOLD,
+    GRASP_EMPTY_CURRENT_MAX_RAW,
     GRASP_EMPTY_POSITION_THRESHOLD,
     GRASP_VERIFY_TIMEOUT_SEC,
     GRIPPER_APPROACH_POS,
@@ -105,17 +107,19 @@ class HarvestGripperClient:
                 "hardware state read failed (virtual mode or serial error)")
         if position >= GRASP_EMPTY_POSITION_THRESHOLD:
             return "GRASP_EMPTY", position, current_raw, (
-                f"fully closed (pos={position} >= threshold={GRASP_EMPTY_POSITION_THRESHOLD})")
-        if (
-            self.grasp_current_contact_threshold_raw >= 0
-            and current_raw < self.grasp_current_contact_threshold_raw
-        ):
-            return "GRASP_UNVERIFIED", position, current_raw, (
-                f"position indicates contact but current={current_raw} below calibrated "
-                f"threshold={self.grasp_current_contact_threshold_raw}")
+                f"jaw fully closed by position "
+                f"(pos={position} >= {GRASP_EMPTY_POSITION_THRESHOLD}); "
+                f"position-only verification, current_raw={current_raw} logged only")
+        if position <= GRASP_CONTACT_POSITION_THRESHOLD:
+            return "GRASP_CONTACT_DETECTED", position, current_raw, (
+                f"jaw stopped before calibrated contact threshold "
+                f"(pos={position} <= {GRASP_CONTACT_POSITION_THRESHOLD}); "
+                "position-based grasp detected")
         return "GRASP_CONTACT_DETECTED", position, current_raw, (
-            f"jaw stopped at pos={position} and current_raw={current_raw}; "
-            f"current threshold={'disabled' if self.grasp_current_contact_threshold_raw < 0 else self.grasp_current_contact_threshold_raw}")
+            f"jaw stopped in contact deadband "
+            f"({GRASP_CONTACT_POSITION_THRESHOLD}<pos={position}<"
+            f"{GRASP_EMPTY_POSITION_THRESHOLD}); position-only verification, "
+            f"current_raw={current_raw} logged only")
 
     def close_and_verify_grasp(self):
         """Close gripper and return a normalized grasp result tuple."""
@@ -128,9 +132,24 @@ class HarvestGripperClient:
                 return result
             self._log().warn(
                 "SAFE_GRASP: action server not ready — fallback to set_position+get_state")
-        close_ok = self.set_position(700, timeout_sec=10.0)
+        close_ok = self.set_position(700, timeout_sec=5.0)
         if not close_ok:
-            return "GRIPPER_CLOSE_FAILED", -1, -1, "set_position(700) failed"
+            # The TCP bridge can miss the service result even after the jaw has
+            # physically moved.  Do not throw away the attempt until we read
+            # the actual jaw position; verification remains position-only.
+            self._log().warn(
+                "GRIPPER: close command timeout/failure; reading jaw position "
+                "before aborting")
+            result = self.verify_grasp()
+            if result[0] in ("GRASP_CONTACT_DETECTED", "GRASP_EMPTY"):
+                self.log_verify_result(result)
+                return result
+            return (
+                "GRIPPER_CLOSE_FAILED",
+                result[1],
+                result[2],
+                f"set_position(700) timeout/failure and state unverified: {result[3]}",
+            )
         time.sleep(GRIPPER_CLOSE_SETTLE_SEC)
         result = self.verify_grasp()
         self.log_verify_result(result)
@@ -151,7 +170,9 @@ class HarvestGripperClient:
             reason=grasp_reason,
             close_command_pos=700,
             empty_threshold=GRASP_EMPTY_POSITION_THRESHOLD,
-            current_contact_threshold_raw=self.grasp_current_contact_threshold_raw,
+            contact_position_threshold=GRASP_CONTACT_POSITION_THRESHOLD,
+            verification_mode="position_only",
+            current_contact_threshold_raw="ignored",
         )
 
     def close_via_safe_grasp_action(self):
@@ -199,6 +220,10 @@ class HarvestGripperClient:
         res = wrapped.result
         final_pos = res.final_position
         final_cur = res.final_current
+        peak_delta = max(
+            (int(sample.get("current_delta", 0)) for sample in feedback_samples),
+            default=0,
+        )
 
         self.runtime_log.log(
             "safe_grasp_action",
@@ -206,6 +231,7 @@ class HarvestGripperClient:
             object_lost=res.object_lost,
             final_position=final_pos,
             final_current=final_cur,
+            peak_current_delta=peak_delta,
             message=res.message,
             max_current=self.safe_grasp_max_current,
             current_delta_threshold=self.safe_grasp_current_delta_threshold,
@@ -218,17 +244,36 @@ class HarvestGripperClient:
                 f"SafeGrasp: invalid state (virtual/serial error) — {res.message}")
 
         if res.grasp_detected:
-            if final_pos >= GRASP_EMPTY_POSITION_THRESHOLD:
-                return "GRASP_EMPTY", final_pos, final_cur, (
-                    f"SafeGrasp: current spike but jaw fully closed "
-                    f"pos={final_pos} >= {GRASP_EMPTY_POSITION_THRESHOLD}")
             return "GRASP_CONTACT_DETECTED", final_pos, final_cur, (
-                f"SafeGrasp detected: pos={final_pos} current={final_cur} — {res.message}")
+                f"SafeGrasp detected: pos={final_pos} current={final_cur} "
+                f"peak_delta={peak_delta} threshold="
+                f"{self.safe_grasp_current_delta_threshold} — {res.message}")
 
-        if final_pos >= GRASP_EMPTY_POSITION_THRESHOLD:
+        if (
+            final_pos >= GRASP_EMPTY_POSITION_THRESHOLD
+            and final_cur <= GRASP_EMPTY_CURRENT_MAX_RAW
+        ):
             return "GRASP_EMPTY", final_pos, final_cur, (
-                f"SafeGrasp: jaw fully closed pos={final_pos} >= "
-                f"{GRASP_EMPTY_POSITION_THRESHOLD} — {res.message}")
+                f"SafeGrasp: jaw fully closed with low current "
+                f"pos={final_pos} >= {GRASP_EMPTY_POSITION_THRESHOLD}, "
+                f"current={final_cur} <= {GRASP_EMPTY_CURRENT_MAX_RAW} "
+                f"— {res.message}")
+        if final_pos <= GRASP_CONTACT_POSITION_THRESHOLD:
+            return "GRASP_CONTACT_DETECTED", final_pos, final_cur, (
+                "SafeGrasp current threshold missed, but jaw stopped before "
+                f"contact threshold pos={final_pos} <= "
+                f"{GRASP_CONTACT_POSITION_THRESHOLD}, peak_delta={peak_delta} "
+                f"threshold={self.safe_grasp_current_delta_threshold} — {res.message}")
+        if final_pos >= GRASP_EMPTY_POSITION_THRESHOLD:
+            return "GRASP_UNVERIFIED", final_pos, final_cur, (
+                "SafeGrasp no detection, but jaw position alone is unreliable "
+                f"for thin stems: pos={final_pos}, current={final_cur}, "
+                f"peak_delta={peak_delta}, threshold="
+                f"{self.safe_grasp_current_delta_threshold} "
+                f"— {res.message}")
 
         return "GRASP_UNVERIFIED", final_pos, final_cur, (
-            f"SafeGrasp: no detection, pos={final_pos} below threshold — {res.message}")
+            f"SafeGrasp: no detection, pos={final_pos} in deadband "
+            f"({GRASP_CONTACT_POSITION_THRESHOLD}<pos<{GRASP_EMPTY_POSITION_THRESHOLD}) "
+            f"peak_delta={peak_delta}, threshold="
+            f"{self.safe_grasp_current_delta_threshold} — {res.message}")

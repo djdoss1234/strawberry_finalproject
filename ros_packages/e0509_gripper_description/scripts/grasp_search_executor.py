@@ -29,12 +29,14 @@ class GraspSearchExecutor:
 
     def __init__(self, node, runtime_log, plan_fn,
                  measured_tcp_max_approach_m: float,
-                 ee_to_tcp_offset_m: float):
+                 ee_to_tcp_offset_m: float,
+                 flat_grasp_only: bool = False):
         self.node = node
         self.runtime_log = runtime_log
         self._plan = plan_fn
         self._measured_tcp_max_approach_m = measured_tcp_max_approach_m
         self._ee_to_tcp_offset_m = ee_to_tcp_offset_m
+        self._flat_grasp_only = flat_grasp_only
 
     def _log(self):
         return self.node.get_logger()
@@ -90,6 +92,7 @@ class GraspSearchExecutor:
                     measured_best_j3_deg=grasp_search.measured_best_j3_deg,
                     measured_best_alignment_deg=grasp_search.measured_best_alignment_deg,
                     is_nw_high_target=is_nw_high_target,
+                    flat_grasp_only=self._flat_grasp_only,
                 )
             )
             if should_replace:

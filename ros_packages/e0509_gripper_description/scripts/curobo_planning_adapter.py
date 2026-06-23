@@ -161,7 +161,7 @@ class CuroboPlanningAdapter:
         if result.success.item():
             traj = result.get_interpolated_plan().position.cpu().numpy()
             traj = self.trajectory_guards.normalize_equivalents(
-                traj, "Cartesian plan")
+                traj, "Cartesian plan", robot_start_joints_rad=start_joints)
             if not self.trajectory_guards.in_operational_limits(traj, "Cartesian plan"):
                 self._log_cartesian_reject(
                     "operational_joint_limits", start_joints, target_pos,
@@ -234,7 +234,8 @@ class CuroboPlanningAdapter:
 
         if result.success.item():
             traj = result.get_interpolated_plan().position.cpu().numpy()
-            traj = self.trajectory_guards.normalize_equivalents(traj, label)
+            traj = self.trajectory_guards.normalize_equivalents(
+                traj, label, robot_start_joints_rad=start_joints)
             if not self.trajectory_guards.in_operational_limits(traj, label):
                 self.runtime_log.log(
                     "curobo_plan_rejected", planner="joint_space", label=label,

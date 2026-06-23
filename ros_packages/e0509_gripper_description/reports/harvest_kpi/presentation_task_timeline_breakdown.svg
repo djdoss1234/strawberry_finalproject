@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="720" viewBox="0 0 1300 720">
+<rect width="100%" height="100%" fill="#fff"/>
+
+<style>
+.title{font:700 28px Arial,sans-serif;fill:#15171a}.subtitle{font:15px Arial,sans-serif;fill:#667085}.axis{stroke:#2b2f36;stroke-width:1.4}.grid{stroke:#edf0f4;stroke-width:1}.tick{font:13px Arial,sans-serif;fill:#667085}.label{font:600 16px Arial,sans-serif;fill:#2b2f36}.small{font:13px Arial,sans-serif;fill:#667085}.value{font:700 21px Arial,sans-serif}.card{fill:#f8fafc;stroke:#e5e7eb;stroke-width:1}.ok{fill:#16a34a}.fail{fill:#dc2626}.blue{fill:#2563eb}.amber{fill:#f59e0b}.dark{fill:#111827}
+</style>
+<text x="60" y="62" class="title">Task Execution Timeline</text>
+<text x="60" y="92" class="subtitle">runtime phase duration per selected target</text>
+<line x1="220.0" y1="135" x2="220.0" y2="407" class="grid"/>
+<text x="220.0" y="437" text-anchor="middle" class="tick">0s</text>
+<line x1="345.7142857142857" y1="135" x2="345.7142857142857" y2="407" class="grid"/>
+<text x="345.7142857142857" y="437" text-anchor="middle" class="tick">10s</text>
+<line x1="471.42857142857144" y1="135" x2="471.42857142857144" y2="407" class="grid"/>
+<text x="471.42857142857144" y="437" text-anchor="middle" class="tick">20s</text>
+<line x1="597.1428571428571" y1="135" x2="597.1428571428571" y2="407" class="grid"/>
+<text x="597.1428571428571" y="437" text-anchor="middle" class="tick">30s</text>
+<line x1="722.8571428571429" y1="135" x2="722.8571428571429" y2="407" class="grid"/>
+<text x="722.8571428571429" y="437" text-anchor="middle" class="tick">40s</text>
+<line x1="848.5714285714286" y1="135" x2="848.5714285714286" y2="407" class="grid"/>
+<text x="848.5714285714286" y="437" text-anchor="middle" class="tick">50s</text>
+<line x1="974.2857142857143" y1="135" x2="974.2857142857143" y2="407" class="grid"/>
+<text x="974.2857142857143" y="437" text-anchor="middle" class="tick">60s</text>
+<line x1="1100.0" y1="135" x2="1100.0" y2="407" class="grid"/>
+<text x="1100.0" y="437" text-anchor="middle" class="tick">70s</text>
+<text x="60" y="190" class="label">Attempt 1</text>
+<rect x="220" y="160" width="178.93898589609722" height="40" rx="8" fill="#2563eb"/>
+<text x="309.4694929480486" y="186" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">14.2</text>
+<rect x="398.9389858960972" y="160" width="75.64043716154993" height="40" rx="8" fill="#f59e0b"/>
+<text x="436.7592044768722" y="186" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">6.0</text>
+<rect x="474.57942305764715" y="160" width="351.74847306969707" height="40" rx="8" fill="#16a34a"/>
+<text x="650.4536595924957" y="186" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">28.0</text>
+<rect x="826.3278961273443" y="160" width="187.57154468772933" height="40" rx="8" fill="#7c3aed"/>
+<text x="920.1136684712089" y="186" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">14.9</text>
+<text x="1124" y="188" class="label">63.2s</text>
+<text x="60" y="264" class="label">Attempt 2</text>
+<rect x="220" y="234" width="199.68431641713582" height="40" rx="8" fill="#2563eb"/>
+<text x="319.8421582085679" y="260" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">15.9</text>
+<rect x="419.68431641713585" y="234" width="73.77074208110571" height="40" rx="8" fill="#f59e0b"/>
+<text x="456.5696874576887" y="260" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">5.9</text>
+<rect x="493.45505849824156" y="234" width="356.43425186330984" height="40" rx="8" fill="#16a34a"/>
+<text x="671.6721844298964" y="260" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">28.4</text>
+<rect x="849.8893103615515" y="234" width="142.91211885014283" height="40" rx="8" fill="#7c3aed"/>
+<text x="921.3453697866229" y="260" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">11.4</text>
+<text x="1124" y="262" class="label">61.5s</text>
+<text x="60" y="338" class="label">Attempt 3</text>
+<rect x="220" y="308" width="189.33296029349523" height="40" rx="8" fill="#2563eb"/>
+<text x="314.66648014674763" y="334" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">15.1</text>
+<rect x="409.33296029349526" y="308" width="70.64538347415093" height="40" rx="8" fill="#f59e0b"/>
+<text x="444.6556520305707" y="334" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">5.6</text>
+<rect x="479.9783437676462" y="308" width="362.02735856627777" height="40" rx="8" fill="#16a34a"/>
+<text x="660.9920230507851" y="334" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">28.8</text>
+<rect x="842.005702333924" y="308" width="136.60986072749697" height="40" rx="8" fill="#7c3aed"/>
+<text x="910.3106326976724" y="334" text-anchor="middle" font-family="Arial" font-size="13" font-weight="700" fill="#fff">10.9</text>
+<text x="1124" y="336" class="label">60.3s</text>
+<rect x="220" y="595" width="18" height="18" rx="4" fill="#2563eb"/>
+<text x="248" y="610" class="small">Approach + final alignment</text>
+<rect x="580" y="595" width="18" height="18" rx="4" fill="#f59e0b"/>
+<text x="608" y="610" class="small">Grasp verification</text>
+<rect x="220" y="629" width="18" height="18" rx="4" fill="#16a34a"/>
+<text x="248" y="644" class="small">Transfer + placement</text>
+<rect x="580" y="629" width="18" height="18" rx="4" fill="#7c3aed"/>
+<text x="608" y="644" class="small">Return + state update</text>
+</svg>
